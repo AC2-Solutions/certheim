@@ -122,6 +122,10 @@
                  border-radius: 4px; padding: 8px 14px; font-size: 13px; cursor: pointer;
                  font-family: inherit; }
   button.secondary, .btn.secondary { background: var(--secondary); color: var(--secondary-fg); }
+  button.danger, .btn.danger { background: #b3261e; color: #fff; }
+  .suffix-badge { display: inline-block; background: var(--accent, #4a90c7); color: #fff;
+                  border-radius: 4px; padding: 1px 6px; font-size: 12px;
+                  font-family: ui-monospace, monospace; }
   button:disabled, .btn:disabled { opacity: 0.55; cursor: not-allowed; }
   button:hover:not(:disabled), .btn:hover:not(:disabled) { opacity: 0.9; }
   .btn { display: inline-block; text-decoration: none; }
@@ -490,8 +494,9 @@
     <div class="details-body">
 
       <p class="hint">One row per certificate request &mdash; request as many at once as you
-         need. Bare names get <code>.eucom.mil</code> appended; entries with dots are used
-         verbatim; IPv4 addresses become IP SANs automatically.</p>
+         need. Bare hostnames automatically get <span class="suffix-badge">.eucom.mil</span>
+         appended (e.g. <code>myserver</code> &rarr; <code>myserver.eucom.mil</code>); entries
+         with dots are used verbatim; IPv4 addresses become IP SANs automatically.</p>
 
       <div class="request-header">
         <span class="textarea-label">Hostname / CN</span>
@@ -755,6 +760,7 @@
       <button type="button" data-panel="webhooks">Webhooks</button>
       <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="gitlab">GitLab</button>
+      <button type="button" data-panel="trust">Trust</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -1011,6 +1017,25 @@
       <div class="row" style="margin-top:10px">
         <button id="gitlab-save-btn" type="button">Save</button>
         <span id="gitlab-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="trust">
+      <div class="card-header"><h2>Trust / CA certificates</h2></div>
+      <p class="hint">Publish root/intermediate CA certificates so users and
+         devices can download them to trust this site (and its CAC mTLS).
+         These are <b>public downloads — CA certificates only, never private
+         keys</b>. Public endpoint: <code id="trust-public-url">&mdash;</code></p>
+      <div id="trust-list" class="status">Loading&hellip;</div>
+      <hr>
+      <label for="trust-name" class="textarea-label">Add a CA certificate</label>
+      <input type="text" id="trust-name" class="form-input" style="max-width:360px"
+             placeholder="dod-root-ca-6  (name; .crt appended if omitted)">
+      <textarea id="trust-pem" class="form-input" rows="6"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="trust-upload-btn" type="button">Publish</button>
+        <span id="trust-status" class="status"></span>
       </div>
     </section>
 
@@ -1274,6 +1299,10 @@
     <div class="row" style="justify-content:flex-end; margin-top:14px">
       <button class="secondary modal-cancel" type="button">Cancel</button>
       <button id="user-edit-save-btn" type="button">Save</button>
+    </div>
+    <div id="user-edit-danger" class="row" style="justify-content:space-between; align-items:center; margin-top:14px; padding-top:10px; border-top:1px solid var(--border,#444)">
+      <span class="hint">Deleting keeps this user's job history; removes group memberships.</span>
+      <button id="user-edit-delete-btn" class="danger" type="button">Delete user&hellip;</button>
     </div>
     <div id="user-edit-status" class="status" style="margin-top:8px"></div>
   </div>

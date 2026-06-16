@@ -40,6 +40,7 @@ MANIFEST=(
   "systemd/csr-expiry-warn.timer   /etc/systemd/system/csr-expiry-warn.timer   root:root 0644 systemd"
   "systemd/csr-api.service          /etc/systemd/system/csr-api.service          root:root 0644 systemd"
   "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
+  "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
 MANIFEST+=("nginx/30-csr.conf /etc/nginx/rcdn01.d/30-csr.conf root:root 0644 nginx")
@@ -148,6 +149,25 @@ if $RESTART && [[ "$changed_tags" == *backend* || "$changed_tags" == *systemd* ]
     systemctl is-active csr-api >/dev/null \
         && echo "csr-api: active" \
         || { echo "csr-api FAILED to start - check journalctl -u csr-api"; exit 1; }
+
+    # Post-restart version verification: the app reads VERSION once at startup,
+    # so a stale/old running process is easy to miss. Compare the version the
+    # health endpoint reports to the VERSION we just deployed. A failed loopback
+    # curl (e.g. mTLS required on :443) is treated as "couldn't check", not an
+    # error - the restart already succeeded above.
+    if [[ -f VERSION ]]; then
+        want="$(cat VERSION)"
+        got="$(curl -sk --max-time 5 https://localhost/csr/api/health 2>/dev/null \
+                 | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
+        if [[ -z "$got" ]]; then
+            echo "version check: skipped (could not reach health endpoint on loopback)"
+        elif [[ "$got" == "$want" ]]; then
+            echo "version check: running $got matches deployed $want"
+        else
+            echo "WARNING: running version ($got) != deployed VERSION ($want)" >&2
+            echo "         the csr-api process may be stale - investigate." >&2
+        fi
+    fi
 fi
 
 echo "deploy complete:$changed_tags"

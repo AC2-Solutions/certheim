@@ -43,6 +43,10 @@ _ENV_DEFAULTS = {
     "CSR_MAX_CERTLIST_BYTES": "65536",
     "CSR_MAX_CSR_BYTES": "32768",
     "CSR_MAX_CERT_BYTES": "65536",
+    # First-admin bootstrap: when "1", the FIRST user to log in on an EMPTY
+    # users table is created as admin (self-disables once any user exists).
+    # Only safe where mTLS verifies real CACs. Default off.
+    "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
 }
 
 def _load_env_file():
@@ -73,9 +77,18 @@ def _env_int(key):
     except (KeyError, ValueError):
         return int(_ENV_DEFAULTS[key])
 
+def _env_bool(key):
+    v = str(_ENV.get(key, _ENV_DEFAULTS.get(key, "0"))).strip().lower()
+    return v in ("1", "true", "yes", "on")
+
 HELPER = ["sudo", "-n", _ENV["CSR_HELPER_PATH"]]
 DB_PATH = _ENV["CSR_DB_PATH"]
 ISSUED_DIR = _ENV["CSR_ISSUED_DIR"]
+# Trust portal: admin-published CA certs (root/intermediate, never keys) that
+# clients download to trust this site / its CAC mTLS. Lives under the app's
+# writable data dir (csrapi-owned), served read-only + unauthenticated.
+TRUST_DIR = str(Path(DB_PATH).parent / "trust")
+TRUST_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(?:crt|pem)$")
 
 # Application version - read from the VERSION file deployed alongside app.py.
 # Single source of truth is the repo's VERSION file; bump it per release.
@@ -704,12 +717,22 @@ def _upsert_user(dn):
             "SELECT dn FROM users WHERE dn = ?", (dn,)
         ).fetchone()
         if not existing:
+            # First-admin bootstrap: when CSR_BOOTSTRAP_FIRST_ADMIN is on AND
+            # the users table is empty, the very first user to log in is made
+            # admin. Self-disabling: only fires while the table is empty.
+            first_admin = 0
+            if _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN"):
+                n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                if n == 0:
+                    first_admin = 1
             conn.execute("""
                 INSERT INTO users (dn, cn, email, is_admin, is_active,
                                    created_at, last_seen_at)
-                VALUES (?, ?, NULL, 0, 1, ?, ?)
-            """, (dn, cn, now, now))
+                VALUES (?, ?, NULL, ?, 1, ?, ?)
+            """, (dn, cn, first_admin, now, now))
             log_event("user_created", "ok", dn=dn[:128])
+            if first_admin:
+                log_event("admin_bootstrap", "ok", dn=dn[:128])
         else:
             conn.execute(
                 "UPDATE users SET last_seen_at = ?, cn = ? WHERE dn = ?",
@@ -2732,6 +2755,50 @@ def admin_create_user():
               target_dn=target_dn[:128], is_admin=is_admin)
     return jsonify(ok=True)
 
+@app.delete("/api/admin/users")
+@require_admin
+@require_csrf
+def admin_delete_user():
+    """Delete a user account. DN in the JSON body. Guards: cannot delete
+    yourself; cannot delete the last remaining admin. The user's jobs are
+    RETAINED (historical record); their group memberships are removed.
+    ?purge=1 also detaches any cert templates they own (owner_dn -> NULL)."""
+    payload = request.get_json(silent=True) or {}
+    target_dn = (payload.get("dn") or "").strip()
+    if not target_dn:
+        return jsonify(error="dn is required"), 400
+    if target_dn == g.identity["dn"]:
+        return jsonify(error="you cannot delete your own account"), 400
+
+    purge = request.args.get("purge") in ("1", "true", "yes")
+
+    with db() as conn:
+        row = conn.execute(
+            "SELECT dn, is_admin FROM users WHERE dn = ?", (target_dn,)
+        ).fetchone()
+        if not row:
+            return jsonify(error="user not found"), 404
+        if row["is_admin"]:
+            n_admins = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE is_admin=1 AND is_active=1"
+            ).fetchone()[0]
+            if n_admins <= 1:
+                return jsonify(error="cannot delete the last remaining admin"), 409
+
+        jobs_retained = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE requester_dn = ?", (target_dn,)
+        ).fetchone()[0]
+        conn.execute("DELETE FROM user_groups WHERE user_dn = ?", (target_dn,))
+        if purge:
+            conn.execute(
+                "UPDATE cert_templates SET owner_dn=NULL WHERE owner_dn = ?",
+                (target_dn,))
+        conn.execute("DELETE FROM users WHERE dn = ?", (target_dn,))
+
+    log_event("admin_user_delete", "ok", target_dn=target_dn[:128],
+              jobs_retained=jobs_retained, purge=int(purge))
+    return jsonify(ok=True, jobs_retained=jobs_retained)
+
 # ============================================================
 # Admin: job cleanup
 # ============================================================
@@ -2904,20 +2971,11 @@ def admin_delete_orphan_key(name):
 @app.get("/api/admin/orphans/certs")
 @require_admin
 def admin_list_orphan_certs():
-    issued_dir = Path(ISSUED_DIR)
-    all_certs = []
-    if issued_dir.exists():
-        for f in issued_dir.iterdir():
-            if not (f.is_file() and f.name.endswith(".cer")):
-                continue
-            st = f.stat()
-            all_certs.append({
-                "name": f.name,
-                "size": st.st_size,
-                "mtime": time.strftime("%Y-%m-%d %H:%M",
-                                       time.localtime(st.st_mtime)),
-                "mtime_epoch": st.st_mtime,
-            })
+    # Read the issued dir through the root helper (list-issued) rather than
+    # directly: on a STIG box /home/ansible/issued is root-owned and csrapi
+    # cannot read it, which used to 500 this endpoint.
+    rc, out, _ = run_helper(["list-issued"])
+    all_certs = _parse_helper_listing(out) if rc == 0 else []
 
     with db() as conn:
         rows = conn.execute(
@@ -3610,6 +3668,120 @@ def admin_gitlab_test():
     if ok:
         return jsonify(ok=True, reason=reason)
     return jsonify(error=reason), 502
+
+
+# ============================================================
+# Trust portal — publish CA certs so clients can build trust
+# (CA certificates are public; private keys are rejected on upload)
+# ============================================================
+def _trust_cert_info(path):
+    """Summarize a published CA file: subject + SHA-256 fingerprint of its
+    first certificate. Best-effort; returns minimal info on parse failure."""
+    info = {"name": path.name, "size": path.stat().st_size,
+            "subject": "", "sha256": ""}
+    try:
+        pem = path.read_text()
+        sub = subprocess.run(["openssl", "x509", "-noout", "-subject"],
+                             input=pem, capture_output=True, text=True, timeout=10)
+        if sub.returncode == 0:
+            info["subject"] = sub.stdout.strip().split("=", 1)[-1].strip()
+        fp = subprocess.run(["openssl", "x509", "-noout", "-fingerprint", "-sha256"],
+                            input=pem, capture_output=True, text=True, timeout=10)
+        if fp.returncode == 0:
+            info["sha256"] = fp.stdout.strip().split("=", 1)[-1].strip()
+    except Exception:
+        pass
+    return info
+
+
+def _list_trust():
+    d = Path(TRUST_DIR)
+    if not d.is_dir():
+        return []
+    return sorted((_trust_cert_info(f) for f in d.iterdir()
+                   if f.is_file() and TRUST_NAME_RE.match(f.name)),
+                  key=lambda c: c["name"])
+
+
+@app.get("/api/trust")
+def trust_list():
+    """PUBLIC: list published CA certs. Unauthenticated by design so a device
+    with no trust/CAC yet can discover what to install."""
+    return jsonify(certs=_list_trust())
+
+
+@app.get("/api/trust/<name>")
+def trust_download(name):
+    """PUBLIC: download a published CA cert (PEM)."""
+    if not TRUST_NAME_RE.match(name):
+        abort(400)
+    path = Path(TRUST_DIR) / name
+    if not path.is_file():
+        abort(404)
+    return Response(
+        path.read_bytes(), mimetype="application/x-pem-file",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@app.get("/api/admin/trust")
+@require_admin
+def admin_trust_list():
+    return jsonify(certs=_list_trust(), trust_dir=TRUST_DIR)
+
+
+@app.post("/api/admin/trust")
+@require_admin
+@require_csrf
+def admin_trust_upload():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    pem = payload.get("pem") or ""
+    if not name.endswith((".crt", ".pem")):
+        name = f"{name}.crt"
+    if not TRUST_NAME_RE.match(name):
+        return jsonify(error="invalid name (letters/digits/._- , .crt/.pem)"), 400
+    if not isinstance(pem, str) or not (50 < len(pem) <= 1_000_000):
+        return jsonify(error="invalid pem"), 400
+    if "PRIVATE KEY" in pem:
+        return jsonify(error="refusing to publish a private key - CA certificates only"), 400
+    # Must be a parseable X.509 cert, and a CA cert (basicConstraints CA:TRUE).
+    try:
+        proc = subprocess.run(["openssl", "x509", "-noout", "-text"],
+                              input=pem, capture_output=True, text=True, timeout=10)
+    except Exception:
+        return jsonify(error="cert validation error"), 400
+    if proc.returncode != 0:
+        return jsonify(error="not a valid X.509 certificate"), 400
+    if "CA:TRUE" not in proc.stdout:
+        return jsonify(error="not a CA certificate (basicConstraints CA:TRUE) - publish roots/intermediates only"), 400
+
+    try:
+        d = Path(TRUST_DIR)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / name).write_text(pem if pem.endswith("\n") else pem + "\n")
+        os.chmod(d / name, 0o644)
+    except OSError as e:
+        return jsonify(error=f"could not write trust file: {e}"), 500
+    log_event("admin_trust_upload", "ok", name=name)
+    return jsonify(ok=True, certs=_list_trust())
+
+
+@app.delete("/api/admin/trust/<name>")
+@require_admin
+@require_csrf
+def admin_trust_delete(name):
+    if not TRUST_NAME_RE.match(name):
+        abort(400)
+    path = Path(TRUST_DIR) / name
+    if not path.is_file():
+        abort(404)
+    try:
+        path.unlink()
+    except OSError as e:
+        return jsonify(error=f"could not delete: {e}"), 500
+    log_event("admin_trust_delete", "ok", name=name)
+    return jsonify(ok=True, certs=_list_trust())
 
 
 # ============================================================
