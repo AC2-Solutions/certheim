@@ -31,7 +31,6 @@ bash-syntax:
 
 js-syntax:
   stage: lint
-  allow_failure: true    # remove once node is confirmed on the shell runner
   script:
     - node --check frontend/app.js
     - echo "js OK"

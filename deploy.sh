@@ -117,7 +117,9 @@ fi
 if [[ "$changed_tags" == *nginx* ]]; then
     # Validate before reloading - a bad config must not take nginx down
     if nginx -t; then
-        systemctl reload nginx
+        # reload-or-restart: on a fresh box nginx may be enabled-but-stopped at
+        # first deploy (F9). reload alone fails when the unit is inactive.
+        systemctl reload-or-restart nginx
         echo "nginx: reloaded"
     else
         echo "nginx -t FAILED - config NOT reloaded; the new file is on disk" >&2
