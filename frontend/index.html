@@ -753,7 +753,8 @@
       <button type="button" data-panel="groups">Groups</button>
       <button type="button" data-panel="templates">Templates</button>
       <button type="button" data-panel="webhooks">Webhooks</button>
-      <button type="button" data-panel="email">Email (SMG)</button>
+      <button type="button" data-panel="email">Email</button>
+      <button type="button" data-panel="gitlab">GitLab</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -893,23 +894,73 @@
 
     <section class="card admin-panel" data-panel="email">
       <div class="card-header">
-        <h2>Email (SMG) settings</h2>
+        <h2>Email / notifications</h2>
         <button id="admin-email-test-btn" class="secondary" type="button">Send test email</button>
       </div>
-      <p class="hint">SMTP relay configuration for notifications, read from
-         <code>/etc/csr-dashboard/email.conf</code>.
-         Changes here are written back to that file and take effect
-         immediately &mdash; no service restart needed.</p>
+      <p class="hint">Outbound notification delivery, written to
+         <code>/etc/csr-dashboard/email.conf</code> and hot-reloaded &mdash; no
+         restart needed. Pick ONE delivery method; only the selected method's
+         fields are used (the others stay dormant in the config).</p>
       <p id="email-config-state" class="status"></p>
-      <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
-        <label>SMG host/IP:
-          <input type="text" id="email-cfg-host" class="form-input" style="width:220px">
-        </label>
-        <label>Port:
-          <input type="number" id="email-cfg-port" min="1" max="65535" style="width:80px">
-        </label>
+
+      <label for="email-cfg-provider" class="textarea-label">Delivery method</label>
+      <select id="email-cfg-provider" class="form-input" style="width:300px">
+        <option value="smg">SMG relay (plain SMTP :25, no auth)</option>
+        <option value="smtp">Standard SMTP (STARTTLS/SSL + auth)</option>
+        <option value="mailgun">Mailgun HTTP API</option>
+      </select>
+
+      <!-- SMG + SMTP share host/port -->
+      <div class="email-provider-fields" data-for="smg smtp">
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:10px">
+          <label>Host/IP:
+            <input type="text" id="email-cfg-host" class="form-input" style="width:220px">
+          </label>
+          <label>Port:
+            <input type="number" id="email-cfg-port" min="1" max="65535" style="width:80px">
+          </label>
+        </div>
+      </div>
+
+      <!-- SMTP only: security + auth -->
+      <div class="email-provider-fields" data-for="smtp">
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>Security:
+            <select id="email-cfg-security" class="form-input" style="width:140px">
+              <option value="none">none</option>
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">SSL/TLS</option>
+            </select>
+          </label>
+          <label>Username:
+            <input type="text" id="email-cfg-username" class="form-input" style="width:220px" autocomplete="off">
+          </label>
+          <label>Password:
+            <input type="password" id="email-cfg-password" class="form-input" style="width:220px" autocomplete="new-password" placeholder="(blank = keep current)">
+          </label>
+        </div>
+      </div>
+
+      <!-- Mailgun only -->
+      <div class="email-provider-fields" data-for="mailgun">
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:10px">
+          <label>Mailgun domain:
+            <input type="text" id="email-cfg-mg-domain" class="form-input" style="width:240px" placeholder="mg.example.com">
+          </label>
+          <label>Region:
+            <select id="email-cfg-mg-base" class="form-input" style="width:220px">
+              <option value="https://api.mailgun.net">US (api.mailgun.net)</option>
+              <option value="https://api.eu.mailgun.net">EU (api.eu.mailgun.net)</option>
+            </select>
+          </label>
+        </div>
+        <label for="email-cfg-mg-key" class="textarea-label">Mailgun API key</label>
+        <input type="password" id="email-cfg-mg-key" class="form-input" autocomplete="new-password" placeholder="(blank = keep current)">
+      </div>
+
+      <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:10px">
         <label>Timeout (s):
-          <input type="number" id="email-cfg-timeout" min="1" max="120" style="width:70px">
+          <input type="number" id="email-cfg-timeout" min="1" max="120" style="width:80px">
         </label>
       </div>
       <label for="email-cfg-from" class="textarea-label">From address</label>
@@ -921,6 +972,45 @@
       <div class="row" style="margin-top:10px">
         <button id="email-cfg-save-btn" type="button">Save &amp; reload</button>
         <span id="email-cfg-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="gitlab">
+      <div class="card-header">
+        <h2>GitLab integration</h2>
+        <button id="gitlab-test-btn" class="secondary" type="button">Test connection</button>
+      </div>
+      <p class="hint">Issue-driven signing loop. When enabled, each new CSR job
+         opens a GitLab issue (CSR pasted in, assigned to the signers) in the
+         project below; signers paste/attach the signed cert in the issue and
+         the dashboard attaches it to the job. Stored in
+         <code>/etc/csr-dashboard/integrations.conf</code>.</p>
+      <p id="gitlab-config-state" class="status"></p>
+      <label class="row" style="gap:8px; align-items:center; margin:6px 0">
+        <input type="checkbox" id="gitlab-enabled"> Enable GitLab integration
+      </label>
+      <label for="gitlab-base" class="textarea-label">GitLab base URL</label>
+      <input type="text" id="gitlab-base" class="form-input" placeholder="https://git.ac2solutions.com">
+      <label for="gitlab-project" class="textarea-label">Signing project <span class="hint">(numeric id or group/name path)</span></label>
+      <input type="text" id="gitlab-project" class="form-input" placeholder="ac2-solutions/csr-signing">
+      <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+        <label>Assignee user IDs <span class="hint">(comma-sep)</span>:
+          <input type="text" id="gitlab-assignees" class="form-input" style="width:160px" placeholder="1,5">
+        </label>
+        <label>Labels:
+          <input type="text" id="gitlab-labels" class="form-input" style="width:200px" placeholder="csr,signing">
+        </label>
+      </div>
+      <label for="gitlab-token" class="textarea-label">API token <span class="hint">(api scope)</span></label>
+      <input type="password" id="gitlab-token" class="form-input" autocomplete="new-password" placeholder="(blank = keep current)">
+      <label for="gitlab-secret" class="textarea-label">Inbound webhook secret token</label>
+      <input type="password" id="gitlab-secret" class="form-input" autocomplete="new-password" placeholder="(blank = keep current)">
+      <p class="hint">In GitLab: <b>Project &gt; Settings &gt; Webhooks</b> &rarr; URL
+         <code id="gitlab-webhook-url">&mdash;</code>, Secret token = the value above,
+         enable the <b>Comments</b> and <b>Issues events</b> triggers.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="gitlab-save-btn" type="button">Save</button>
+        <span id="gitlab-status" class="status"></span>
       </div>
     </section>
 
