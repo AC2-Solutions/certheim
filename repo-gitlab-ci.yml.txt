@@ -1,0 +1,41 @@
+# .gitlab-ci.yml - syntax gates for the csr-dashboard repo.
+#
+# Runs on the instance shell runner (tag: shell) on nipat-pl-gtrn02.
+# The bare `python3` on a RHEL 8 runner is 3.6, which predates the walrus
+# operator (:=) used in the backend - so lint explicitly against 3.9, the
+# AppStream interpreter that matches the app's venv runtime. If your runner
+# has 3.11 instead, change PYBIN below.
+
+variables:
+  PYBIN: "python3.9"
+
+stages: [lint]
+
+default:
+  tags: [shell]
+
+python-syntax:
+  stage: lint
+  script:
+    - $PYBIN --version
+    - $PYBIN -m py_compile backend/app.py backend/notify.py backend/import_certs.py
+    - echo "python OK"
+
+bash-syntax:
+  stage: lint
+  script:
+    - bash -n helper/csr_dashboard_helper.sh
+    - for f in helper/csr_dashboard_helper.d/*.sh; do bash -n "$f"; done
+    - bash -n deploy.sh gather.sh tools/csrbackup.sh
+    - echo "bash OK"
+
+js-syntax:
+  stage: lint
+  allow_failure: true    # remove once node is confirmed on the shell runner
+  script:
+    - node --check frontend/app.js
+    - echo "js OK"
+
+# NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
+# it lives in the /var/automation repo and is covered by that project's
+# pipeline. Tracking a copy in this repo would create two sources of truth.

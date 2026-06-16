@@ -1,0 +1,32 @@
+# /etc/csr-dashboard/email.conf
+# SMTP/SMG notification settings. Managed by the in-app admin panel
+# (Admin > Email (SMG)), which reads AND writes this file. Seed it on a new
+# server with these values, then refine from the UI.
+# Owner csrapi:csrapi, mode 0640.
+#
+# Plain SMTP to an IP-whitelisted relay: no TLS, no auth.
+# To disable email notifications entirely, leave [smtp] host empty.
+
+[smtp]
+# SMG relay IP or hostname. The relay must whitelist THIS server's IP.
+# This is the value most likely to change per environment/site.
+host = REPLACE_WITH_SMG_IP_OR_HOST
+
+# Standard plain-SMTP port.
+port = 25
+
+# Total timeout in seconds for the full SMTP transaction.
+timeout = 10
+
+[from]
+# From: address on outgoing notifications. The relay must accept this
+# address from this server's IP.
+address = noreply-csr@rcdn.eucom.mil
+
+[recipients]
+# Optional global Cc on every notification (comma-separated). Blank = none.
+cc =
+
+[content]
+# Base URL used in links inside email bodies. Set to THIS server's URL.
+dashboard_url = https://nipat-pl-rcdn01.eucom.mil/csr/

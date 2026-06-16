@@ -1,0 +1,28 @@
+[Unit]
+Description=CSR Dashboard API
+After=network.target
+
+[Service]
+Type=simple
+User=csrapi
+Group=csrapi
+WorkingDirectory=/opt/csr-dashboard
+EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
+ExecStart=/opt/csr-dashboard/venv/bin/gunicorn --workers 1 --threads 4 --bind 127.0.0.1:5002 --access-logfile - --error-logfile - app:app
+Restart=on-failure
+RestartSec=5
+
+# Filesystem - NoNewPrivileges must remain false because the app uses sudo.
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=true
+ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /home/ansible/issued
+NoNewPrivileges=false
+
+# Resource limits
+LimitNOFILE=4096
+MemoryHigh=512M
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

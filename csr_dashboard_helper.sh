@@ -1,0 +1,112 @@
+#!/bin/bash
+# csr_dashboard_helper.sh - mediated root operations for the CSR dashboard
+#
+# This is the dispatcher. All implementation lives in numbered parts under
+# csr_dashboard_helper.d/ in the same directory, sourced in lexical order:
+#   00-common.sh     paths, audit, generic file operations
+#   10-certtypes.sh  cert type profiles, combination + SAN logic
+#   20-generate.sh   generate_typed pipeline
+#
+# SECURITY: the .d directory and every file in it must be root:root and not
+# group/world-writable, since everything sourced here runs as root via sudo.
+set -euo pipefail
+
+HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HELPER_D="$HELPER_DIR/csr_dashboard_helper.d"
+
+if [[ ! -d "$HELPER_D" ]]; then
+    echo "ERROR: $HELPER_D not found - helper is not fully installed" >&2
+    exit 70
+fi
+
+# Refuse to source anything not owned by root or writable by group/other.
+for part in "$HELPER_D"/*.sh; do
+    [[ -e "$part" ]] || { echo "ERROR: no parts in $HELPER_D" >&2; exit 70; }
+    perms=$(stat -c '%U %a' "$part")
+    owner="${perms%% *}"; mode="${perms##* }"
+    if [[ "$owner" != "root" || "${mode: -2:1}" =~ [2367] || "${mode: -1}" =~ [2367] ]]; then
+        echo "ERROR: refusing to source $part (owner=$owner mode=$mode)" >&2
+        exit 71
+    fi
+    # shellcheck source=/dev/null
+    source "$part"
+done
+
+cmd="${1:-}"
+shift || true
+audit "invoke caller=${SUDO_USER:-?} cmd=${cmd:-?} arg=${1:-}"
+
+case "$cmd" in
+    read-certlist-rhel)
+        read_certlist "$CERTLIST_RHEL"
+        ;;
+    write-certlist-rhel)
+        write_certlist "$CERTLIST_RHEL"
+        ;;
+    generate-rhel)
+        # Legacy: defers to csr-rhel.sh (web certs only). Kept for external
+        # scripts. The dashboard uses generate-typed.
+        audit "generate-rhel start"
+        bash "$GEN_RHEL"
+        rc=$?
+        audit "generate-rhel end rc=$rc"
+        exit $rc
+        ;;
+    generate-typed)
+        generate_typed "${1:-}" "${2:-rsa2048}"
+        ;;
+    list-csrs)
+        list_files "$CSRDIR" '*.csr'
+        ;;
+    get-csr)
+        cat_file "$CSRDIR" '^[A-Za-z0-9._-]+\.csr$' "${1:-}"
+        ;;
+    delete-csr)
+        delete_file "$CSRDIR" '^[A-Za-z0-9._-]+\.csr$' "${1:-}"
+        ;;
+    list-keys)
+        list_files "$KEYDIR" '*.key'
+        ;;
+    get-key)
+        cat_file "$KEYDIR" '^[A-Za-z0-9._-]+\.key$' "${1:-}"
+        ;;
+    delete-key)
+        delete_file "$KEYDIR" '^[A-Za-z0-9._-]+\.key$' "${1:-}"
+        ;;
+    chown-issued)
+        fname="${1:-}"
+        if [[ ! "$fname" =~ ^[A-Za-z0-9._-]+\.cer$ ]]; then
+            audit "$cmd deny invalid_name"
+            echo "ERROR: invalid filename" >&2
+            exit 2
+        fi
+        target="$ISSUED_DIR/$fname"
+        if [[ -f "$target" ]]; then
+            chown ansible:ansible "$target"
+            chmod 0644 "$target"
+            audit "$cmd ok name=$fname"
+        fi
+        ;;
+    delete-issued)
+        delete_file "$ISSUED_DIR" '^[A-Za-z0-9._-]+\.cer$' "${1:-}"
+        ;;
+    *)
+        cat >&2 <<EOF
+Usage: $0 <subcommand> [args]
+
+  read-certlist-rhel
+  write-certlist-rhel               (reads stdin)
+  generate-rhel                     (legacy: csr-rhel.sh, web only)
+  generate-typed <types> [algo]     types comma-separated, e.g. "web,client"
+                                    algo: rsa2048 (default) | rsa3072 |
+                                          rsa4096 | ecdsa256 | ecdsa384
+                                    types: web client email codesign ipsec
+                                           ocsp timestamp 8021x
+                                    (codesign/ocsp/timestamp cannot combine)
+  list-csrs / get-csr / delete-csr <name>
+  list-keys / get-key / delete-key <name>
+  chown-issued / delete-issued <name>
+EOF
+        exit 64
+        ;;
+esac

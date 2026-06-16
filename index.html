@@ -1,0 +1,1348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CSR Dashboard - nipat-pl-rcdn01</title>
+
+<script>
+  (function () {
+    var t = localStorage.getItem("csr-theme");
+    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+  })();
+</script>
+
+<style>
+  :root {
+    --fg: #e7eaee;
+    --fg-muted: #8a93a0;
+    --bg: #0e1116;
+    --bg-elevated: #1a1f26;
+    --bg-input: #11161c;
+    --border: #2d343d;
+    --border-input: #3a424d;
+    --accent: #4a90c7;
+    --accent-fg: #0e1116;
+    --header-bg: #15243a;
+    --header-fg: #e7eaee;
+    --table-header-bg: #1f262e;
+    --table-row-border: #2d343d;
+    --table-row-hover: #1f262e;
+    --secondary: #3a424d;
+    --secondary-fg: #e7eaee;
+    --danger: #ff7a7a;
+    --warning: #f0b86c;
+    --ok: #5fdc7a;
+    --purple: #b380e8;
+    --log-bg: #050709;
+    --log-fg: #c4cad2;
+    --modal-bg: #1a1f26;
+    --modal-overlay: rgba(0,0,0,0.88);
+    --code-bg: rgba(255,255,255,0.06);
+    --toggle-bg: rgba(255,255,255,0.12);
+    --toggle-bg-hover: rgba(255,255,255,0.22);
+    --toggle-border: rgba(255,255,255,0.18);
+  }
+
+  :root[data-theme="light"] {
+    --fg: #111;
+    --fg-muted: #666;
+    --bg: #f6f7f9;
+    --bg-elevated: #fff;
+    --bg-input: #fff;
+    --border: #d8dde3;
+    --border-input: #ccd2d8;
+    --accent: #1f4e79;
+    --accent-fg: #fff;
+    --header-bg: #1f4e79;
+    --header-fg: #fff;
+    --table-header-bg: #f0f2f5;
+    --table-row-border: #eee;
+    --table-row-hover: #f5f7fa;
+    --secondary: #555;
+    --secondary-fg: #fff;
+    --danger: #a00;
+    --warning: #b35900;
+    --ok: #1a7f37;
+    --purple: #6a3a9c;
+    --log-bg: #0e1116;
+    --log-fg: #dde3ea;
+    --modal-bg: #fff;
+    --modal-overlay: rgba(0,0,0,0.82);
+    --code-bg: rgba(0,0,0,0.05);
+    --toggle-bg: rgba(255,255,255,0.18);
+    --toggle-bg-hover: rgba(255,255,255,0.32);
+    --toggle-border: rgba(255,255,255,0.28);
+  }
+
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+         margin: 0; background: var(--bg); color: var(--fg); }
+
+  header { background: var(--header-bg); color: var(--header-fg); padding: 14px 20px;
+           display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .theme-toggle { background: var(--toggle-bg); color: var(--header-fg);
+                  border: 1px solid var(--toggle-border); border-radius: 4px;
+                  padding: 6px 12px; font-size: 13px; cursor: pointer;
+                  display: inline-flex; align-items: center; gap: 6px; }
+  .theme-toggle:hover { background: var(--toggle-bg-hover); }
+
+  main { max-width: 1200px; margin: 20px auto; padding: 0 20px;
+         display: grid; gap: 16px; }
+
+  .card { background: var(--bg-elevated); border: 1px solid var(--border);
+          border-radius: 6px; padding: 16px; color: var(--fg); min-width: 0; }
+  .card h2 { margin: 0 0 10px; font-size: 15px; }
+  .card.warn-card { border-left: 3px solid var(--warning); }
+  .card-header { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+  .card-header h2 { margin: 0; }
+
+  /* Collapsible certlist section */
+  details.card summary { cursor: pointer; list-style: none; padding: 0;
+                          display: flex; align-items: center; gap: 8px; }
+  details.card summary::-webkit-details-marker { display: none; }
+  details.card summary::before { content: "▶"; display: inline-block;
+                                  font-size: 11px; color: var(--fg-muted);
+                                  transition: transform 0.2s; }
+  details.card[open] summary::before { transform: rotate(90deg); }
+  details.card summary h2 { display: inline; margin: 0; font-size: 15px; }
+  .details-body { margin-top: 14px; }
+  hr.divider { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  textarea { width: 100%; min-height: 160px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+             padding: 10px; border: 1px solid var(--border-input); border-radius: 4px;
+             background: var(--bg-input); color: var(--fg); }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  button, .btn { background: var(--accent); color: var(--accent-fg); border: 0;
+                 border-radius: 4px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+                 font-family: inherit; }
+  button.secondary, .btn.secondary { background: var(--secondary); color: var(--secondary-fg); }
+  button:disabled, .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  button:hover:not(:disabled), .btn:hover:not(:disabled) { opacity: 0.9; }
+  .btn { display: inline-block; text-decoration: none; }
+
+  .link-btn { background: transparent; color: var(--accent); border: 0; padding: 0;
+              cursor: pointer; font-size: 13px; text-decoration: underline; font-family: inherit; }
+  .link-btn:hover { opacity: 0.8; }
+
+  .status { font-size: 12px; color: var(--fg-muted); }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--danger); }
+
+  pre.log { background: var(--log-bg); color: var(--log-fg); padding: 12px;
+            border-radius: 4px; max-height: 300px; overflow: auto;
+            font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
+            word-break: break-word;
+            border: 1px solid var(--border); margin: 12px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--fg); }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--table-row-border); }
+  th { background: var(--table-header-bg); font-weight: 600; }
+  td.size { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: var(--table-row-hover); }
+
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  a.dl { color: var(--accent); text-decoration: none; }
+  a.dl:hover { text-decoration: underline; }
+  .hint { font-size: 12px; color: var(--fg-muted); margin: 4px 0 8px; }
+
+  /* Pills */
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px;
+          font-size: 11px; font-weight: 600; text-transform: uppercase;
+          letter-spacing: 0.5px; border: 1px solid; }
+  .pill-pending { background: rgba(240,184,108,0.12); color: var(--warning); border-color: var(--warning); }
+  .pill-ok      { background: rgba(95,220,122,0.12); color: var(--ok); border-color: var(--ok); }
+  .pill-err     { background: rgba(255,122,122,0.12); color: var(--danger); border-color: var(--danger); }
+  .pill-mute    { background: rgba(138,147,160,0.12); color: var(--fg-muted); border-color: var(--fg-muted); }
+  .pill-blue    { background: rgba(74,144,199,0.12); color: var(--accent); border-color: var(--accent); }
+  .pill-purple  { background: rgba(179,128,232,0.12); color: var(--purple); border-color: var(--purple); }
+
+  /* Filter bar */
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .filter-bar input[type="search"] { flex: 1 1 220px; }
+  .filter-bar input, .filter-bar select {
+    padding: 8px 10px; background: var(--bg-input); color: var(--fg);
+    border: 1px solid var(--border-input); border-radius: 4px; font-size: 13px;
+    font-family: inherit;
+  }
+  .filter-bar input:focus, .filter-bar select:focus {
+    outline: 2px solid var(--accent); outline-offset: -1px;
+  }
+
+  /* Pagination */
+  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px;
+                font-size: 13px; color: var(--fg-muted); }
+
+  .mode-tabs { display: flex; border-bottom: 1px solid var(--border);
+               margin-bottom: 14px; gap: 0; }
+  .mode-tab { background: transparent; color: var(--fg-muted); border: 0;
+              border-bottom: 2px solid transparent; padding: 8px 16px;
+              cursor: pointer; font-family: inherit; font-size: 13px; }
+  .mode-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .mode-tab:hover:not(.active) { color: var(--fg); }
+
+  .form-input { width: 100%; padding: 8px 10px; background: var(--bg-input);
+                color: var(--fg); border: 1px solid var(--border-input);
+                border-radius: 4px; font-size: 13px; font-family: inherit; }
+  .form-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .textarea-label { display: block; margin-top: 12px; margin-bottom: 4px;
+                    font-size: 13px; color: var(--fg-muted); }
+  .textarea-label .hint { display: inline; margin: 0; }
+
+  .san-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .san-row .san-input { flex: 1; }
+  .san-row .san-remove { background: transparent; color: var(--danger);
+                         border: 0; padding: 4px 10px; cursor: pointer;
+                         font-size: 18px; line-height: 1;
+                         font-family: inherit; }
+  .san-row .san-remove:hover { color: var(--fg); }
+
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .header-nav { background: var(--toggle-bg); color: var(--header-fg);
+                border: 1px solid var(--toggle-border); border-radius: 4px;
+                padding: 6px 12px; font-size: 13px; cursor: pointer;
+                font-family: inherit;
+                display: inline-flex; align-items: center; gap: 6px;
+                text-decoration: none; }
+  .header-nav:hover { background: var(--toggle-bg-hover); }
+  .header-nav.active { background: var(--accent); color: var(--accent-fg);
+                       border-color: var(--accent); }
+  .admin-only { display: none; }
+  body.is-admin .admin-only { display: inline-flex; }
+
+  .bulk-row { display: flex; gap: 8px; align-items: center; padding: 10px;
+              background: var(--bg-input); border-radius: 4px;
+              margin-bottom: 10px; flex-wrap: wrap; }
+  .checkbox-cell { width: 32px; text-align: center; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px; margin-top: 8px; }
+  .stat-tile { background: var(--bg-input); border: 1px solid var(--border);
+               border-radius: 4px; padding: 10px; }
+  .stat-tile .label { font-size: 11px; color: var(--fg-muted);
+                      text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-tile .value { font-size: 18px; font-weight: 600; margin-top: 2px;
+                      font-variant-numeric: tabular-nums; }
+  .stat-tile .sub { font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: var(--modal-overlay);
+                    z-index: 999; display: flex; align-items: center; justify-content: center;
+                    padding: 20px; }
+  .modal-overlay[hidden] { display: none; }
+  .modal { background: var(--modal-bg); border: 1px solid var(--border);
+            border-radius: 6px; padding: 24px; max-width: 600px; width: 100%;
+            max-height: 90vh; overflow: auto; color: var(--fg); }
+  .modal-wide { max-width: 860px; }
+  .modal h2 { margin-top: 0; margin-bottom: 12px; font-size: 16px; }
+  .modal label { display: block; margin-top: 12px; margin-bottom: 4px;
+                  font-size: 13px; color: var(--fg-muted); }
+  .modal input[type="text"], .modal input[type="search"] {
+    width: 100%; padding: 8px 10px; background: var(--bg-input); color: var(--fg);
+    border: 1px solid var(--border-input); border-radius: 4px; font-size: 13px;
+    font-family: inherit;
+  }
+  .modal input[type="file"] { font-size: 13px; color: var(--fg); }
+  .modal textarea { margin-top: 4px; min-height: 140px; }
+
+  .detail-table { width: 100%; }
+  .detail-table th { background: transparent; text-align: left; font-weight: 500;
+                      color: var(--fg-muted); width: 130px;
+                      border-bottom: 1px solid var(--table-row-border); }
+  .detail-table td { border-bottom: 1px solid var(--table-row-border);
+                     word-break: break-all; }
+  .error-box { background: rgba(255,122,122,0.1); border: 1px solid var(--danger);
+                border-radius: 4px; padding: 10px; margin-top: 12px; font-size: 13px;
+                color: var(--danger); word-break: break-word; }
+  .pem-preview { background: var(--log-bg); color: var(--log-fg); padding: 10px;
+                  border-radius: 4px; font-size: 11px; max-height: 200px;
+                  overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+                  border: 1px solid var(--border); margin-top: 6px; }
+  .openssl-text { background: var(--log-bg); color: var(--log-fg); padding: 12px;
+                  border-radius: 4px; font-size: 11px; max-height: 400px;
+                  overflow: auto; white-space: pre;
+                  font-family: ui-monospace, Menlo, Consolas, monospace;
+                  border: 1px solid var(--border); margin: 6px 0 0; }
+  details.openssl-toggle { margin-top: 12px; }
+  details.openssl-toggle > summary { cursor: pointer; padding: 6px 0;
+                                     color: var(--accent); font-size: 13px;
+                                     list-style: none; }
+  details.openssl-toggle > summary::-webkit-details-marker { display: none; }
+  details.openssl-toggle > summary::before { content: "▶"; display: inline-block;
+                                              margin-right: 6px; font-size: 11px;
+                                              transition: transform 0.2s; }
+  details.openssl-toggle[open] > summary::before { transform: rotate(90deg); }
+
+  /* DoD banner */
+  #dod-banner { position: fixed; inset: 0; background: var(--modal-overlay);
+                z-index: 9999; display: flex; align-items: center; justify-content: center;
+                padding: 20px; }
+  #dod-banner .inner { background: var(--modal-bg); color: var(--fg);
+                       max-width: 780px; max-height: 90vh; overflow: auto;
+                       border-radius: 6px; padding: 24px; font-size: 13px; line-height: 1.5;
+                       border: 1px solid var(--border); }
+  #dod-banner h2 { margin: 0 0 12px; color: var(--danger); }
+  #dod-banner ul { padding-left: 20px; }
+  #dod-banner .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  /* Multi-request rows editor */
+  .request-header, .request-row {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 32px;
+    gap: 6px; align-items: center;
+  }
+  .request-header { margin-bottom: 4px; }
+  .request-row { margin-bottom: 6px; }
+  .request-row .req-remove {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--fg-muted); border-radius: 4px; cursor: pointer;
+    height: 30px; width: 30px; font-size: 15px; line-height: 1;
+  }
+  .request-row .req-remove:hover { color: var(--danger); border-color: var(--danger); }
+  @media (max-width: 700px) {
+    .request-header { display: none; }
+    .request-row { grid-template-columns: 1fr 32px; }
+    .request-row .req-sans { grid-column: 1 / 2; }
+  }
+
+  /* Cert type checkbox grid */
+  .cert-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 6px;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .cert-type-grid label {
+    display: flex; gap: 6px; align-items: center;
+    cursor: pointer; user-select: none;
+    transition: opacity 0.12s ease;
+  }
+  .cert-type-grid label.disabled {
+    opacity: 0.35; cursor: not-allowed;
+  }
+
+  /* Admin nav badge for unread feedback count */
+  .nav-badge {
+    display: inline-block; margin-left: 6px;
+    background: var(--danger); color: white;
+    font-size: 11px; font-weight: 600;
+    padding: 1px 7px; border-radius: 10px; line-height: 14px;
+    vertical-align: middle;
+  }
+
+  /* Tutorial walkthrough overlay */
+  /* Side-nav layout (admin + dashboard) */
+  .panel-layout {
+    display: grid; grid-template-columns: 170px 1fr;
+    gap: 16px; align-items: start;
+  }
+  .panel-nav {
+    position: sticky; top: 70px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .panel-nav button {
+    text-align: left; font-size: 13px; cursor: pointer;
+    padding: 8px 12px; border-radius: 6px;
+    background: transparent; color: var(--fg);
+    border: 1px solid transparent;
+  }
+  .panel-nav button:hover { background: var(--bg-elevated); }
+  .panel-nav button.active {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .panel-body { min-width: 0; }
+  .panel-body [data-panel][hidden] { display: none !important; }
+  @media (max-width: 760px) {
+    .panel-layout { grid-template-columns: 1fr; }
+    .panel-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  }
+
+  .pill-warn { background: var(--warning); color: #1a1a1a; }
+
+  /* Audit table: keep long detail strings inside the card */
+  .audit-table { table-layout: fixed; width: 100%; }
+  .audit-table th:nth-child(1) { width: 64px; }
+  .audit-table th:nth-child(2) { width: 20%; }
+  .audit-table th:nth-child(3) { width: 17%; }
+  .audit-table th:nth-child(4) { width: 76px; }
+  .audit-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+  }
+
+  /* First-login email gate */
+  #email-gate[hidden] { display: none !important; }
+  #email-gate {
+    position: fixed; inset: 0; z-index: 10050;
+    background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #email-gate-card {
+    background: var(--bg-elevated, #1a1f26);
+    color: var(--fg, #e7eaee);
+    border: 1px solid var(--border, #2d343d); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 22px 24px;
+    max-width: 440px; width: calc(100% - 40px);
+  }
+  #email-gate-card h2 { margin: 0 0 10px 0; font-size: 16px; color: var(--accent, #4a90c7); }
+  #email-gate-card p { font-size: 13px; line-height: 1.5; margin: 0 0 12px 0; }
+
+  #tutorial-overlay { position: fixed; inset: 0; z-index: 9999; }
+  #tutorial-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    pointer-events: auto;
+  }
+  /* The highlighted element gets a glow via box-shadow rather than a hole-cut,
+     since clip-path with insets gets messy on dynamic page reflow */
+  .tutorial-spotlight {
+    position: relative !important;
+    z-index: 10000 !important;
+    box-shadow: 0 0 0 4px var(--accent, #4a90c7), 0 0 0 9999px rgba(0,0,0,0.55) !important;
+    border-radius: 6px;
+    transition: box-shadow 0.15s ease-out;
+  }
+  #tutorial-tooltip[hidden] { display: none !important; }
+  #tutorial-tooltip {
+    position: fixed; z-index: 10001;
+    background: var(--bg-elevated, #1a1f26);
+    color: var(--fg, #e7eaee);
+    border: 1px solid var(--border, #2d343d); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 16px 18px;
+    max-width: 380px; min-width: 280px;
+  }
+  #tutorial-tooltip h3 {
+    margin: 0 0 8px 0; font-size: 15px; color: var(--accent, #4a90c7);
+  }
+  #tutorial-tooltip p { margin: 0; font-size: 13px; line-height: 1.5; }
+  #tutorial-progress {
+    margin-top: 8px; font-size: 11px; color: var(--fg-muted, #8a93a0);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="dod-banner" role="dialog" aria-modal="true" aria-labelledby="dod-title">
+  <div class="inner">
+    <h2 id="dod-title">U.S. Government (USG) Notice and Consent Banner</h2>
+    <p><strong>You are accessing a U.S. Government (USG) Information System (IS) that is provided for USG-authorized use only.</strong></p>
+    <p>By using this IS (which includes any device attached to this IS), you consent to the following conditions:</p>
+    <ul>
+      <li>The USG routinely intercepts and monitors communications on this IS for purposes including, but not limited to, penetration testing, COMSEC monitoring, network operations and defense, personnel misconduct (PM), law enforcement (LE), and counterintelligence (CI) investigations.</li>
+      <li>At any time, the USG may inspect and seize data stored on this IS.</li>
+      <li>Communications using, or data stored on, this IS are not private, are subject to routine monitoring, interception, and search, and may be disclosed or used for any USG-authorized purpose.</li>
+      <li>This IS includes security measures (e.g., authentication and access controls) to protect USG interests &mdash; not for your personal benefit or privacy.</li>
+      <li>Notwithstanding the above, using this IS does not constitute consent to PM, LE or CI investigative searching or monitoring of the content of privileged communications, or work product, related to personal representation or services by attorneys, psychotherapists, or clergy, and their assistants. Such communications and work product are private and confidential. See User Agreement for details.</li>
+    </ul>
+    <div class="buttons">
+      <button id="dod-decline" class="secondary">Decline</button>
+      <button id="dod-accept">I Acknowledge</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1>CSR Dashboard &mdash; nipat-pl-rcdn01.eucom.mil</h1>
+  <div class="header-actions">
+    <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
+    <button id="nav-admin" class="header-nav admin-only" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>
+    <button id="nav-tour" class="header-nav" type="button" title="Replay the tutorial">Tour</button>
+    <button id="nav-feedback" class="header-nav" type="button" title="Send feedback">Feedback</button>
+    <button id="nav-settings" class="header-nav" type="button" title="My settings">⚙ Settings</button>
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            aria-label="Toggle color theme" title="Toggle color theme">
+      <span id="theme-toggle-icon" aria-hidden="true">☀</span>
+      <span id="theme-toggle-label">Light</span>
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <div id="main-view">
+  <div id="main-layout" class="panel-layout">
+    <nav id="main-nav" class="panel-nav">
+      <button type="button" data-panel="create" class="active">Create requests</button>
+      <button type="button" data-panel="jobs">Jobs</button>
+      <button type="button" data-panel="signing" id="main-nav-signing" hidden>Signing queue</button>
+      <button type="button" data-panel="fleet">Fleet certs</button>
+      <button type="button" data-panel="mygroups">My groups</button>
+      <button type="button" data-panel="usertemplates">Templates</button>
+    </nav>
+    <div id="main-panels" class="panel-body">
+
+
+  <!-- ===== Certlist + Generate (collapsible) ===== -->
+  <div data-panel="create">
+  <details class="card" id="certlist-section" open>
+    <summary><h2>certlist editor &amp; CSR generation</h2></summary>
+    <div class="details-body">
+
+      <p class="hint">One row per certificate request &mdash; request as many at once as you
+         need. Bare names get <code>.eucom.mil</code> appended; entries with dots are used
+         verbatim; IPv4 addresses become IP SANs automatically.</p>
+
+      <div class="request-header">
+        <span class="textarea-label">Hostname / CN</span>
+        <span class="textarea-label">Additional SANs <span class="hint">(optional, comma-separated)</span></span>
+        <span></span>
+      </div>
+      <div id="request-rows"></div>
+      <button id="add-request-btn" class="link-btn" type="button" style="margin-top:6px">+ Add another request</button>
+
+      <div class="row" style="margin-top:10px">
+        <button id="reload-btn" class="secondary" type="button">Reload from disk</button>
+        <button id="save-btn" type="button">Save certlist</button>
+        <button id="clear-btn" class="secondary" type="button">Clear all</button>
+        <span id="save-status" class="status"></span>
+      </div>
+      <hr class="divider">
+
+      <label for="notify-email" class="textarea-label">
+        Notification email <span class="hint">(optional &mdash; applied to every job created in this batch)</span>
+      </label>
+      <input type="email" id="notify-email" class="form-input"
+             placeholder="adam.collison@example.mil" autocomplete="email" />
+
+      <label class="textarea-label">
+        Certificate template <span class="hint">(determines the certificate's usages &mdash; create your own in the Templates tab)</span>
+      </label>
+      <select id="generate-template" class="form-input"></select>
+      <p id="generate-types-preview" class="status" style="margin:4px 0 0"></p>
+
+      <label for="generate-key-algo" class="textarea-label">
+        Key algorithm
+      </label>
+      <select id="generate-key-algo" class="form-input">
+        <option value="rsa2048" selected>RSA 2048 (default)</option>
+        <option value="rsa3072">RSA 3072</option>
+        <option value="rsa4096">RSA 4096</option>
+        <option value="ecdsa256">ECDSA P-256</option>
+        <option value="ecdsa384">ECDSA P-384</option>
+      </select>
+
+      <label for="generate-group" class="textarea-label">
+        Assign to group <span class="hint">(optional &mdash; gives group members access to the key)</span>
+      </label>
+      <select id="generate-group" class="form-input">
+        <option value="">(none &mdash; personal job)</option>
+      </select>
+
+      <div class="row" style="margin-top:12px">
+        <button id="generate-btn" type="button">Generate CSRs</button>
+        <span id="generate-status" class="status"></span>
+      </div>
+      <p class="hint" style="margin-top:6px">Generate auto-saves the certlist first, then runs <code>csr-rhel.sh</code>, then clears the certlist on success. If an email is provided, it's notified when each job's certificate is uploaded.</p>
+      <pre class="log" id="generate-log" hidden></pre>
+    </div>
+  </details>
+
+  <!-- ===== Session keys ===== -->
+  <section class="card warn-card" id="keys-card" hidden>
+    <h2>Your Private Keys (this session)</h2>
+    <p class="hint">⚠ Generated in your current browser session. Download them now &mdash; they will not be visible after you end the session or close your browser. The keys remain on the server for system use.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button id="end-session-btn" class="secondary">End Session</button>
+      <span id="session-status" class="status"></span>
+    </div>
+    <table>
+      <thead><tr><th>Filename</th><th class="size">Size</th><th>Modified</th><th></th></tr></thead>
+      <tbody id="keys-tbody"></tbody>
+    </table>
+  </section>
+
+  <!-- ===== Jobs ===== -->
+  </div> <!-- /create panel -->
+
+  <section class="card" data-panel="jobs">
+    <div class="card-header">
+      <h2>Jobs</h2>
+      <div class="row">
+        <button id="submit-external-btn" class="secondary">+ Submit External CSR</button>
+        <button id="refresh-btn" class="secondary">Refresh</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <input type="search" id="filter-search" placeholder="Search hostname, requester, or job ID...">
+      <select id="filter-status">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="issued">Issued</option>
+        <option value="expired">Expired</option>
+        <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select id="filter-source">
+        <option value="">All sources</option>
+        <option value="rhel">Linux</option>
+        <option value="external">External</option>
+      </select>
+      <button id="filter-expiring-btn" class="secondary" type="button" title="Issued certs expiring within 60 days">Expiring &le;60d</button>
+      <button id="export-csv-btn" class="secondary" type="button" title="Export the current view as CSV">Export CSV</button>
+      <select id="filter-days">
+        <option value="">All time</option>
+        <option value="1">Last 24h</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px"><input type="checkbox" id="jobs-select-all" title="Select all pending on this page"></th>
+          <th>Created</th>
+          <th>Target</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Requester</th>
+          <th>Group</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="jobs-tbody">
+        <tr><td colspan="8" class="status">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="margin-top:8px">
+      <button id="bulk-cancel-btn" class="secondary" type="button" disabled>Cancel selected</button>
+      <span id="bulk-cancel-status" class="status"></span>
+    </div>
+    <div class="pagination">
+      <button id="prev-btn" class="secondary" disabled>Prev</button>
+      <span id="page-info">&mdash;</span>
+      <button id="next-btn" class="secondary" disabled>Next</button>
+    </div>
+  </section>
+
+  
+
+  <section class="card" data-panel="signing">
+    <div class="card-header">
+      <h2>Signing queue</h2>
+      <div class="row">
+        <button id="signing-zip-btn" class="secondary" type="button">Download all CSRs (zip)</button>
+        <button id="signing-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+    </div>
+    <p class="hint">All pending requests awaiting signature, oldest first. Download the
+       CSRs, sign them on the CA (template name = the request's cert type), then open
+       each job and upload the issued certificate.</p>
+    <table>
+      <thead>
+        <tr><th>Waiting</th><th>Target</th><th>Type</th><th>Requester</th><th></th></tr>
+      </thead>
+      <tbody id="signing-tbody">
+        <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <section class="card" data-panel="fleet">
+    <div class="card-header">
+      <h2>Fleet certificates</h2>
+      <button id="fleet-refresh-btn" class="secondary" type="button">Refresh</button>
+    </div>
+    <p class="hint">Certificates discovered on fleet hosts by the
+       <code>fleet-cert-scan</code> playbook &mdash; including certs that were never
+       requested through this dashboard. They're tracked for expiry and included
+       in the daily warning emails. Use <b>Renew here</b> to pre-fill a new
+       request with the same names and usages.</p>
+    <div class="row" style="gap:8px; margin-bottom:8px; flex-wrap:wrap">
+      <input type="text" id="fleet-search" class="form-input" style="width:240px"
+             placeholder="search host / CN / path / issuer">
+      <button id="fleet-expiring-btn" class="secondary" type="button"
+              title="Expiring within 60 days">Expiring &le;60d</button>
+      <label class="hint" style="display:flex; align-items:center; gap:4px">
+        <input type="checkbox" id="fleet-dedupe-cb" checked>
+        Group identical certs
+      </label>
+      <span id="fleet-status" class="status"></span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Host</th><th>CN</th><th>Types</th><th>Issuer</th><th>Expires</th><th>Seen</th><th></th></tr>
+      </thead>
+      <tbody id="fleet-tbody">
+        <tr><td colspan="7" class="status">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+
+  <section class="card" data-panel="mygroups">
+    <div class="card-header">
+      <h2>My groups</h2>
+      <button id="mygroups-refresh-btn" class="secondary" type="button">Refresh</button>
+    </div>
+    <p class="hint">Groups you belong to. If you're a <b>group owner</b> you can add and
+       remove members here, and you're automatically copied on expiry warnings for
+       your group's certificates. New members are added by their dashboard email
+       (they must have logged in and set one).</p>
+    <div id="mygroups-list">
+      <p class="status">Loading&hellip;</p>
+    </div>
+  </section>
+
+
+  <section class="card" data-panel="usertemplates">
+    <div class="card-header">
+      <h2>Templates</h2>
+      <button id="user-templates-refresh" class="secondary" type="button">Refresh</button>
+    </div>
+    <p class="hint">Templates define a certificate's usages and drive the Generate form.
+       Everyone can create <b>personal</b> templates here. <b>Group</b> templates
+       (visible to all group members) can be created by the group's owner.
+       Instance-wide templates are managed by admins.</p>
+    <table>
+      <thead><tr><th>Name</th><th>Types</th><th>Scope</th><th></th></tr></thead>
+      <tbody id="user-templates-tbody">
+        <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="divider">
+    <h2 style="font-size:14px; margin-bottom:8px">Create template</h2>
+    <label for="user-template-name" class="textarea-label">Name</label>
+    <input type="text" id="user-template-name" class="form-input" maxlength="64" placeholder="My web + client combo">
+    <label for="user-template-desc" class="textarea-label">Description <span class="hint">(optional)</span></label>
+    <input type="text" id="user-template-desc" class="form-input" maxlength="256">
+    <label class="textarea-label">Cert type(s) <span class="hint">(incompatible options grey out)</span></label>
+    <div id="user-template-cert-types" class="cert-type-grid">
+      <label><input type="checkbox" class="cert-type-cb" value="web"> TLS Server (web)</label>
+      <label><input type="checkbox" class="cert-type-cb" value="client"> TLS Client</label>
+      <label><input type="checkbox" class="cert-type-cb" value="email"> Email / S-MIME</label>
+      <label><input type="checkbox" class="cert-type-cb" value="ipsec"> IPSec / VPN (IKE)</label>
+      <label><input type="checkbox" class="cert-type-cb" value="8021x"> 802.1X / EAP-TLS</label>
+      <label><input type="checkbox" class="cert-type-cb" value="codesign"> Code Signing <span class="hint">(exclusive)</span></label>
+      <label><input type="checkbox" class="cert-type-cb" value="ocsp"> OCSP Responder <span class="hint">(exclusive)</span></label>
+      <label><input type="checkbox" class="cert-type-cb" value="timestamp"> Timestamping <span class="hint">(exclusive)</span></label>
+    </div>
+    <label for="user-template-scope" class="textarea-label">Scope</label>
+    <select id="user-template-scope" class="form-input">
+      <option value="" selected>Personal (only me)</option>
+    </select>
+    <div class="row" style="margin-top:10px">
+      <button id="user-template-create-btn" type="button">Create template</button>
+      <span id="user-template-status" class="status"></span>
+    </div>
+  </section>
+
+    </div> <!-- /#main-panels -->
+  </div> <!-- /#main-layout -->
+</div> <!-- /#main-view -->
+
+  <!-- ===== Admin view (hidden until #admin in URL and user is admin) ===== -->
+  <div id="admin-view" hidden>
+  <div id="admin-layout" class="panel-layout">
+    <nav id="admin-nav" class="panel-nav">
+      <button type="button" data-panel="overview" class="active">Overview</button>
+      <button type="button" data-panel="users">Users</button>
+      <button type="button" data-panel="groups">Groups</button>
+      <button type="button" data-panel="templates">Templates</button>
+      <button type="button" data-panel="webhooks">Webhooks</button>
+      <button type="button" data-panel="email">Email (SMG)</button>
+      <button type="button" data-panel="cleanup">Job cleanup</button>
+      <button type="button" data-panel="orphans">Orphaned files</button>
+      <button type="button" data-panel="feedback">Feedback</button>
+      <button type="button" data-panel="audit">Audit log</button>
+    </nav>
+    <div id="admin-panels" class="panel-body">
+
+
+    <section class="card admin-panel" data-panel="overview">
+      <div class="card-header">
+        <h2>Service overview</h2>
+        <button id="admin-test-email-btn" class="secondary" type="button">Send test email</button>
+      </div>
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-tile"><div class="label">Loading…</div></div>
+      </div>
+      <p id="admin-test-email-status" class="status"></p>
+    </section>
+
+    <section class="card admin-panel" data-panel="users">
+      <div class="card-header">
+        <h2>Users</h2>
+        <button id="admin-users-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Users are auto-created on first CAC login. Promote admins, deactivate accounts, set notification emails.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>User (CN)</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th>Last seen</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-users-tbody">
+          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card admin-panel" data-panel="groups">
+      <div class="card-header">
+        <h2>Groups</h2>
+        <div class="row">
+          <button id="admin-group-create-btn" type="button">+ Create group</button>
+          <button id="admin-groups-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+      </div>
+      <p class="hint">Groups let teams share access to the private keys of jobs assigned to the group. Any group member (or admin) can download the key for any job in the group, in addition to the original requester.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Email</th>
+            <th>Members</th>
+            <th>Jobs</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-groups-tbody">
+          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card admin-panel" data-panel="templates">
+      <div class="card-header">
+        <h2>Cert-type templates</h2>
+        <button id="admin-templates-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Instance-wide templates are visible to every user (alongside the
+         built-in Windows-style set). Group templates are visible to members of that
+         group only. Users can additionally make personal templates from the
+         Generate form.</p>
+      <table>
+        <thead><tr><th>Name</th><th>Types</th><th>Scope</th><th>Created by</th><th></th></tr></thead>
+        <tbody id="admin-templates-tbody">
+          <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+
+      <hr class="divider">
+      <h2 style="font-size:14px; margin-bottom:8px">Create template</h2>
+      <label for="admin-template-name" class="textarea-label">Name</label>
+      <input type="text" id="admin-template-name" class="form-input" maxlength="64" placeholder="Internal Web Server">
+      <label for="admin-template-desc" class="textarea-label">Description <span class="hint">(optional)</span></label>
+      <input type="text" id="admin-template-desc" class="form-input" maxlength="256">
+      <label class="textarea-label">Cert type(s)</label>
+      <div id="admin-template-cert-types" class="cert-type-grid">
+        <label><input type="checkbox" class="cert-type-cb" value="web"> TLS Server (web)</label>
+        <label><input type="checkbox" class="cert-type-cb" value="client"> TLS Client</label>
+        <label><input type="checkbox" class="cert-type-cb" value="email"> Email / S-MIME</label>
+        <label><input type="checkbox" class="cert-type-cb" value="ipsec"> IPSec / VPN (IKE)</label>
+        <label><input type="checkbox" class="cert-type-cb" value="8021x"> 802.1X / EAP-TLS</label>
+        <label><input type="checkbox" class="cert-type-cb" value="codesign"> Code Signing <span class="hint" style="display:inline">(excl.)</span></label>
+        <label><input type="checkbox" class="cert-type-cb" value="ocsp"> OCSP Responder <span class="hint" style="display:inline">(excl.)</span></label>
+        <label><input type="checkbox" class="cert-type-cb" value="timestamp"> Timestamping <span class="hint" style="display:inline">(excl.)</span></label>
+      </div>
+      <label for="admin-template-scope" class="textarea-label">Deploy to</label>
+      <select id="admin-template-scope" class="form-input">
+        <option value="global" selected>Instance-wide (all users)</option>
+      </select>
+      <div class="row" style="margin-top:10px">
+        <button id="admin-template-create-btn" type="button">Create template</button>
+        <span id="admin-template-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="webhooks">
+      <div class="card-header">
+        <h2>Webhooks <span class="hint">(integrations)</span></h2>
+        <div class="row" style="gap:6px">
+          <button id="admin-webhook-create-btn" type="button">+ Add webhook</button>
+          <button id="admin-webhooks-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+      </div>
+      <p class="hint">Fire outbound HTTP POST to ServiceNow, GitLab, Slack, or any HTTPS endpoint when events happen. Sent asynchronously &mdash; webhook failures never block user actions.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Events</th>
+            <th>Enabled</th>
+            <th>Last call</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-webhooks-tbody">
+          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card admin-panel" data-panel="email">
+      <div class="card-header">
+        <h2>Email (SMG) settings</h2>
+        <button id="admin-email-test-btn" class="secondary" type="button">Send test email</button>
+      </div>
+      <p class="hint">SMTP relay configuration for notifications, read from
+         <code>/etc/csr-dashboard/email.conf</code>.
+         Changes here are written back to that file and take effect
+         immediately &mdash; no service restart needed.</p>
+      <p id="email-config-state" class="status"></p>
+      <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+        <label>SMG host/IP:
+          <input type="text" id="email-cfg-host" class="form-input" style="width:220px">
+        </label>
+        <label>Port:
+          <input type="number" id="email-cfg-port" min="1" max="65535" style="width:80px">
+        </label>
+        <label>Timeout (s):
+          <input type="number" id="email-cfg-timeout" min="1" max="120" style="width:70px">
+        </label>
+      </div>
+      <label for="email-cfg-from" class="textarea-label">From address</label>
+      <input type="email" id="email-cfg-from" class="form-input" placeholder="noreply-csr@rcdn.eucom.mil">
+      <label for="email-cfg-cc" class="textarea-label">Global CC <span class="hint">(optional, comma-separated &mdash; copied on every notification)</span></label>
+      <input type="text" id="email-cfg-cc" class="form-input">
+      <label for="email-cfg-url" class="textarea-label">Dashboard URL <span class="hint">(used in email bodies)</span></label>
+      <input type="text" id="email-cfg-url" class="form-input">
+      <div class="row" style="margin-top:10px">
+        <button id="email-cfg-save-btn" type="button">Save &amp; reload</button>
+        <span id="email-cfg-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="cleanup">
+      <div class="card-header">
+        <h2>Bulk job cleanup</h2>
+      </div>
+      <p class="hint">Delete jobs by criteria. Combine filters to narrow the scope.
+         <code>Delete files</code> also removes the corresponding key in
+         <code>/root/sslcerts/private/</code> and the issued cert in
+         <code>/home/ansible/issued/</code>.</p>
+      <div class="bulk-row">
+        <label>Status:
+          <select id="cleanup-status">
+            <option value="cancelled" selected>cancelled</option>
+            <option value="failed">failed</option>
+            <option value="expired">expired</option>
+            <option value="pending">pending</option>
+            <option value="issued">issued</option>
+          </select>
+        </label>
+        <label>Source:
+          <select id="cleanup-source">
+            <option value="">any</option>
+            <option value="rhel">Linux</option>
+            <option value="external">External</option>
+          </select>
+        </label>
+        <label>Older than (days):
+          <input type="number" id="cleanup-days" min="0" style="width:80px">
+        </label>
+        <label>
+          <input type="checkbox" id="cleanup-delete-files">
+          Delete files
+        </label>
+        <button id="cleanup-preview-btn" class="secondary" type="button">Preview count</button>
+        <button id="cleanup-run-btn" type="button">Delete matching jobs</button>
+        <span id="cleanup-status-msg" class="status"></span>
+      </div>
+      <div id="cleanup-preview-wrap" hidden style="margin-top:12px">
+        <p class="hint">Review the matching records. Uncheck anything that should persist, then delete.</p>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28px"><input type="checkbox" id="cleanup-select-all" checked></th>
+              <th>Created</th><th>Target</th><th>Status</th><th>Source</th><th>Requester</th>
+            </tr>
+          </thead>
+          <tbody id="cleanup-preview-tbody"></tbody>
+        </table>
+        <p id="cleanup-preview-note" class="status"></p>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="orphans">
+      <div class="card-header">
+        <h2>Orphan keys</h2>
+        <button id="admin-orphan-keys-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Private keys in <code>/root/sslcerts/private/</code> with no matching job row.</p>
+      <table>
+        <thead>
+          <tr><th>Filename</th><th class="size">Size</th><th>Modified</th><th></th></tr>
+        </thead>
+        <tbody id="admin-orphan-keys-tbody">
+          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card admin-panel" data-panel="orphans">
+      <div class="card-header">
+        <h2>Orphan certs</h2>
+        <button id="admin-orphan-certs-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Issued certs in <code>/home/ansible/issued/</code> with no matching job row.</p>
+      <table>
+        <thead>
+          <tr><th>Filename</th><th class="size">Size</th><th>Modified</th><th></th></tr>
+        </thead>
+        <tbody id="admin-orphan-certs-tbody">
+          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card admin-panel" data-panel="feedback">
+      <div class="card-header">
+        <h2>User feedback</h2>
+        <div class="row" style="gap:6px">
+          <select id="admin-feedback-filter" class="form-input" style="display:inline-block; width:auto">
+            <option value="all">All</option>
+            <option value="new" selected>New only</option>
+            <option value="read">Read</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <button id="admin-feedback-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+      </div>
+      <p class="hint">Feedback submitted by users via the Feedback button. New items are highlighted on the Admin nav link.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Submitted</th>
+            <th>User</th>
+            <th>Category</th>
+            <th>Preview</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-feedback-tbody">
+          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  
+
+    <section class="card admin-panel" data-panel="audit">
+      <div class="card-header">
+        <h2>Audit log</h2>
+        <button id="audit-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <div class="bulk-row" style="flex-wrap:wrap; gap:8px">
+        <label>Action: <input type="text" id="audit-filter-action" class="form-input" style="width:160px" placeholder="cancel_job"></label>
+        <label>Actor: <input type="text" id="audit-filter-actor" class="form-input" style="width:160px" placeholder="COLLISON"></label>
+        <label>Contains: <input type="text" id="audit-filter-q" class="form-input" style="width:160px"></label>
+        <button id="audit-search-btn" type="button">Search</button>
+        <button id="admin-run-expiry-btn" class="secondary" type="button" title="Manually trigger the expiry warning emails">Run expiry warnings now</button>
+      </div>
+      <table class="audit-table">
+        <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Result</th><th>Detail</th></tr></thead>
+        <tbody id="audit-tbody"><tr><td colspan="5" class="status">Loading&hellip;</td></tr></tbody>
+      </table>
+      <div class="row" style="margin-top:8px">
+        <button id="audit-more-btn" class="secondary" type="button" hidden>Load more</button>
+        <span id="audit-status" class="status"></span>
+      </div>
+    </section>
+
+    </div> <!-- /#admin-panels -->
+  </div> <!-- /#admin-layout -->
+</div> <!-- /#admin-view -->
+
+</main>
+
+<!-- ===== Modals ===== -->
+<div class="modal-overlay" id="modal-overlay" hidden>
+
+  <!-- External CSR submit -->
+  <div class="modal" id="external-modal" hidden>
+    <h2>Submit External CSR</h2>
+    <p class="hint">For CSRs generated outside this dashboard (e.g. from <code>certlm.msc</code>, IIS, OpenSSL on another host). Paste the PKCS#10 CSR in PEM format.</p>
+    <label for="external-target">Target hostname</label>
+    <input type="text" id="external-target" placeholder="server01.eucom.mil">
+    <label for="external-email">Notification email <span class="hint" style="display:inline">(optional)</span></label>
+    <input type="email" id="external-email" placeholder="you@example.mil" autocomplete="email">
+    <label>Cert type(s) <span class="hint" style="display:inline">(optional, informational)</span></label>
+    <div id="external-cert-types" class="cert-type-grid">
+      <label><input type="checkbox" class="cert-type-cb" value="web"> TLS Server (web)</label>
+      <label><input type="checkbox" class="cert-type-cb" value="client"> TLS Client</label>
+      <label><input type="checkbox" class="cert-type-cb" value="email"> Email / S-MIME</label>
+      <label><input type="checkbox" class="cert-type-cb" value="ipsec"> IPSec / VPN (IKE)</label>
+      <label><input type="checkbox" class="cert-type-cb" value="8021x"> 802.1X / EAP-TLS</label>
+      <label><input type="checkbox" class="cert-type-cb" value="codesign"> Code Signing <span class="hint" style="display:inline">(excl.)</span></label>
+      <label><input type="checkbox" class="cert-type-cb" value="ocsp"> OCSP Responder <span class="hint" style="display:inline">(excl.)</span></label>
+      <label><input type="checkbox" class="cert-type-cb" value="timestamp"> Timestamping <span class="hint" style="display:inline">(excl.)</span></label>
+    </div>
+    <label for="external-group">Assign to group <span class="hint" style="display:inline">(optional)</span></label>
+    <select id="external-group" class="form-input">
+      <option value="">(none &mdash; personal job)</option>
+    </select>
+    <label for="external-csr">CSR (PEM)</label>
+    <textarea id="external-csr" spellcheck="false"
+              placeholder="-----BEGIN CERTIFICATE REQUEST-----..."></textarea>
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="external-submit-btn" type="button">Submit</button>
+    </div>
+    <div id="external-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Upload signed cert -->
+  <div class="modal" id="upload-cert-modal" hidden>
+    <h2>Upload Signed Certificate</h2>
+    <p class="hint">For job <code id="upload-job-target"></code>. Paste the signed PEM certificate or pick a file. Public key must match the original CSR.</p>
+    <label for="upload-cert-file">Choose a .cer / .crt / .pem file:</label>
+    <input type="file" id="upload-cert-file" accept=".cer,.crt,.pem,.txt">
+    <label for="upload-cert-text">Or paste:</label>
+    <textarea id="upload-cert-text" spellcheck="false"
+              placeholder="-----BEGIN CERTIFICATE-----..."></textarea>
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="upload-cert-submit-btn" type="button">Upload</button>
+    </div>
+    <div id="upload-cert-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Cancel job -->
+  <div class="modal" id="cancel-modal" hidden>
+    <h2>Cancel Job</h2>
+    <p class="hint">Cancel job for <code id="cancel-job-target"></code>?</p>
+    <label for="cancel-reason">Reason (optional)</label>
+    <input type="text" id="cancel-reason" placeholder="No longer needed">
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button class="secondary modal-cancel" type="button">Keep job</button>
+      <button id="cancel-submit-btn" type="button">Cancel job</button>
+    </div>
+    <div id="cancel-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Mark failed -->
+  <div class="modal" id="fail-modal" hidden>
+    <h2>Mark Job Failed</h2>
+    <p class="hint">Mark job for <code id="fail-job-target"></code> as failed?</p>
+    <label for="fail-reason">Reason</label>
+    <input type="text" id="fail-reason" placeholder="CA rejected the request">
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="fail-submit-btn" type="button">Mark failed</button>
+    </div>
+    <div id="fail-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Job detail -->
+  <div class="modal modal-wide" id="detail-modal" hidden>
+    <h2 id="detail-title">Job Details</h2>
+    <div id="detail-body"></div>
+    <div class="row" style="justify-content:flex-end; margin-top:16px">
+      <button class="secondary modal-cancel" type="button">Close</button>
+    </div>
+  </div>
+
+  <div class="modal" id="settings-modal" hidden>
+    <h2>My settings</h2>
+    <p class="hint">Your account was auto-created on first CAC login. The settings below apply across all your future job submissions.</p>
+    <label class="textarea-label">Identity</label>
+    <div><code id="settings-dn" style="font-size:11px; word-break:break-all"></code></div>
+    <label for="settings-email" class="textarea-label">Default notification email <span class="hint">(used as the default in Generate and External Submit)</span></label>
+    <input type="email" id="settings-email" autocomplete="email">
+    <div class="row" style="justify-content:flex-end; margin-top:14px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="settings-save-btn" type="button">Save</button>
+    </div>
+    <div id="settings-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <div class="modal" id="user-edit-modal" hidden>
+    <h2>Edit user</h2>
+    <label class="textarea-label">DN</label>
+    <div><code id="user-edit-dn" style="font-size:11px; word-break:break-all"></code></div>
+    <label for="user-edit-email" class="textarea-label">Email</label>
+    <input type="email" id="user-edit-email">
+    <div class="row" style="margin-top:10px; gap:16px">
+      <label><input type="checkbox" id="user-edit-admin"> Admin</label>
+      <label><input type="checkbox" id="user-edit-active"> Active</label>
+    </div>
+    <label for="user-edit-notes" class="textarea-label">Notes</label>
+    <textarea id="user-edit-notes" style="min-height:80px"></textarea>
+    <div class="row" style="justify-content:flex-end; margin-top:14px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="user-edit-save-btn" type="button">Save</button>
+    </div>
+    <div id="user-edit-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <div class="modal modal-wide" id="group-edit-modal" hidden>
+    <h2 id="group-edit-title">Group</h2>
+    <label for="group-edit-name" class="textarea-label">Name</label>
+    <input type="text" id="group-edit-name" class="form-input" placeholder="platforms-team">
+    <label for="group-edit-desc" class="textarea-label">Description</label>
+    <input type="text" id="group-edit-desc" class="form-input" placeholder="What this group is for">
+    <label for="group-edit-email" class="textarea-label">Distribution email <span class="hint">(optional &mdash; sent a copy of every notification for jobs in this group)</span></label>
+    <input type="email" id="group-edit-email" class="form-input" placeholder="team-dl@eucom.mil">
+    <label style="display:flex; gap:6px; align-items:center; margin-top:12px; cursor:pointer">
+      <input type="checkbox" id="group-edit-notify-new">
+      Signer group <span class="hint" style="display:inline">&mdash; members (and the distribution email) are notified whenever a new CSR is created, so they can action it for signing</span>
+    </label>
+    <div class="row" style="justify-content:flex-end; margin-top:10px">
+      <button class="secondary modal-cancel" type="button">Close</button>
+      <button id="group-edit-save-btn" type="button">Save</button>
+    </div>
+    <div id="group-edit-status" class="status" style="margin-top:8px"></div>
+
+    <hr class="divider" id="group-members-divider">
+    <div id="group-members-section">
+      <h2 style="font-size:14px; margin-bottom:8px">Members</h2>
+      <p class="hint">Add users by DN. Users must have logged in at least once before they can be added.</p>
+      <div class="row" style="margin-bottom:8px; gap:8px">
+        <select id="group-add-member-select" class="form-input" style="flex:1">
+          <option value="">— select a user —</option>
+        </select>
+        <button id="group-add-member-btn" type="button">Add</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Added</th><th></th></tr></thead>
+        <tbody id="group-members-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  
+
+  <div class="modal" id="feedback-modal" hidden>
+    <h2>Send feedback</h2>
+    <p class="hint">Your feedback goes to the dashboard administrators. Include any context (job IDs, what you were doing, what you expected vs what happened) that would help us follow up.</p>
+    <label for="feedback-category" class="textarea-label">Category</label>
+    <select id="feedback-category" class="form-input">
+      <option value="bug">Bug / something broken</option>
+      <option value="feature">Feature request</option>
+      <option value="general" selected>General feedback</option>
+    </select>
+    <label for="feedback-message" class="textarea-label">Message</label>
+    <textarea id="feedback-message" style="min-height:140px" maxlength="4000" placeholder="What's on your mind?"></textarea>
+    <div class="row" style="justify-content:flex-end; margin-top:10px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="feedback-submit-btn" type="button">Submit</button>
+    </div>
+    <div id="feedback-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <div class="modal modal-wide" id="feedback-detail-modal" hidden>
+    <h2 id="feedback-detail-title">Feedback</h2>
+    <table class="detail-table">
+      <tr><th>From</th><td id="feedback-detail-from"></td></tr>
+      <tr><th>Submitted</th><td id="feedback-detail-submitted"></td></tr>
+      <tr><th>Category</th><td id="feedback-detail-category"></td></tr>
+      <tr><th>Status</th><td id="feedback-detail-status"></td></tr>
+    </table>
+    <label class="textarea-label">Message</label>
+    <pre id="feedback-detail-message" class="openssl-text"></pre>
+    <label for="feedback-detail-notes" class="textarea-label">Resolution notes <span class="hint">(visible only to admins)</span></label>
+    <textarea id="feedback-detail-notes" style="min-height:80px" maxlength="2000"></textarea>
+    <div class="row" style="margin-top:10px; justify-content:space-between">
+      <div class="row" style="gap:8px">
+        <button id="feedback-mark-read-btn" class="secondary" type="button">Mark read</button>
+        <button id="feedback-mark-resolved-btn" type="button">Mark resolved</button>
+      </div>
+      <div class="row" style="gap:8px">
+        <button id="feedback-delete-btn" class="secondary" type="button" style="color:var(--danger)">Delete</button>
+        <button class="secondary modal-cancel" type="button">Close</button>
+      </div>
+    </div>
+    <div id="feedback-detail-status-msg" class="status" style="margin-top:8px"></div>
+  </div>  <div class="modal modal-wide" id="webhook-edit-modal" hidden>
+    <h2 id="webhook-edit-title">Webhook</h2>
+    <label for="webhook-edit-name" class="textarea-label">Name</label>
+    <input type="text" id="webhook-edit-name" class="form-input" placeholder="ServiceNow PROD">
+
+    <label for="webhook-edit-url" class="textarea-label">URL</label>
+    <input type="text" id="webhook-edit-url" class="form-input" placeholder="https://your-instance.service-now.com/api/x_/csr_webhook">
+
+    <label class="textarea-label">Events</label>
+    <div id="webhook-edit-events" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:6px; font-size:13px"></div>
+
+    <div style="margin-top:14px">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px">
+        <label class="textarea-label" style="margin:0">Custom headers <span class="hint">(secrets like API tokens go here)</span></label>
+        <button id="webhook-edit-add-header-btn" class="secondary" type="button" style="padding:4px 8px; font-size:12px">+ Add header</button>
+      </div>
+      <div id="webhook-edit-headers"></div>
+    </div>
+
+    <label style="display:flex; gap:6px; align-items:center; margin-top:14px; cursor:pointer">
+      <input type="checkbox" id="webhook-edit-enabled" checked> Enabled
+    </label>
+
+    <div class="row" style="justify-content:space-between; margin-top:14px">
+      <button id="webhook-edit-test-btn" class="secondary" type="button">Send test</button>
+      <div class="row" style="gap:8px">
+        <button class="secondary modal-cancel" type="button">Close</button>
+        <button id="webhook-edit-save-btn" type="button">Save</button>
+      </div>
+    </div>
+    <div id="webhook-edit-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+</div>
+<!-- First-login email gate: blocks all interaction until an email is saved.
+     Deliberately NOT part of the modal system - no close button, no overlay
+     click-to-dismiss, no Escape. z-index sits above the tutorial so the tour
+     can never appear underneath it. -->
+<div id="email-gate" hidden>
+  <div id="email-gate-card">
+    <h2>Welcome &mdash; one thing before you start</h2>
+    <p>The dashboard needs your email address. It's how you'll be identified
+       on requests (instead of your raw CAC string) and where issue/cancel
+       notifications are sent. This only needs to be done once.</p>
+    <label for="email-gate-input" class="textarea-label">Your email address</label>
+    <input type="email" id="email-gate-input" class="form-input"
+           placeholder="first.last.ctr@mail.mil" autocomplete="email">
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button id="email-gate-save-btn" type="button">Save and continue</button>
+    </div>
+    <div id="email-gate-status" class="status" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div id="tutorial-overlay" hidden>
+  <div id="tutorial-mask"></div>
+</div>
+<!-- Tooltip is a root-level sibling, NOT inside the overlay: the overlay
+     creates a stacking context at z 9999, and the spotlighted element sits
+     at z 10000 in the root context. The tooltip must also live in the root
+     context for its z 10001 to actually paint on top. -->
+<div id="tutorial-tooltip" hidden>
+  <h3 id="tutorial-step-title"></h3>
+  <p id="tutorial-step-body"></p>
+  <div class="row" style="justify-content:space-between; align-items:center; margin-top:14px">
+    <label style="font-size:12px; display:flex; gap:6px; align-items:center; cursor:pointer">
+      <input type="checkbox" id="tutorial-dismiss-check"> Don't show this again
+    </label>
+    <div class="row" style="gap:6px">
+      <button id="tutorial-prev-btn" class="secondary" type="button">Back</button>
+      <button id="tutorial-skip-btn" class="secondary" type="button">Skip tour</button>
+      <button id="tutorial-next-btn" type="button">Next</button>
+    </div>
+  </div>
+  <div id="tutorial-progress"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
