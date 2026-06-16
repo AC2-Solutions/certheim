@@ -74,7 +74,7 @@ DIRS=(
   "/root/sslcerts/scripts/csr_dashboard_helper.d|root:root|0750"
   "/root/sslcerts/private|root:root|0700"
   "/home/ansible/new_request|root:root|0755"
-  "/home/ansible/issued|root:${SVC_USER}|0750"
+  "/home/ansible/issued|${SVC_USER}:${SVC_USER}|0750"
 )
 for entry in "${DIRS[@]}"; do
     IFS='|' read -r d og mode <<< "$entry"

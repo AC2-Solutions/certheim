@@ -20,18 +20,33 @@ Recipient resolution:
     neither set                                         -> skipped (False, "no recipient")
 Plus the static Cc list from email.conf [recipients] cc, deduplicated.
 """
+import base64
 import configparser
 import smtplib
 import socket
+import ssl
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
 CONFIG_PATH = Path("/etc/csr-dashboard/email.conf")
 
+# Selectable delivery methods. The admin picks ONE in the UI ([method]
+# provider); only that provider's settings are validated/used, the others
+# lie dormant in the file so switching back is lossless.
+VALID_PROVIDERS = ("smg", "smtp", "mailgun")
+
 _config = None
 _enabled = False
 _disabled_reason = "not initialized"
+
+
+def _provider_of(cfg):
+    p = cfg.get("method", "provider", fallback="smg").strip().lower()
+    return p if p in VALID_PROVIDERS else "smg"
 
 
 def _load_config():
@@ -50,22 +65,31 @@ def _load_config():
         _disabled_reason = f"config parse error: {e}"
         return
 
-    try:
-        host = cfg.get("smtp", "host", fallback="").strip()
-        from_addr = cfg.get("from", "address", fallback="").strip()
-    except configparser.Error as e:
-        _enabled = False
-        _disabled_reason = f"missing required section: {e}"
-        return
-
-    if not host or host.startswith("REPLACE"):
-        _enabled = False
-        _disabled_reason = "smtp host is empty or placeholder"
-        return
+    provider = _provider_of(cfg)
+    from_addr = cfg.get("from", "address", fallback="").strip()
     if not from_addr or from_addr.startswith("REPLACE"):
         _enabled = False
         _disabled_reason = "from address is empty or placeholder"
         return
+
+    # Only the SELECTED provider's required fields gate enablement.
+    if provider in ("smg", "smtp"):
+        host = cfg.get("smtp", "host", fallback="").strip()
+        if not host or host.startswith("REPLACE"):
+            _enabled = False
+            _disabled_reason = f"[{provider}] smtp host is empty or placeholder"
+            return
+    elif provider == "mailgun":
+        api_key = cfg.get("mailgun", "api_key", fallback="").strip()
+        domain = cfg.get("mailgun", "domain", fallback="").strip()
+        if not api_key or api_key.startswith("REPLACE"):
+            _enabled = False
+            _disabled_reason = "[mailgun] api_key is empty or placeholder"
+            return
+        if not domain or domain.startswith("REPLACE"):
+            _enabled = False
+            _disabled_reason = "[mailgun] domain is empty or placeholder"
+            return
 
     _config = cfg
     _enabled = True
@@ -96,15 +120,99 @@ def _cn_from_dn(dn):
 
 
 def _send_message(msg, recipients):
-    """Low-level send: plain SMTP, no TLS, no auth.
-    Raises on any SMTP or network error."""
+    """Low-level send. Dispatches to the configured provider. Raises on any
+    failure; callers catch (smtplib.SMTPException, socket.error, OSError) and
+    the mailgun path raises OSError on a non-2xx / unreachable API."""
+    provider = _provider_of(_config)
+    if provider == "mailgun":
+        _send_mailgun(msg)
+    elif provider == "smtp":
+        _send_smtp(msg, recipients)
+    else:
+        _send_smg(msg, recipients)
+
+
+def _send_smg(msg, recipients):
+    """SMG / plain relay: SMTP on :25, no TLS, no auth (IP-whitelisted)."""
     host = _config.get("smtp", "host").strip()
     port = _config.getint("smtp", "port", fallback=25)
     timeout = _config.getint("smtp", "timeout", fallback=10)
-
     with smtplib.SMTP(host, port, timeout=timeout) as s:
         s.ehlo()
         s.send_message(msg, to_addrs=recipients)
+
+
+def _send_smtp(msg, recipients):
+    """Standard SMTP with optional STARTTLS / implicit-SSL and auth."""
+    host = _config.get("smtp", "host").strip()
+    port = _config.getint("smtp", "port", fallback=587)
+    timeout = _config.getint("smtp", "timeout", fallback=10)
+    security = _config.get("smtp", "security", fallback="starttls").strip().lower()
+    username = _config.get("smtp", "username", fallback="").strip()
+    password = _config.get("smtp", "password", fallback="")
+
+    if security == "ssl":
+        with smtplib.SMTP_SSL(host, port, timeout=timeout,
+                              context=ssl.create_default_context()) as s:
+            s.ehlo()
+            if username:
+                s.login(username, password)
+            s.send_message(msg, to_addrs=recipients)
+    else:
+        with smtplib.SMTP(host, port, timeout=timeout) as s:
+            s.ehlo()
+            if security == "starttls":
+                s.starttls(context=ssl.create_default_context())
+                s.ehlo()
+            if username:
+                s.login(username, password)
+            s.send_message(msg, to_addrs=recipients)
+
+
+def _send_mailgun(msg):
+    """Send via the Mailgun HTTP API. Recipients are taken from the message
+    To/Cc headers (every send path sets To). Raises OSError on non-2xx."""
+    api_key = _config.get("mailgun", "api_key").strip()
+    domain = _config.get("mailgun", "domain").strip()
+    base = _config.get("mailgun", "base_url",
+                       fallback="https://api.mailgun.net").strip().rstrip("/")
+    timeout = _config.getint("smtp", "timeout", fallback=20)
+
+    fields = [
+        ("from", msg["From"]),
+        ("subject", msg["Subject"] or ""),
+        ("text", msg.get_content()),
+    ]
+    for r in [a.strip() for a in (msg["To"] or "").split(",") if a.strip()]:
+        fields.append(("to", r))
+    if msg["Cc"]:
+        for c in [a.strip() for a in msg["Cc"].split(",") if a.strip()]:
+            fields.append(("cc", c))
+    for h in ("X-CSR-Dashboard-Event", "X-CSR-Dashboard-Job-Id"):
+        if msg[h]:
+            fields.append((f"h:{h}", msg[h]))
+
+    data = urllib.parse.urlencode(fields).encode("utf-8")
+    token = base64.b64encode(f"api:{api_key}".encode()).decode()
+    req = urllib.request.Request(
+        f"{base}/v3/{domain}/messages", data=data, method="POST",
+        headers={"Authorization": f"Basic {token}",
+                 "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if not (200 <= resp.status < 300):
+                raise OSError(f"mailgun HTTP {resp.status}")
+            resp.read(512)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read(300).decode("utf-8", "replace")
+        except Exception:
+            pass
+        raise OSError(f"mailgun HTTP {e.code}: {body or e.reason}")
+    except urllib.error.URLError as e:
+        raise OSError(f"mailgun unreachable: {e.reason}")
 
 
 def _resolve_recipients(job, group_email):
@@ -404,8 +512,9 @@ def send_csrs_created(targets, cert_type, creator_cn, creator_email, recipients)
 
 
 def get_settings():
-    """Current email/SMG configuration as a dict, plus enabled state.
-    Reads the live in-memory config (falls back to file defaults)."""
+    """Current email configuration as a dict, plus enabled state. Secrets
+    (smtp password, mailgun api key) are never returned in clear — only a
+    boolean '*_set' so the UI can show a 'leave blank to keep' placeholder."""
     cfg = configparser.ConfigParser()
     if CONFIG_PATH.exists():
         try:
@@ -413,9 +522,20 @@ def get_settings():
         except configparser.Error:
             pass
     return {
+        "provider": _provider_of(cfg),
+        # SMG / SMTP shared
         "host": cfg.get("smtp", "host", fallback=""),
         "port": cfg.getint("smtp", "port", fallback=25),
         "timeout": cfg.getint("smtp", "timeout", fallback=10),
+        "security": cfg.get("smtp", "security", fallback="none"),
+        "username": cfg.get("smtp", "username", fallback=""),
+        "password_set": bool(cfg.get("smtp", "password", fallback="").strip()),
+        # Mailgun
+        "mailgun_domain": cfg.get("mailgun", "domain", fallback=""),
+        "mailgun_base_url": cfg.get("mailgun", "base_url",
+                                    fallback="https://api.mailgun.net"),
+        "mailgun_api_key_set": bool(cfg.get("mailgun", "api_key", fallback="").strip()),
+        # Common
         "from_address": cfg.get("from", "address", fallback=""),
         "cc": cfg.get("recipients", "cc", fallback=""),
         "dashboard_url": cfg.get("content", "dashboard_url",
@@ -428,21 +548,48 @@ def get_settings():
 
 def save_settings(d):
     """Write new settings to email.conf and hot-reload. Returns (ok, reason).
-    The file must be writable by the service account (csrapi)."""
+    Secrets left blank are preserved from the existing file (the UI sends
+    blank when the admin doesn't re-type them). File must be writable by the
+    service account (csrapi)."""
+    existing = configparser.ConfigParser()
+    if CONFIG_PATH.exists():
+        try:
+            existing.read(CONFIG_PATH)
+        except configparser.Error:
+            pass
+
+    def keep_secret(section, key, incoming):
+        v = (incoming or "").strip()
+        return v if v else existing.get(section, key, fallback="")
+
+    provider = (d.get("provider") or "smg").strip().lower()
+    if provider not in VALID_PROVIDERS:
+        provider = "smg"
+
     cfg = configparser.ConfigParser()
+    cfg["method"] = {"provider": provider}
     cfg["smtp"] = {
-        "host": d.get("host", "").strip(),
-        "port": str(int(d.get("port", 25))),
-        "timeout": str(int(d.get("timeout", 10))),
+        "host": (d.get("host") or "").strip(),
+        "port": str(int(d.get("port") or (587 if provider == "smtp" else 25))),
+        "timeout": str(int(d.get("timeout") or 10)),
+        "security": (d.get("security") or "none").strip().lower(),
+        "username": (d.get("username") or "").strip(),
+        "password": keep_secret("smtp", "password", d.get("password")),
     }
-    cfg["from"] = {"address": d.get("from_address", "").strip()}
-    cfg["recipients"] = {"cc": d.get("cc", "").strip()}
-    cfg["content"] = {"dashboard_url": d.get("dashboard_url", "").strip()}
+    cfg["mailgun"] = {
+        "api_key": keep_secret("mailgun", "api_key", d.get("mailgun_api_key")),
+        "domain": (d.get("mailgun_domain") or "").strip(),
+        "base_url": (d.get("mailgun_base_url") or "https://api.mailgun.net").strip(),
+    }
+    cfg["from"] = {"address": (d.get("from_address") or "").strip()}
+    cfg["recipients"] = {"cc": (d.get("cc") or "").strip()}
+    cfg["content"] = {"dashboard_url": (d.get("dashboard_url") or "").strip()}
 
     try:
         with open(CONFIG_PATH, "w") as f:
             f.write("# /etc/csr-dashboard/email.conf\n")
-            f.write("# Managed via the dashboard admin UI. Manual edits are\n")
+            f.write("# Managed via the dashboard admin UI. [method] provider selects\n")
+            f.write("# the active delivery method (smg|smtp|mailgun). Manual edits are\n")
             f.write("# preserved only for known keys; comments are not.\n")
             cfg.write(f)
     except OSError as e:
@@ -451,7 +598,7 @@ def save_settings(d):
     _load_config()
     if not _enabled:
         return True, f"saved, but notifications disabled: {_disabled_reason}"
-    return True, "saved and reloaded"
+    return True, f"saved and reloaded (provider: {provider})"
 
 
 def send_expiry_warning(job, days_left, group_email=None):

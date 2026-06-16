@@ -1191,6 +1191,7 @@ async function refreshAdminView() {
     refreshOrphanKeys(),
     refreshOrphanCerts(),
     loadEmailConfig(),
+    loadGitlabConfig(),
     refreshAdminTemplates(),
   ]);
 }
@@ -1315,38 +1316,69 @@ document.getElementById("admin-template-create-btn")?.addEventListener("click", 
   refreshAdminTemplates();
 });
 
+// Show only the field groups relevant to the selected delivery method.
+function applyEmailProvider(provider) {
+  document.querySelectorAll(".email-provider-fields").forEach((el) => {
+    const forList = (el.dataset.for || "").split(/\s+/);
+    el.style.display = forList.includes(provider) ? "" : "none";
+  });
+}
+
 async function loadEmailConfig() {
   const r = await jsonReq("/admin/email-config");
   if (!r.ok) return;
   const c = r.body;
+  const provider = c.provider || "smg";
+  document.getElementById("email-cfg-provider").value = provider;
   document.getElementById("email-cfg-host").value = c.host || "";
   document.getElementById("email-cfg-port").value = c.port || 25;
   document.getElementById("email-cfg-timeout").value = c.timeout || 10;
+  document.getElementById("email-cfg-security").value = c.security || "none";
+  document.getElementById("email-cfg-username").value = c.username || "";
+  document.getElementById("email-cfg-password").value = "";
+  document.getElementById("email-cfg-password").placeholder =
+    c.password_set ? "(blank = keep current)" : "(none set)";
+  document.getElementById("email-cfg-mg-domain").value = c.mailgun_domain || "";
+  document.getElementById("email-cfg-mg-base").value =
+    c.mailgun_base_url || "https://api.mailgun.net";
+  document.getElementById("email-cfg-mg-key").value = "";
+  document.getElementById("email-cfg-mg-key").placeholder =
+    c.mailgun_api_key_set ? "(blank = keep current)" : "(none set)";
   document.getElementById("email-cfg-from").value = c.from_address || "";
   document.getElementById("email-cfg-cc").value = c.cc || "";
   document.getElementById("email-cfg-url").value = c.dashboard_url || "";
+  applyEmailProvider(provider);
   const state = document.getElementById("email-config-state");
   if (c.enabled) {
-    state.innerHTML = '<span class="pill pill-ok">notifications enabled</span>';
+    state.innerHTML = `<span class="pill pill-ok">notifications enabled</span> <span class="status">via ${escapeHtml(provider)}</span>`;
   } else {
     state.innerHTML = `<span class="pill pill-err">disabled</span> <span class="status">${escapeHtml(c.disabled_reason || "")}</span>`;
   }
 }
 
+document.getElementById("email-cfg-provider")?.addEventListener("change", (e) => {
+  applyEmailProvider(e.target.value);
+});
+
 document.getElementById("email-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("email-cfg-status");
   setStatus(status, "Saving…");
-  const r = await jsonReq("/admin/email-config", {
-    method: "PUT",
-    body: JSON.stringify({
-      host: document.getElementById("email-cfg-host").value.trim(),
-      port: parseInt(document.getElementById("email-cfg-port").value, 10),
-      timeout: parseInt(document.getElementById("email-cfg-timeout").value, 10),
-      from_address: document.getElementById("email-cfg-from").value.trim(),
-      cc: document.getElementById("email-cfg-cc").value.trim(),
-      dashboard_url: document.getElementById("email-cfg-url").value.trim(),
-    }),
-  });
+  const body = {
+    provider: document.getElementById("email-cfg-provider").value,
+    host: document.getElementById("email-cfg-host").value.trim(),
+    port: parseInt(document.getElementById("email-cfg-port").value, 10),
+    timeout: parseInt(document.getElementById("email-cfg-timeout").value, 10),
+    security: document.getElementById("email-cfg-security").value,
+    username: document.getElementById("email-cfg-username").value.trim(),
+    password: document.getElementById("email-cfg-password").value,
+    mailgun_domain: document.getElementById("email-cfg-mg-domain").value.trim(),
+    mailgun_base_url: document.getElementById("email-cfg-mg-base").value,
+    mailgun_api_key: document.getElementById("email-cfg-mg-key").value,
+    from_address: document.getElementById("email-cfg-from").value.trim(),
+    cc: document.getElementById("email-cfg-cc").value.trim(),
+    dashboard_url: document.getElementById("email-cfg-url").value.trim(),
+  };
+  const r = await jsonReq("/admin/email-config", { method: "PUT", body: JSON.stringify(body) });
   if (!r.ok) {
     setStatus(status, (r.body && r.body.error) || "Save failed", "err");
     return;
@@ -1363,7 +1395,53 @@ document.getElementById("admin-email-test-btn")?.addEventListener("click", async
     setStatus(status, (r.body && r.body.error) || (r.body && r.body.reason) || "Test failed", "err");
     return;
   }
-  setStatus(status, `Test email sent to ${r.body.recipient || "you"}.`, "ok");
+  setStatus(status, `Test email sent to ${r.body.sent_to || "you"}.`, "ok");
+});
+
+async function loadGitlabConfig() {
+  const r = await jsonReq("/admin/gitlab-config");
+  if (!r.ok) return;
+  const c = r.body;
+  document.getElementById("gitlab-enabled").checked = !!c.enabled;
+  document.getElementById("gitlab-base").value = c.base_url || "";
+  document.getElementById("gitlab-project").value = c.project || "";
+  document.getElementById("gitlab-assignees").value = c.assignee_ids || "";
+  document.getElementById("gitlab-labels").value = c.labels || "";
+  const tok = document.getElementById("gitlab-token");
+  tok.value = ""; tok.placeholder = c.api_token_set ? "(blank = keep current)" : "(none set)";
+  const sec = document.getElementById("gitlab-secret");
+  sec.value = ""; sec.placeholder = c.webhook_secret_set ? "(blank = keep current)" : "(none set)";
+  document.getElementById("gitlab-webhook-url").textContent =
+    `${location.origin}/csr/api/webhooks/gitlab`;
+  document.getElementById("gitlab-config-state").innerHTML = c.enabled
+    ? '<span class="pill pill-ok">enabled</span>'
+    : '<span class="pill pill-err">disabled</span>';
+}
+
+document.getElementById("gitlab-save-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("gitlab-status");
+  setStatus(status, "Saving…");
+  const body = {
+    enabled: document.getElementById("gitlab-enabled").checked,
+    base_url: document.getElementById("gitlab-base").value.trim(),
+    project: document.getElementById("gitlab-project").value.trim(),
+    assignee_ids: document.getElementById("gitlab-assignees").value.trim(),
+    labels: document.getElementById("gitlab-labels").value.trim(),
+    api_token: document.getElementById("gitlab-token").value,
+    webhook_secret: document.getElementById("gitlab-secret").value,
+  };
+  const r = await jsonReq("/admin/gitlab-config", { method: "PUT", body: JSON.stringify(body) });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Save failed", "err"); return; }
+  setStatus(status, r.body.reason || "Saved", "ok");
+  loadGitlabConfig();
+});
+
+document.getElementById("gitlab-test-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("gitlab-status");
+  setStatus(status, "Testing connection…");
+  const r = await jsonReq("/admin/gitlab-test", { method: "POST" });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Test failed", "err"); return; }
+  setStatus(status, r.body.reason || "OK", "ok");
 });
 
 async function refreshAdminStats() {

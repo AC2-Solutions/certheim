@@ -26,6 +26,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, Response, abort, g
 
 import notify
+import gitlab_integration
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -361,6 +362,11 @@ def init_db():
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     if "requester_email" not in existing_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN requester_email TEXT")
+    # GitLab issue link (issue-driven signing loop)
+    if "gitlab_issue_iid" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN gitlab_issue_iid INTEGER")
+    if "gitlab_issue_url" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN gitlab_issue_url TEXT")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_requester_dn ON jobs(requester_dn)")
@@ -1238,6 +1244,7 @@ def generate_rhel():
             "group_id": group_id, "cert_type": cert_type,
             "has_local_key": bool(has_key),
         })
+        _open_signing_issue(job_id)
 
     log_event("generate_rhel", "ok", jobs=len(job_ids), keys=len(new_keys),
               cert_type=cert_type)
@@ -1354,6 +1361,7 @@ def submit_external():
         "group_id": group_id, "cert_type": cert_type_in,
         "has_local_key": False, "cn": cn,
     })
+    _open_signing_issue(job_id)
 
     # Notify signer groups about the new external CSR. Best-effort.
     try:
@@ -1715,28 +1723,23 @@ def get_job_key(job_id):
 # ============================================================
 # Cert upload (manual return path)
 # ============================================================
-@app.post("/api/jobs/<job_id>/upload-cert")
-@require_auth
-@require_csrf
-def upload_cert(job_id):
-    if not JOB_ID_RE.match(job_id):
-        abort(400)
-    payload = request.get_json(silent=True) or {}
-    cert_pem = payload.get("cert_pem", "")
-
+def _attach_signed_cert(job_id, cert_pem, completed_by_dn, source="upload"):
+    """Validate a signed cert and attach it to a PENDING job (status->issued),
+    drop it to the issued dir, fire the job.issued webhook + email. Returns
+    (ok, http_code, result_dict). Shared by the manual upload-cert endpoint
+    and the GitLab inbound webhook so both paths behave identically."""
     if not cert_pem or not isinstance(cert_pem, str) or not (50 < len(cert_pem) <= MAX_CERT_BYTES):
-        return jsonify(error="invalid cert_pem"), 400
-
+        return False, 400, {"error": "invalid cert_pem"}
     try:
         proc = subprocess.run(
             ["openssl", "x509", "-noout", "-subject"],
             input=cert_pem, capture_output=True, text=True, timeout=10,
         )
         if proc.returncode != 0:
-            log_event("upload_cert", "deny_invalid_cert", job_id=job_id)
-            return jsonify(error="not a valid X.509 certificate"), 400
+            log_event("attach_cert", "deny_invalid_cert", job_id=job_id, src=source)
+            return False, 400, {"error": "not a valid X.509 certificate"}
     except Exception:
-        return jsonify(error="cert validation error"), 400
+        return False, 400, {"error": "cert validation error"}
 
     with db() as conn:
         row = conn.execute(
@@ -1744,23 +1747,19 @@ def upload_cert(job_id):
             "FROM jobs WHERE id = ?", (job_id,)
         ).fetchone()
         if not row:
-            abort(404)
+            return False, 404, {"error": "job not found"}
         if row["status"] != "pending":
-            return jsonify(error=f"job in status '{row['status']}', cannot accept cert"), 409
-
+            return False, 409, {"error": f"job in status '{row['status']}', cannot accept cert"}
         if not _verify_cert_matches_csr(row["csr_pem"], cert_pem):
-            log_event("upload_cert", "deny_pubkey_mismatch", job_id=job_id,
-                      target=row["target_host"])
-            return jsonify(
-                error="cert public key does not match this job's CSR. "
-                      "Verify you uploaded the cert for the correct job."
-            ), 400
-
+            log_event("attach_cert", "deny_pubkey_mismatch", job_id=job_id,
+                      target=row["target_host"], src=source)
+            return False, 400, {"error": "cert public key does not match this job's CSR. "
+                                          "Verify you uploaded the cert for the correct job."}
         expires_at = _cert_expiry(cert_pem)
         conn.execute(
             "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
             "completed_by_dn=?, expires_at=?, error=NULL WHERE id=?",
-            (cert_pem, time.time(), g.identity["dn"], expires_at, job_id),
+            (cert_pem, time.time(), completed_by_dn, expires_at, job_id),
         )
 
     try:
@@ -1774,40 +1773,163 @@ def upload_cert(job_id):
         log_event("filesystem_drop", "error", job_id=job_id, error=str(e)[:128])
 
     upload_warnings = _cert_upload_warnings(cert_pem)
-    log_event("upload_cert", "ok", job_id=job_id, target=row["target_host"],
-              uploader=g.identity["dn"], warnings=len(upload_warnings))
+    group_id = row["group_id"] if "group_id" in row.keys() else None
+    log_event("attach_cert", "ok", job_id=job_id, target=row["target_host"],
+              uploader=completed_by_dn, src=source, warnings=len(upload_warnings))
     fire_webhooks("job.issued", {
         "job_id": job_id, "target_host": row["target_host"],
         "requester_email": row["requester_email"],
-        "completed_by_dn": g.identity["dn"],
-        "completed_by_cn": _cn_from_dn(g.identity["dn"]),
-        "group_id": row["group_id"] if "group_id" in row.keys() else None,
+        "completed_by_dn": completed_by_dn,
+        "completed_by_cn": _cn_from_dn(completed_by_dn),
+        "group_id": group_id,
         "expires_at": expires_at,
     })
-
-    # Best-effort email notification. Never let this fail the upload.
     try:
-        group_email_addr = _group_email(row["group_id"]) if "group_id" in row.keys() else None
-        ok, reason = notify.send_cert_issued(
-            {
-                "id": job_id,
-                "target_host": row["target_host"],
-                "requester_email": row["requester_email"],
-            },
-            g.identity["dn"],
-            group_email=group_email_addr,
+        group_email_addr = _group_email(group_id) if group_id else None
+        ok_n, reason = notify.send_cert_issued(
+            {"id": job_id, "target_host": row["target_host"],
+             "requester_email": row["requester_email"]},
+            completed_by_dn, group_email=group_email_addr,
         )
-        log_event("email_notify", "ok" if ok else "skip",
-                  job_id=job_id, event="cert_issued",
+        log_event("email_notify", "ok" if ok_n else "skip", job_id=job_id,
+                  event="cert_issued",
                   recipient=(row["requester_email"] or group_email_addr or "-"),
-                  group_cc=(group_email_addr if (row["requester_email"] and group_email_addr) else "-"),
                   reason=reason[:96])
     except Exception as e:
-        log_event("email_notify", "exception", job_id=job_id,
-                  error=str(e)[:128])
+        log_event("email_notify", "exception", job_id=job_id, error=str(e)[:128])
 
-    return jsonify(ok=True, status="issued", target_host=row["target_host"],
-                   expires_at=expires_at, warnings=upload_warnings)
+    return True, 200, {"ok": True, "status": "issued",
+                       "target_host": row["target_host"],
+                       "expires_at": expires_at, "warnings": upload_warnings}
+
+
+def _open_signing_issue(job_id):
+    """Best-effort: open a GitLab signing issue for a freshly-created job and
+    store the issue iid/url back on it. No-op when the integration is off;
+    never raises into the request path."""
+    if not gitlab_integration.is_enabled():
+        return
+    try:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT id, target_host, sans_json, csr_pem, requester_dn, "
+                "requester_email, group_id FROM jobs WHERE id=?", (job_id,)
+            ).fetchone()
+            if not row:
+                return
+            group_name = None
+            if row["group_id"]:
+                grp = conn.execute(
+                    "SELECT name FROM groups WHERE id=?", (row["group_id"],)
+                ).fetchone()
+                group_name = grp["name"] if grp else None
+        try:
+            sans = json.loads(row["sans_json"] or "[]")
+        except (ValueError, TypeError):
+            sans = []
+        ok, iid, url, reason = gitlab_integration.create_issue({
+            "id": row["id"], "target_host": row["target_host"], "sans": sans,
+            "csr_pem": row["csr_pem"],
+            "requester_cn": _cn_from_dn(row["requester_dn"]),
+            "requester_email": row["requester_email"],
+            "group_name": group_name,
+        })
+        if ok and iid:
+            with db() as conn:
+                conn.execute(
+                    "UPDATE jobs SET gitlab_issue_iid=?, gitlab_issue_url=? WHERE id=?",
+                    (iid, url, job_id),
+                )
+        log_event("gitlab_issue", "ok" if ok else "fail", job_id=job_id,
+                  iid=(iid or "-"), reason=str(reason)[:120])
+    except Exception as e:  # noqa: BLE001
+        log_event("gitlab_issue", "exception", job_id=job_id, error=str(e)[:128])
+
+
+@app.post("/api/jobs/<job_id>/upload-cert")
+@require_auth
+@require_csrf
+def upload_cert(job_id):
+    if not JOB_ID_RE.match(job_id):
+        abort(400)
+    payload = request.get_json(silent=True) or {}
+    cert_pem = payload.get("cert_pem", "")
+    ok, code, result = _attach_signed_cert(job_id, cert_pem, g.identity["dn"], source="upload")
+    return jsonify(**result), code
+
+
+# ============================================================
+# GitLab inbound webhook (issue-driven signing loop)
+# ============================================================
+@app.post("/api/webhooks/gitlab")
+def gitlab_inbound():
+    """Inbound GitLab webhook receiver. Validated by the X-Gitlab-Token
+    secret (NOT a dashboard session). Handles:
+      - Note Hook: a signer pastes/attaches the signed cert in the linked
+        issue -> attach it to the matching CSR job (status -> issued).
+      - Issue Hook (close): logged as completion confirmation.
+    Always returns 200 for handled-but-ignored events so GitLab doesn't retry."""
+    if not gitlab_integration.verify_webhook_token(request.headers.get("X-Gitlab-Token", "")):
+        log_event("gitlab_webhook", "deny_bad_token", src=request.remote_addr)
+        abort(401)
+    payload = request.get_json(silent=True) or {}
+    kind = payload.get("object_kind") or ""
+
+    if kind == "note":
+        obj = payload.get("object_attributes") or {}
+        if (obj.get("noteable_type") or "").lower() != "issue":
+            return jsonify(ok=True, ignored="note not on an issue")
+        iid = (payload.get("issue") or {}).get("iid")
+        note_body = obj.get("note") or ""
+        author = (payload.get("user") or {}).get("username") or "gitlab"
+        project_web = (payload.get("project") or {}).get("web_url") or ""
+        if not iid:
+            return jsonify(ok=True, ignored="no issue iid")
+        with db() as conn:
+            row = conn.execute(
+                "SELECT id FROM jobs WHERE gitlab_issue_iid=?", (iid,)
+            ).fetchone()
+        if not row:
+            log_event("gitlab_webhook", "no_job_for_issue", iid=iid)
+            return jsonify(ok=True, ignored=f"no job linked to issue {iid}")
+        job_id = row["id"]
+        cert_pem, why = gitlab_integration.extract_cert_from_note(note_body, project_web)
+        if not cert_pem:
+            log_event("gitlab_webhook", "note_no_cert", job_id=job_id, iid=iid, reason=why)
+            return jsonify(ok=True, ignored=why)
+        ok, code, result = _attach_signed_cert(
+            job_id, cert_pem, f"gitlab:{author}", source="gitlab")
+        log_event("gitlab_webhook", "attach_ok" if ok else "attach_fail",
+                  job_id=job_id, iid=iid, code=code)
+        if ok:
+            gitlab_integration.comment_issue(
+                iid, f"✅ Signed certificate attached to CSR job `{job_id}` "
+                     "by the CSR Dashboard. You may close this issue.")
+        else:
+            gitlab_integration.comment_issue(
+                iid, f"⚠️ Could not attach the certificate: "
+                     f"{result.get('error', 'error')}")
+        resp = dict(result)
+        resp["job_id"] = job_id
+        resp.setdefault("ok", ok)
+        return jsonify(resp)
+
+    if kind == "issue":
+        obj = payload.get("object_attributes") or {}
+        iid = obj.get("iid")
+        action = obj.get("action")
+        if iid and action:
+            with db() as conn:
+                row = conn.execute(
+                    "SELECT id, status FROM jobs WHERE gitlab_issue_iid=?", (iid,)
+                ).fetchone()
+            if row:
+                log_event("gitlab_webhook", f"issue_{action}",
+                          job_id=row["id"], iid=iid, job_status=row["status"])
+        return jsonify(ok=True)
+
+    return jsonify(ok=True, ignored=f"unhandled object_kind '{kind}'")
+
 
 # ============================================================
 # Cancel / mark failed
@@ -1985,6 +2107,7 @@ def renew_job(job_id):
         "group_id": old["group_id"], "cert_type": cert_type,
         "renewed_from": job_id, "has_local_key": bool(has_key),
     })
+    _open_signing_issue(new_id)
     try:
         recipients = _signer_recipients()
         if recipients:
@@ -3363,13 +3486,21 @@ def admin_get_email_config():
 def admin_put_email_config():
     payload = request.get_json(silent=True) or {}
 
+    provider = (payload.get("provider") or "smg").strip().lower()
+    if provider not in notify.VALID_PROVIDERS:
+        return jsonify(error=f"provider must be one of {', '.join(notify.VALID_PROVIDERS)}"), 400
+
     host = (payload.get("host") or "").strip()
     from_address = (payload.get("from_address") or "").strip()
     dashboard_url = (payload.get("dashboard_url") or "").strip()
     cc = (payload.get("cc") or "").strip()
+    security = (payload.get("security") or "none").strip().lower()
+    username = (payload.get("username") or "").strip()
+    mailgun_domain = (payload.get("mailgun_domain") or "").strip()
+    mailgun_base_url = (payload.get("mailgun_base_url") or "https://api.mailgun.net").strip()
 
     try:
-        port = int(payload.get("port", 25))
+        port = int(payload.get("port") or (587 if provider == "smtp" else 25))
         timeout = int(payload.get("timeout", 10))
     except (TypeError, ValueError):
         return jsonify(error="port and timeout must be integers"), 400
@@ -3377,14 +3508,29 @@ def admin_put_email_config():
         return jsonify(error="port out of range"), 400
     if not (1 <= timeout <= 120):
         return jsonify(error="timeout out of range (1-120s)"), 400
-    if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
-        return jsonify(error="smtp host is required (hostname or IP)"), 400
+
     if from_address:
         ok_e, from_address, err_e = _validate_email(from_address)
         if not ok_e or not from_address:
             return jsonify(error=f"invalid from address: {err_e or 'required'}"), 400
     else:
         return jsonify(error="from address is required"), 400
+
+    # Per-provider required fields (only the selected provider is checked).
+    if provider in ("smg", "smtp"):
+        if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
+            return jsonify(error="smtp host is required (hostname or IP)"), 400
+        if provider == "smtp" and security not in ("none", "starttls", "ssl"):
+            return jsonify(error="security must be none, starttls, or ssl"), 400
+    elif provider == "mailgun":
+        if not re.match(r"^[A-Za-z0-9._-]+$", mailgun_domain):
+            return jsonify(error="mailgun domain is required"), 400
+        if not mailgun_base_url.startswith("https://"):
+            return jsonify(error="mailgun base_url must start with https://"), 400
+        if not (payload.get("mailgun_api_key") or "").strip() \
+                and not notify.get_settings().get("mailgun_api_key_set"):
+            return jsonify(error="mailgun api_key is required"), 400
+
     if cc:
         for addr in [a.strip() for a in cc.split(",") if a.strip()]:
             if not EMAIL_RE.match(addr):
@@ -3393,7 +3539,12 @@ def admin_put_email_config():
         return jsonify(error="dashboard_url must start with https://"), 400
 
     ok, reason = notify.save_settings({
+        "provider": provider,
         "host": host, "port": port, "timeout": timeout,
+        "security": security, "username": username,
+        "password": payload.get("password"),
+        "mailgun_domain": mailgun_domain, "mailgun_base_url": mailgun_base_url,
+        "mailgun_api_key": payload.get("mailgun_api_key"),
         "from_address": from_address, "cc": cc,
         "dashboard_url": dashboard_url,
     })
@@ -3401,8 +3552,64 @@ def admin_put_email_config():
         log_event("admin_email_config", "error", reason=reason[:128])
         return jsonify(error=reason), 500
 
-    log_event("admin_email_config", "ok", host=host, port=port)
+    log_event("admin_email_config", "ok", provider=provider, host=host, port=port)
     return jsonify(ok=True, reason=reason, **notify.get_settings())
+
+
+# ============================================================
+# Admin: GitLab integration config
+# ============================================================
+@app.get("/api/admin/gitlab-config")
+@require_admin
+def admin_get_gitlab_config():
+    return jsonify(gitlab_integration.get_settings())
+
+
+@app.put("/api/admin/gitlab-config")
+@require_admin
+@require_csrf
+def admin_put_gitlab_config():
+    p = request.get_json(silent=True) or {}
+    base_url = (p.get("base_url") or "").strip().rstrip("/")
+    project = (p.get("project") or "").strip()
+    enabled = bool(p.get("enabled"))
+    assignee_ids = (p.get("assignee_ids") or "").strip()
+    labels = (p.get("labels") or "").strip()
+
+    if enabled:
+        if not base_url.startswith("https://"):
+            return jsonify(error="base_url must start with https://"), 400
+        if not project:
+            return jsonify(error="project (numeric id or group/name path) is required"), 400
+        if not (p.get("api_token") or "").strip() \
+                and not gitlab_integration.get_settings().get("api_token_set"):
+            return jsonify(error="api_token is required to enable the integration"), 400
+    if assignee_ids and not re.match(r"^[0-9,\s]+$", assignee_ids):
+        return jsonify(error="assignee_ids must be comma-separated numeric GitLab user IDs"), 400
+
+    ok, reason = gitlab_integration.save_settings({
+        "enabled": enabled, "base_url": base_url, "project": project,
+        "assignee_ids": ",".join(a.strip() for a in assignee_ids.split(",") if a.strip()),
+        "labels": labels,
+        "api_token": p.get("api_token"),
+        "webhook_secret": p.get("webhook_secret"),
+    })
+    if not ok:
+        log_event("admin_gitlab_config", "error", reason=reason[:128])
+        return jsonify(error=reason), 500
+    log_event("admin_gitlab_config", "ok", enabled=enabled, project=project)
+    return jsonify(ok=True, reason=reason, **gitlab_integration.get_settings())
+
+
+@app.post("/api/admin/gitlab-test")
+@require_admin
+@require_csrf
+def admin_gitlab_test():
+    ok, reason = gitlab_integration.test_connection()
+    log_event("admin_gitlab_test", "ok" if ok else "fail", reason=reason[:128])
+    if ok:
+        return jsonify(ok=True, reason=reason)
+    return jsonify(error=reason), 502
 
 
 # ============================================================

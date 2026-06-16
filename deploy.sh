@@ -28,6 +28,7 @@ MANIFEST=(
   "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
   "backend/app.py            /opt/csr-dashboard/app.py                         root:csrapi 0640 backend"
   "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
+  "backend/gitlab_integration.py /opt/csr-dashboard/gitlab_integration.py      root:csrapi 0640 backend"
   "backend/import_certs.py   /opt/csr-dashboard/import_certs.py                root:csrapi 0640 backend"
   "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
   "frontend/app.js           /var/www/csr/app.js                               root:nginx  0640 frontend"
@@ -85,6 +86,20 @@ if [[ ! -f /etc/csr-dashboard/email.conf && -f config/email.conf.example ]]; the
     install -o csrapi -g csrapi -m 0640 \
         config/email.conf.example /etc/csr-dashboard/email.conf
     echo "seeded /etc/csr-dashboard/email.conf from example - set the SMG host"
+fi
+# integrations.conf must exist + be csrapi-owned so the app can rewrite it in
+# place from the admin UI (the dir is 0750 root:csrapi - no group create).
+if [[ ! -f /etc/csr-dashboard/integrations.conf ]]; then
+    install -d -o root -g csrapi -m 0750 /etc/csr-dashboard
+    if [[ -f config/integrations.conf.example ]]; then
+        install -o csrapi -g csrapi -m 0640 \
+            config/integrations.conf.example /etc/csr-dashboard/integrations.conf
+    else
+        printf '[gitlab]\nenabled = false\n' > /etc/csr-dashboard/integrations.conf
+        chown csrapi:csrapi /etc/csr-dashboard/integrations.conf
+        chmod 0640 /etc/csr-dashboard/integrations.conf
+    fi
+    echo "seeded /etc/csr-dashboard/integrations.conf (configure via admin UI)"
 fi
 
 # Pre-deploy DB/file backup (after diffing, before service restart)

@@ -1,0 +1,30 @@
+# /etc/csr-dashboard/integrations.conf
+# Managed via the dashboard admin UI (Admin > GitLab). Secrets (api_token,
+# webhook_secret) are written here mode 0640 owner csrapi. This example just
+# documents the shape; the live file is seeded by deploy.sh.
+
+[gitlab]
+# Master switch. When false, no issues are created and the inbound webhook
+# rejects everything.
+enabled = false
+
+# Base URL of the GitLab instance (no trailing slash).
+base_url = https://git.ac2solutions.com
+
+# Target signing project: numeric id OR url path "group/subgroup/name".
+project =
+
+# Personal/Project/Group access token with the 'api' scope. Used to create
+# issues, post comments, and download attached cert files.
+api_token =
+
+# Comma-separated GitLab numeric user IDs to assign each signing issue to
+# (the "signers team"). Find an id at <base_url>/api/v4/users?username=<name>.
+assignee_ids =
+
+# Comma-separated labels applied to each signing issue (e.g. csr,signing).
+labels = csr,signing
+
+# Shared secret the dashboard requires in the inbound webhook's
+# "Secret token" (X-Gitlab-Token) field. Generate a long random string.
+webhook_secret =
