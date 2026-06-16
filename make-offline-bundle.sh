@@ -100,6 +100,15 @@ SMG_TIMEOUT="10"
 # Optional comma-separated Cc applied to every notification. Blank = none.
 GLOBAL_CC=""
 
+# --- CAC mTLS (the installer generates the nginx server block) -------------
+# "yes" => ENFORCING server block (ssl_verify_client on against the DoD CA
+# bundle below). "no" => those lines are written COMMENTED and optional_no_ca
+# is used so the box serves; the app then sees ip:<addr> identities.
+# WARNING: with mTLS "no", do NOT turn on first-admin bootstrap.
+ENABLE_MTLS="no"
+# Path to the DoD CA bundle (root+intermediate PEM, no CRLF) for mTLS "yes".
+DOD_CA_BUNDLE="/etc/pki/dod/dod-cas.pem"
+
 # --- DATA MIGRATION (optional) ---------------------------------------------
 
 # To migrate an existing instance, set this to the path of a jobs.db you
@@ -303,6 +312,27 @@ if [[ ! -f "$CERTDIR/server.crt" ]]; then
         warn "openssl cert generation failed - place a real cert at $CERTDIR/server.{crt,key}"
     fi
 fi
+# CAC mTLS stanza per START_HERE's ENABLE_MTLS: enabled => enforcing; disabled
+# => those lines COMMENTED + optional_no_ca active (the box still serves and the
+# app sees ip:<addr> identities). If enabling, also auto-publish the DoD bundle
+# to the trust portal (handled by the app's trust dir below).
+if [[ "${ENABLE_MTLS:-no}" =~ ^([Yy]|[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1|[Oo][Nn])$ ]]; then
+    [[ -s "${DOD_CA_BUNDLE:-}" ]] || warn "ENABLE_MTLS=yes but ${DOD_CA_BUNDLE:-<unset>} missing/empty - nginx -t will fail until the DoD CA bundle is placed there"
+    MTLS_STANZA="    # CAC mTLS ENFORCED (ENABLE_MTLS=yes). DoD chain: Root->Intermediate->CAC.
+    ssl_client_certificate ${DOD_CA_BUNDLE};
+    ssl_verify_client       on;
+    ssl_verify_depth        3;"
+    echo "  CAC mTLS: ENFORCED (CA bundle ${DOD_CA_BUNDLE})"
+else
+    MTLS_STANZA="    # CAC mTLS NOT enabled (ENABLE_MTLS=no). To enforce later: place the DoD CA
+    # bundle at ${DOD_CA_BUNDLE}, uncomment the next two lines, remove the
+    # optional_no_ca line, then: nginx -t && systemctl reload nginx
+    #   ssl_client_certificate ${DOD_CA_BUNDLE};
+    #   ssl_verify_client       on;
+    ssl_verify_client optional_no_ca;
+    ssl_verify_depth  3;"
+    echo "  CAC mTLS: not enforced (optional_no_ca) - app uses ip:<addr> identity"
+fi
 SERVER_CONF=/etc/nginx/conf.d/csr-dashboard.conf
 if [[ -f "$SERVER_CONF" ]] || grep -rqs "$NID" /etc/nginx/conf.d; then
     echo "  a server block already includes ${NID} - leaving nginx server config alone"
@@ -321,14 +351,7 @@ server {
     ssl_certificate_key ${CERTDIR}/server.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
-    # CAC / client-cert mTLS. For production install the DoD CA bundle and set:
-    #     ssl_client_certificate /etc/pki/dod/dod-cas.pem;   # root+intermediate, strip CRLF
-    #     ssl_verify_client       on;
-    # DoD chains are Root->Intermediate->CAC (depth 3). Until the bundle is in
-    # place we accept without a client cert so the box serves; the app then
-    # falls back to ip:<addr> identity - see app.client_identity().
-    ssl_verify_client optional_no_ca;
-    ssl_verify_depth  3;
+${MTLS_STANZA}
 
     include ${NID}/*.conf;
 }

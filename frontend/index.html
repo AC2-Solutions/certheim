@@ -755,6 +755,7 @@
       <button type="button" data-panel="webhooks">Webhooks</button>
       <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="gitlab">GitLab</button>
+      <button type="button" data-panel="trust">Trust</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -1011,6 +1012,25 @@
       <div class="row" style="margin-top:10px">
         <button id="gitlab-save-btn" type="button">Save</button>
         <span id="gitlab-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="trust">
+      <div class="card-header"><h2>Trust / CA certificates</h2></div>
+      <p class="hint">Publish root/intermediate CA certificates so users and
+         devices can download them to trust this site (and its CAC mTLS).
+         These are <b>public downloads — CA certificates only, never private
+         keys</b>. Public endpoint: <code id="trust-public-url">&mdash;</code></p>
+      <div id="trust-list" class="status">Loading&hellip;</div>
+      <hr>
+      <label for="trust-name" class="textarea-label">Add a CA certificate</label>
+      <input type="text" id="trust-name" class="form-input" style="max-width:360px"
+             placeholder="dod-root-ca-6  (name; .crt appended if omitted)">
+      <textarea id="trust-pem" class="form-input" rows="6"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="trust-upload-btn" type="button">Publish</button>
+        <span id="trust-status" class="status"></span>
       </div>
     </section>
 

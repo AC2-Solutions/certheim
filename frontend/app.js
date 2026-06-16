@@ -1192,6 +1192,7 @@ async function refreshAdminView() {
     refreshOrphanCerts(),
     loadEmailConfig(),
     loadGitlabConfig(),
+    loadTrust(),
     refreshAdminTemplates(),
   ]);
 }
@@ -1442,6 +1443,46 @@ document.getElementById("gitlab-test-btn")?.addEventListener("click", async () =
   const r = await jsonReq("/admin/gitlab-test", { method: "POST" });
   if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Test failed", "err"); return; }
   setStatus(status, r.body.reason || "OK", "ok");
+});
+
+// ===== Admin: Trust portal (publish CA certs) =====
+async function loadTrust() {
+  const urlEl = document.getElementById("trust-public-url");
+  if (urlEl) urlEl.textContent = `${location.origin}/csr/api/trust`;
+  const box = document.getElementById("trust-list");
+  if (!box) return;
+  const r = await jsonReq("/admin/trust");
+  if (!r.ok) { box.textContent = "Failed to load."; return; }
+  const certs = (r.body && r.body.certs) || [];
+  if (!certs.length) { box.innerHTML = "<em>No CA certificates published yet.</em>"; return; }
+  box.innerHTML = certs.map((c) => `
+    <div class="row" style="justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border,#333)">
+      <div>
+        <a href="${location.origin}/csr/api/trust/${encodeURIComponent(c.name)}">${escapeHtml(c.name)}</a>
+        <div class="status">${escapeHtml(c.subject || "")}</div>
+        <div class="status" style="font-family:monospace; font-size:11px">${escapeHtml(c.sha256 || "")}</div>
+      </div>
+      <button type="button" class="secondary trust-del" data-name="${escapeHtml(c.name)}">Delete</button>
+    </div>`).join("");
+  box.querySelectorAll(".trust-del").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm(`Delete ${b.dataset.name}?`)) return;
+    const rr = await jsonReq(`/admin/trust/${encodeURIComponent(b.dataset.name)}`, { method: "DELETE" });
+    if (rr.ok) loadTrust(); else alert((rr.body && rr.body.error) || "delete failed");
+  }));
+}
+
+document.getElementById("trust-upload-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("trust-status");
+  const name = document.getElementById("trust-name").value.trim();
+  const pem = document.getElementById("trust-pem").value.trim();
+  if (!name || !pem) { setStatus(status, "Name and PEM required", "err"); return; }
+  setStatus(status, "Publishing…");
+  const r = await jsonReq("/admin/trust", { method: "POST", body: JSON.stringify({ name, pem }) });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Failed", "err"); return; }
+  setStatus(status, "Published", "ok");
+  document.getElementById("trust-name").value = "";
+  document.getElementById("trust-pem").value = "";
+  loadTrust();
 });
 
 async function refreshAdminStats() {
