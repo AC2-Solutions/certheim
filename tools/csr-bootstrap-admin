@@ -1,0 +1,56 @@
+#!/bin/bash
+# csr-bootstrap-admin - promote a DN to admin in the CSR Dashboard database.
+#
+# Works regardless of the CSR_BOOTSTRAP_FIRST_ADMIN flag and needs no prior
+# login: it inserts the user row if absent, or flips is_admin on an existing
+# one. Use it to grant yourself (or a colleague) admin on a fresh install.
+#
+#   sudo csr-bootstrap-admin "CN=LAST.FIRST.M.1234567890,OU=...,O=U.S. Government,C=US"
+#   sudo csr-bootstrap-admin --list           # show current admins
+#
+# Run as root (or any user that can write the SQLite DB). Restart csr-api
+# afterwards is not required - is_admin is read per request.
+set -euo pipefail
+
+DB="${CSR_DB_PATH:-/var/lib/csr-dashboard/jobs.db}"
+SVC_USER="csrapi"
+
+command -v sqlite3 >/dev/null || { echo "ERROR: sqlite3 not found" >&2; exit 1; }
+[[ -f "$DB" ]] || { echo "ERROR: database not found: $DB (set CSR_DB_PATH?)" >&2; exit 1; }
+
+# sqlite single-quote escaping: double any embedded single quotes.
+esc() { printf "%s" "$1" | sed "s/'/''/g"; }
+
+if [[ "${1:-}" == "--list" ]]; then
+    echo "Current admins:"
+    sqlite3 "$DB" "SELECT dn FROM users WHERE is_admin=1;" | sed 's/^/  /'
+    exit 0
+fi
+
+DN="${1:-}"
+if [[ -z "$DN" || "$DN" == "-h" || "$DN" == "--help" ]]; then
+    echo "Usage: $0 \"<full CAC DN>\"   |   $0 --list" >&2
+    exit 2
+fi
+if (( ${#DN} > 512 )); then
+    echo "ERROR: DN too long" >&2; exit 2
+fi
+
+DN_E="$(esc "$DN")"
+CN="$(printf "%s" "$DN" | sed -n 's/.*CN=\([^,]*\).*/\1/p')"
+CN_E="$(esc "${CN:-$DN}")"
+NOW="$(date +%s)"
+
+sqlite3 "$DB" <<SQL
+INSERT INTO users (dn, cn, email, is_admin, is_active, created_at, last_seen_at)
+VALUES ('${DN_E}', '${CN_E}', NULL, 1, 1, ${NOW}, ${NOW})
+ON CONFLICT(dn) DO UPDATE SET is_admin=1, is_active=1;
+SQL
+
+# Keep the DB owned by the service account if we ran as root.
+if [[ $EUID -eq 0 ]] && id "$SVC_USER" >/dev/null 2>&1; then
+    chown "$SVC_USER:$SVC_USER" "$DB" 2>/dev/null || true
+fi
+
+echo "OK: '${DN}' is now an active admin."
+echo "Verify: $0 --list"

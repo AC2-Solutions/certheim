@@ -43,6 +43,10 @@ _ENV_DEFAULTS = {
     "CSR_MAX_CERTLIST_BYTES": "65536",
     "CSR_MAX_CSR_BYTES": "32768",
     "CSR_MAX_CERT_BYTES": "65536",
+    # First-admin bootstrap: when "1", the FIRST user to log in on an EMPTY
+    # users table is created as admin (self-disables once any user exists).
+    # Only safe where mTLS verifies real CACs. Default off.
+    "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
 }
 
 def _load_env_file():
@@ -72,6 +76,10 @@ def _env_int(key):
         return int(_ENV[key])
     except (KeyError, ValueError):
         return int(_ENV_DEFAULTS[key])
+
+def _env_bool(key):
+    v = str(_ENV.get(key, _ENV_DEFAULTS.get(key, "0"))).strip().lower()
+    return v in ("1", "true", "yes", "on")
 
 HELPER = ["sudo", "-n", _ENV["CSR_HELPER_PATH"]]
 DB_PATH = _ENV["CSR_DB_PATH"]
@@ -709,12 +717,22 @@ def _upsert_user(dn):
             "SELECT dn FROM users WHERE dn = ?", (dn,)
         ).fetchone()
         if not existing:
+            # First-admin bootstrap: when CSR_BOOTSTRAP_FIRST_ADMIN is on AND
+            # the users table is empty, the very first user to log in is made
+            # admin. Self-disabling: only fires while the table is empty.
+            first_admin = 0
+            if _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN"):
+                n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                if n == 0:
+                    first_admin = 1
             conn.execute("""
                 INSERT INTO users (dn, cn, email, is_admin, is_active,
                                    created_at, last_seen_at)
-                VALUES (?, ?, NULL, 0, 1, ?, ?)
-            """, (dn, cn, now, now))
+                VALUES (?, ?, NULL, ?, 1, ?, ?)
+            """, (dn, cn, first_admin, now, now))
             log_event("user_created", "ok", dn=dn[:128])
+            if first_admin:
+                log_event("admin_bootstrap", "ok", dn=dn[:128])
         else:
             conn.execute(
                 "UPDATE users SET last_seen_at = ?, cn = ? WHERE dn = ?",
@@ -2736,6 +2754,50 @@ def admin_create_user():
     log_event("admin_user_create", "ok",
               target_dn=target_dn[:128], is_admin=is_admin)
     return jsonify(ok=True)
+
+@app.delete("/api/admin/users")
+@require_admin
+@require_csrf
+def admin_delete_user():
+    """Delete a user account. DN in the JSON body. Guards: cannot delete
+    yourself; cannot delete the last remaining admin. The user's jobs are
+    RETAINED (historical record); their group memberships are removed.
+    ?purge=1 also detaches any cert templates they own (owner_dn -> NULL)."""
+    payload = request.get_json(silent=True) or {}
+    target_dn = (payload.get("dn") or "").strip()
+    if not target_dn:
+        return jsonify(error="dn is required"), 400
+    if target_dn == g.identity["dn"]:
+        return jsonify(error="you cannot delete your own account"), 400
+
+    purge = request.args.get("purge") in ("1", "true", "yes")
+
+    with db() as conn:
+        row = conn.execute(
+            "SELECT dn, is_admin FROM users WHERE dn = ?", (target_dn,)
+        ).fetchone()
+        if not row:
+            return jsonify(error="user not found"), 404
+        if row["is_admin"]:
+            n_admins = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE is_admin=1 AND is_active=1"
+            ).fetchone()[0]
+            if n_admins <= 1:
+                return jsonify(error="cannot delete the last remaining admin"), 409
+
+        jobs_retained = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE requester_dn = ?", (target_dn,)
+        ).fetchone()[0]
+        conn.execute("DELETE FROM user_groups WHERE user_dn = ?", (target_dn,))
+        if purge:
+            conn.execute(
+                "UPDATE cert_templates SET owner_dn=NULL WHERE owner_dn = ?",
+                (target_dn,))
+        conn.execute("DELETE FROM users WHERE dn = ?", (target_dn,))
+
+    log_event("admin_user_delete", "ok", target_dn=target_dn[:128],
+              jobs_retained=jobs_retained, purge=int(purge))
+    return jsonify(ok=True, jobs_retained=jobs_retained)
 
 # ============================================================
 # Admin: job cleanup

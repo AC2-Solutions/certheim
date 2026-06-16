@@ -1596,11 +1596,33 @@ function openUserEdit(user) {
   const isSelf = currentUser && user.dn === currentUser.dn;
   document.getElementById("user-edit-admin").disabled = isSelf;
   document.getElementById("user-edit-active").disabled = isSelf;
+  // Delete is hidden for your own account (the backend also refuses it).
+  document.getElementById("user-edit-danger").style.display = isSelf ? "none" : "";
+  const delBtn = document.getElementById("user-edit-delete-btn");
+  delBtn.dataset.dn = user.dn;
+  delBtn.dataset.cn = user.cn || user.dn;
   setStatus(document.getElementById("user-edit-status"),
     isSelf ? "You can't change your own admin or active flags." : "");
   allModalIds.forEach(m => { document.getElementById(m).hidden = (m !== "user-edit-modal"); });
   overlay.hidden = false;
 }
+
+document.getElementById("user-edit-delete-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("user-edit-status");
+  const btn = document.getElementById("user-edit-delete-btn");
+  const dn = btn.dataset.dn;
+  const cn = btn.dataset.cn || dn;
+  const typed = prompt(
+    `Delete this user account? Their job history is kept; group memberships are removed.\n\n` +
+    `Type the user's CN to confirm:\n${cn}`);
+  if (typed === null) return;
+  if (typed.trim() !== cn) { setStatus(status, "CN did not match — not deleted.", "err"); return; }
+  setStatus(status, "Deleting…");
+  const r = await jsonReq("/admin/users", { method: "DELETE", body: JSON.stringify({ dn }) });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Delete failed", "err"); return; }
+  setStatus(status, `Deleted (${r.body.jobs_retained} job(s) retained).`, "ok");
+  setTimeout(() => { closeModal(); refreshAdminUsers(); }, 800);
+});
 
 document.getElementById("user-edit-save-btn").addEventListener("click", async () => {
   const status = document.getElementById("user-edit-status");
