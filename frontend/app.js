@@ -2846,6 +2846,14 @@ document.getElementById("admin-webhooks-refresh")?.addEventListener("click", ref
 document.getElementById("admin-webhook-create-btn")?.addEventListener("click", () => openWebhookEdit(null));
 
 // --- Slack interactivity config -------------------------------------------
+function _slackModeToggle() {
+  const m = document.getElementById("slack-mode").value;
+  document.querySelectorAll(".slack-mode-fields").forEach(d => {
+    d.hidden = (d.dataset.smode !== m);
+  });
+}
+document.getElementById("slack-mode")?.addEventListener("change", _slackModeToggle);
+
 async function loadSlackConfig() {
   const r = await jsonReq("/admin/slack-config");
   if (!r.ok) return;
@@ -2853,19 +2861,29 @@ async function loadSlackConfig() {
   document.getElementById("slack-request-url").value =
     location.origin + (c.request_path || "/csr/api/slack/interact");
   document.getElementById("slack-interactive-enabled").checked = !!c.enabled;
+  document.getElementById("slack-mode").value = c.mode || "http";
   document.getElementById("slack-secret-hint").textContent =
     c.signing_secret_set ? "(stored — leave blank to keep)" : "(not set)";
+  document.getElementById("slack-apptoken-hint").textContent =
+    c.app_token_set ? "(stored — leave blank to keep)" : "(not set)";
+  _slackModeToggle();
 }
 document.getElementById("slack-config-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("slack-config-status");
-  const body = { enabled: document.getElementById("slack-interactive-enabled").checked };
+  const body = {
+    enabled: document.getElementById("slack-interactive-enabled").checked,
+    mode: document.getElementById("slack-mode").value,
+  };
   const sec = document.getElementById("slack-signing-secret").value.trim();
   if (sec) body.signing_secret = sec;
+  const appTok = document.getElementById("slack-app-token").value.trim();
+  if (appTok) body.app_token = appTok;
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/slack-config", { method: "PUT", body: JSON.stringify(body) });
   if (r.ok) {
     setStatus(status, "Saved", "ok");
     document.getElementById("slack-signing-secret").value = "";
+    document.getElementById("slack-app-token").value = "";
     loadSlackConfig();
   } else {
     setStatus(status, (r.body && r.body.error) || "Save failed", "err");

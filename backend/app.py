@@ -291,8 +291,7 @@ def _format_webhook(wtype, event, data):
         # Interactive "assign to group" select - only when Slack interactivity
         # is configured (app + signing secret) and this is a job event.
         jid = data.get("job_id")
-        if jid and get_setting("slack_interactive") == "1" \
-                and get_setting("slack_signing_secret"):
+        if jid and _slack_interactive_ready():
             opts = _slack_group_options()
             if opts:
                 elements.append({
@@ -375,6 +374,17 @@ def _slack_assign_job(job_id, group_id, slack_user):
                f"group={grp['name']!r} slack_user={slack_user!r}")
     return True, (f":white_check_mark: Job `{job_id}` assigned to "
                   f"*{grp['name']}* by {slack_user}")
+
+
+def _slack_interactive_ready():
+    """True when interactive assignment is enabled AND the active transport is
+    configured (http=signing secret, socket=app token)."""
+    if get_setting("slack_interactive") != "1":
+        return False
+    mode = get_setting("slack_interactive_mode") or "http"
+    if mode == "socket":
+        return bool(get_setting("slack_app_token"))
+    return bool(get_setting("slack_signing_secret"))
 
 
 def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
@@ -4973,7 +4983,10 @@ def admin_test_webhook(webhook_id):
 def admin_get_slack_config():
     return jsonify(
         enabled=(get_setting("slack_interactive") == "1"),
+        mode=get_setting("slack_interactive_mode") or "http",
         signing_secret_set=bool(get_setting("slack_signing_secret")),
+        app_token_set=bool(get_setting("slack_app_token")),
+        bot_token_set=bool(get_setting("slack_bot_token")),
         request_path="/csr/api/slack/interact",
     )
 
@@ -4985,11 +4998,21 @@ def admin_put_slack_config():
     payload = request.get_json(silent=True) or {}
     if "enabled" in payload:
         set_setting("slack_interactive", "1" if payload["enabled"] else "0")
-    if "signing_secret" in payload:
-        s = (payload["signing_secret"] or "").strip()
-        if s and s != "********":        # blank/placeholder keeps the stored one
-            set_setting("slack_signing_secret", s)
-    log_event("admin_slack_config", "ok")
+    if "mode" in payload:
+        m = (payload["mode"] or "http").strip().lower()
+        if m not in ("http", "socket"):
+            return jsonify(error="mode must be 'http' or 'socket'"), 400
+        set_setting("slack_interactive_mode", m)
+    # secrets: blank or the mask placeholder keeps the stored value
+    for key, setting in (("signing_secret", "slack_signing_secret"),
+                         ("app_token", "slack_app_token"),
+                         ("bot_token", "slack_bot_token")):
+        if key in payload:
+            s = (payload[key] or "").strip()
+            if s and s != "********":
+                set_setting(setting, s)
+    log_event("admin_slack_config", "ok",
+              mode=get_setting("slack_interactive_mode") or "http")
     return jsonify(ok=True)
 
 
@@ -4998,7 +5021,9 @@ def slack_interact():
     """Slack interactivity callback. Authenticated by the Slack request
     signature (NOT a user session), so it carries no auth/csrf decorators."""
     secret = get_setting("slack_signing_secret") or ""
-    if get_setting("slack_interactive") != "1" or not secret:
+    if get_setting("slack_interactive") != "1" \
+            or (get_setting("slack_interactive_mode") or "http") != "http" \
+            or not secret:
         return ("", 404)
     body = request.get_data(cache=True) or b""
     ts = request.headers.get("X-Slack-Request-Timestamp", "")

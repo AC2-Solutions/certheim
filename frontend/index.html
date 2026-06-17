@@ -1090,17 +1090,35 @@
         <summary><strong>Slack interactivity</strong> <span class="hint">(assign jobs from a Slack message)</span></summary>
         <div style="padding:10px 2px">
           <p class="hint">Lets a Slack message's <em>Assign to group</em> menu actually
-             reassign the job. Requires a Slack app with Interactivity enabled,
-             pointing its Request URL at this dashboard. Paste the app's
-             <strong>Signing Secret</strong> below.</p>
-          <label class="textarea-label">Request URL <span class="hint">(set in Slack app → Interactivity; must be publicly reachable)</span></label>
-          <input type="text" id="slack-request-url" class="form-input" readonly>
-          <label for="slack-signing-secret" class="textarea-label">Signing secret
-            <span class="hint" id="slack-secret-hint"></span></label>
-          <input type="password" id="slack-signing-secret" class="form-input" autocomplete="new-password">
-          <label class="checkbox-row" style="margin-top:10px">
+             reassign the job. Choose how Slack reaches the dashboard.</p>
+          <label class="checkbox-row">
             <input type="checkbox" id="slack-interactive-enabled"> Enable interactive assignment
           </label>
+          <label for="slack-mode" class="textarea-label">Transport</label>
+          <select id="slack-mode" class="form-input" style="max-width:380px">
+            <option value="http">HTTP Request URL (needs public exposure)</option>
+            <option value="socket">Socket Mode (outbound-only, no public exposure)</option>
+          </select>
+
+          <div class="slack-mode-fields" data-smode="http">
+            <label class="textarea-label">Request URL <span class="hint">(set in Slack app → Interactivity; must be publicly reachable)</span></label>
+            <input type="text" id="slack-request-url" class="form-input" readonly>
+            <label for="slack-signing-secret" class="textarea-label">Signing secret
+              <span class="hint" id="slack-secret-hint"></span></label>
+            <input type="password" id="slack-signing-secret" class="form-input" autocomplete="new-password">
+          </div>
+
+          <div class="slack-mode-fields" data-smode="socket" hidden>
+            <p class="hint">No public exposure — the dashboard connects out to Slack.
+               Turn on <strong>Socket Mode</strong> in your Slack app and paste its
+               <strong>app-level token</strong> (<code>xapp-…</code>, scope
+               <code>connections:write</code>). Handled by the
+               <code>csr-slack-listener</code> service.</p>
+            <label for="slack-app-token" class="textarea-label">App-level token (xapp-)
+              <span class="hint" id="slack-apptoken-hint"></span></label>
+            <input type="password" id="slack-app-token" class="form-input" autocomplete="new-password">
+          </div>
+
           <div class="row" style="margin-top:10px">
             <button id="slack-config-save-btn" type="button">Save</button>
             <span id="slack-config-status" class="status"></span>
