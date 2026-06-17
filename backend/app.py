@@ -30,6 +30,7 @@ from flask import Flask, request, jsonify, Response, abort, g
 
 import notify
 import capabilities
+import sign
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -663,6 +664,18 @@ def init_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_templates_owner ON cert_templates(owner_dn)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_templates_group ON cert_templates(group_id)")
+    # v2 in-UI signing: per-template signing backend + policy (additive,
+    # idempotent). signer_backend defaults to 'manual' so existing templates
+    # keep the human/upload loop until an admin opts a template into a backend.
+    tmpl_cols = {row[1] for row in conn.execute("PRAGMA table_info(cert_templates)").fetchall()}
+    if "signer_backend" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN signer_backend TEXT NOT NULL DEFAULT 'manual'")
+    if "openbao_role" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN openbao_role TEXT")
+    if "max_ttl" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN max_ttl INTEGER")
+    if "auto_sign" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN auto_sign INTEGER NOT NULL DEFAULT 0")
 
     # Seed the Windows-style built-in templates once (first run only, so
     # admin deletions stick across restarts).
@@ -747,6 +760,13 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN key_algo TEXT")
     if "expiry_warned" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN expiry_warned INTEGER NOT NULL DEFAULT 0")
+    # v2 in-UI signing audit: who approved the sign, when, and via which backend.
+    if "approved_by_dn" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN approved_by_dn TEXT")
+    if "approved_at" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN approved_at REAL")
+    if "signed_via" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN signed_via TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -1077,6 +1097,7 @@ def set_setting(key, value):
 
 # Let the capability resolver read admin-declared env flags (cap_*).
 capabilities.configure(get_setting=get_setting)
+sign.configure(get_setting=get_setting)
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
@@ -1684,6 +1705,93 @@ def _verify_cert_matches_csr(csr_pem, cert_pem):
         return False
     return secrets.compare_digest(csr_pk, cert_pk)
 
+
+class CompletionError(Exception):
+    """Raised by _attach_signed_cert. `.status` + `.payload` map straight to an
+    HTTP JSON response so both the manual-upload and the v2 /sign callers return
+    the right code (404 not-found, 409 wrong-state, 400 pubkey-mismatch)."""
+    def __init__(self, status, payload):
+        super().__init__(payload.get("error", "completion error"))
+        self.status = status
+        self.payload = payload
+
+
+def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
+                        approver_dn=None, log_action="attach_signed_cert"):
+    """Shared completion path for an issued certificate. Verifies the signed
+    cert against the job's stored CSR (pubkey match), flips the job to 'issued',
+    drops the cert to ISSUED_DIR, fires the job.issued webhook, and emails the
+    requester. Used by the manual cert-upload route and the v2 approve-&-sign
+    route, so both producers converge on identical verification + side effects.
+
+    `signed_via` is recorded on the job ('manual' | 'openbao'); `approver_dn`
+    (set only for an approval-gated sign) records who authorized it.
+    Returns {"expires_at", "warnings", "target_host"}.
+    Raises CompletionError(status, payload) on not-found/wrong-state/mismatch."""
+    now = time.time()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT csr_pem, target_host, status, requester_email, group_id "
+            "FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not row:
+            raise CompletionError(404, {"error": "job not found"})
+        if row["status"] != "pending":
+            raise CompletionError(
+                409, {"error": f"job in status '{row['status']}', cannot accept cert"})
+        if not _verify_cert_matches_csr(row["csr_pem"], cert_pem):
+            log_event(log_action, "deny_pubkey_mismatch", job_id=job_id,
+                      target=row["target_host"], signed_via=signed_via)
+            raise CompletionError(400, {"error":
+                "cert public key does not match this job's CSR. "
+                "Verify you uploaded the cert for the correct job."})
+        expires_at = _cert_expiry(cert_pem)
+        conn.execute(
+            "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
+            "completed_by_dn=?, expires_at=?, error=NULL, signed_via=?, "
+            "approved_by_dn=?, approved_at=? WHERE id=?",
+            (cert_pem, now, actor_dn, expires_at, signed_via, approver_dn,
+             (now if approver_dn else None), job_id))
+
+    # Filesystem drop (best-effort; never fail the issue over a fs hiccup).
+    try:
+        Path(ISSUED_DIR).mkdir(parents=True, exist_ok=True)
+        target_path = Path(ISSUED_DIR) / f"{row['target_host']}.cer"
+        target_path.write_text(cert_pem)
+        os.chmod(target_path, 0o644)
+        run_helper(["chown-issued", target_path.name])
+    except Exception as e:
+        sys.stderr.write(f"filesystem drop failed for {row['target_host']}: {e}\n")
+        log_event("filesystem_drop", "error", job_id=job_id, error=str(e)[:128])
+
+    warnings = _cert_upload_warnings(cert_pem)
+    log_event(log_action, "ok", job_id=job_id, target=row["target_host"],
+              uploader=actor_dn, signed_via=signed_via, warnings=len(warnings))
+    fire_webhooks("job.issued", {
+        "job_id": job_id, "target_host": row["target_host"],
+        "requester_email": row["requester_email"],
+        "completed_by_dn": actor_dn,
+        "completed_by_cn": _cn_from_dn(actor_dn),
+        "group_id": row["group_id"] if "group_id" in row.keys() else None,
+        "expires_at": expires_at,
+    })
+    try:
+        group_email_addr = _group_email(row["group_id"]) if "group_id" in row.keys() else None
+        ok, reason = notify.send_cert_issued(
+            {"id": job_id, "target_host": row["target_host"],
+             "requester_email": row["requester_email"]},
+            actor_dn, group_email=group_email_addr)
+        log_event("email_notify", "ok" if ok else "skip", job_id=job_id,
+                  event="cert_issued",
+                  recipient=(row["requester_email"] or group_email_addr or "-"),
+                  group_cc=(group_email_addr if (row["requester_email"] and group_email_addr) else "-"),
+                  reason=reason[:96])
+    except Exception as e:
+        log_event("email_notify", "exception", job_id=job_id, error=str(e)[:128])
+
+    return {"expires_at": expires_at, "warnings": warnings,
+            "target_host": row["target_host"]}
+
+
 init_db()
 
 # --- Blueprints (incremental app.py split) ---
@@ -1703,3 +1811,5 @@ from routes_me import bp as me_bp  # noqa: E402
 app.register_blueprint(me_bp)
 from routes_admin import bp as admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
+from routes_signing import bp as signing_bp  # noqa: E402
+app.register_blueprint(signing_bp)

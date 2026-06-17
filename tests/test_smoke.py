@@ -50,6 +50,10 @@ CRITICAL_ROUTES = [
     ("GET", "/api/templates"),
     ("POST", "/api/feedback"),
     ("POST", "/api/slack/interact"),
+    ("POST", "/api/jobs/<job_id>/sign"),
+    ("GET", "/api/admin/signing-config"),
+    ("PUT", "/api/admin/signing-config"),
+    ("POST", "/api/admin/signing-config/test"),
 ]
 
 
@@ -111,6 +115,7 @@ def test_me_is_admin(client):
     "/api/fleet-certs",
     "/api/admin/feedback",
     "/api/templates",
+    "/api/admin/signing-config",
 ])
 def test_admin_reads_ok(client, path):
     assert client.get(path, headers=CAC).status_code == 200
@@ -166,3 +171,34 @@ def test_slack_interact_unconfigured_or_unsigned(client):
     # interactivity disabled by default -> 404; if enabled, a bad signature -> 401
     assert client.post("/api/slack/interact", data="payload=%7B%7D").status_code \
         in (401, 404)
+
+
+# --- v2 in-UI signing ------------------------------------------------------
+def test_signing_config_shape(client):
+    body = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    assert body.get("default_backend") == "manual"          # safe default
+    assert "openbao" in body.get("backends", [])
+    assert "capability" in body and "approle_configured" in body
+
+
+def test_signing_config_put_bad_backend(client):
+    import json
+    r = client.put("/api/admin/signing-config", headers=WRITE,
+                   data=json.dumps({"default_backend": "bogus"}))
+    assert r.status_code == 400
+
+
+def test_sign_requires_auth(client):
+    # CSRF header present but no CAC identity -> 403
+    assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403
+
+
+def test_sign_requires_csrf(client):
+    # authed admin (a signer) but missing the CSRF header -> 403
+    assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CAC).status_code == 403
+
+
+def test_sign_nonexistent_job_404(client):
+    # admin passes the signer gate; the missing job then 404s (not 500)
+    r = client.post("/api/jobs/" + "a" * 32 + "/sign", headers=WRITE)
+    assert r.status_code == 404

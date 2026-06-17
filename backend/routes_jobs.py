@@ -3,7 +3,7 @@ from flask import Blueprint, Response, abort, g, jsonify, request, session
 import csv, io, json, os, re, subprocess, time, uuid, zipfile
 import notify
 from app import (  # noqa: E402
-    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, _add_session_keys, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, log_event, require_auth, require_csrf, run_helper)
+    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, CompletionError, _add_session_keys, _attach_signed_cert, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, log_event, require_auth, require_csrf, run_helper)
 bp = Blueprint("jobs", __name__)
 
 # ============================================================
@@ -368,76 +368,18 @@ def upload_cert(job_id):
     except Exception:
         return jsonify(error="cert validation error"), 400
 
-    with db() as conn:
-        row = conn.execute(
-            "SELECT csr_pem, target_host, status, requester_email, group_id "
-            "FROM jobs WHERE id = ?", (job_id,)
-        ).fetchone()
-        if not row:
-            abort(404)
-        if row["status"] != "pending":
-            return jsonify(error=f"job in status '{row['status']}', cannot accept cert"), 409
-
-        if not _verify_cert_matches_csr(row["csr_pem"], cert_pem):
-            log_event("upload_cert", "deny_pubkey_mismatch", job_id=job_id,
-                      target=row["target_host"])
-            return jsonify(
-                error="cert public key does not match this job's CSR. "
-                      "Verify you uploaded the cert for the correct job."
-            ), 400
-
-        expires_at = _cert_expiry(cert_pem)
-        conn.execute(
-            "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
-            "completed_by_dn=?, expires_at=?, error=NULL WHERE id=?",
-            (cert_pem, time.time(), g.identity["dn"], expires_at, job_id),
-        )
-
+    # Manual return path: feed the verified cert to the shared completion helper
+    # (same verify + 'issued' transition + filesystem drop + webhook + email
+    # used by the v2 approve-&-sign route). signed_via='manual', no approver.
     try:
-        Path(ISSUED_DIR).mkdir(parents=True, exist_ok=True)
-        target_path = Path(ISSUED_DIR) / f"{row['target_host']}.cer"
-        target_path.write_text(cert_pem)
-        os.chmod(target_path, 0o644)
-        run_helper(["chown-issued", target_path.name])
-    except Exception as e:
-        sys.stderr.write(f"filesystem drop failed for {row['target_host']}: {e}\n")
-        log_event("filesystem_drop", "error", job_id=job_id, error=str(e)[:128])
+        result = _attach_signed_cert(
+            job_id, cert_pem, actor_dn=g.identity["dn"],
+            signed_via="manual", log_action="upload_cert")
+    except CompletionError as e:
+        return jsonify(**e.payload), e.status
 
-    upload_warnings = _cert_upload_warnings(cert_pem)
-    log_event("upload_cert", "ok", job_id=job_id, target=row["target_host"],
-              uploader=g.identity["dn"], warnings=len(upload_warnings))
-    fire_webhooks("job.issued", {
-        "job_id": job_id, "target_host": row["target_host"],
-        "requester_email": row["requester_email"],
-        "completed_by_dn": g.identity["dn"],
-        "completed_by_cn": _cn_from_dn(g.identity["dn"]),
-        "group_id": row["group_id"] if "group_id" in row.keys() else None,
-        "expires_at": expires_at,
-    })
-
-    # Best-effort email notification. Never let this fail the upload.
-    try:
-        group_email_addr = _group_email(row["group_id"]) if "group_id" in row.keys() else None
-        ok, reason = notify.send_cert_issued(
-            {
-                "id": job_id,
-                "target_host": row["target_host"],
-                "requester_email": row["requester_email"],
-            },
-            g.identity["dn"],
-            group_email=group_email_addr,
-        )
-        log_event("email_notify", "ok" if ok else "skip",
-                  job_id=job_id, event="cert_issued",
-                  recipient=(row["requester_email"] or group_email_addr or "-"),
-                  group_cc=(group_email_addr if (row["requester_email"] and group_email_addr) else "-"),
-                  reason=reason[:96])
-    except Exception as e:
-        log_event("email_notify", "exception", job_id=job_id,
-                  error=str(e)[:128])
-
-    return jsonify(ok=True, status="issued", target_host=row["target_host"],
-                   expires_at=expires_at, warnings=upload_warnings)
+    return jsonify(ok=True, status="issued", target_host=result["target_host"],
+                   expires_at=result["expires_at"], warnings=result["warnings"])
 
 # ============================================================
 # Cancel / mark failed

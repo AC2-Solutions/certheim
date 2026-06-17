@@ -1,0 +1,166 @@
+"""routes_signing blueprint - v2 in-UI certificate signing.
+
+Approval-gated: a signer (or admin) triggers the sign; an automated backend
+(OpenBao PKI) produces the cert, which feeds the SAME shared completion path
+(_attach_signed_cert) as the manual upload - so verification, the 'issued'
+transition, the filesystem drop, the webhook, and the email are identical no
+matter who/what produced the cert.
+
+P1 scope: signing is driven by a GLOBAL admin signing-config (default backend +
+OpenBao role + max TTL). Jobs don't yet carry a template_id, so per-template
+policy (design §4.3) is a P2 refinement - sign_csr already takes a template
+dict, so that drops in without touching this flow.
+"""
+from flask import Blueprint, request, jsonify, g
+import os
+import capabilities
+import sign
+from app import (  # noqa: E402
+    db, get_setting, set_setting, require_auth, require_admin, require_csrf,
+    log_event, _is_signer, _attach_signed_cert, CompletionError, JOB_ID_RE)
+
+bp = Blueprint("signing", __name__)
+
+# Capability key gating the OpenBao backend (env_supports openbao + entitled).
+CAP_OPENBAO = "ca.signing.openbao"
+
+
+def _signing_template():
+    """Build the signer 'template' dict from global signing-config settings.
+    (P2 will resolve a per-template dict here instead.)"""
+    backend = (get_setting("signing_default_backend") or "manual").strip()
+    ttl = get_setting("signing_max_ttl")
+    try:
+        ttl = int(ttl) if ttl else None
+    except (TypeError, ValueError):
+        ttl = None
+    return {
+        "signer_backend": backend,
+        "openbao_role": (get_setting("openbao_default_role") or "").strip() or None,
+        "max_ttl": ttl,
+    }
+
+
+def _config_view():
+    """Non-secret signing config + live capability/credential status."""
+    cap = capabilities.status(CAP_OPENBAO)
+    return {
+        "default_backend": (get_setting("signing_default_backend") or "manual"),
+        "openbao_addr": get_setting("openbao_addr") or "",
+        "openbao_pki_mount": get_setting("openbao_pki_mount") or "",
+        "openbao_default_role": get_setting("openbao_default_role") or "",
+        "max_ttl": get_setting("signing_max_ttl") or "",
+        # AppRole creds are env-only; report presence, never the value.
+        "approle_configured": bool(os.environ.get("CSR_OPENBAO_ROLE_ID")
+                                   and os.environ.get("CSR_OPENBAO_SECRET_ID")),
+        "backends": list(sign.BACKENDS),
+        "capability": cap,
+    }
+
+
+@bp.post("/api/jobs/<job_id>/sign")
+@require_auth
+@require_csrf
+def sign_job(job_id):
+    """Approve-&-sign a pending job's CSR via the configured CA backend."""
+    if not JOB_ID_RE.match(job_id):
+        return jsonify(error="invalid job id"), 400
+
+    # Approval gate: only a signer-group member or an admin may sign.
+    actor_dn = g.identity["dn"]
+    if not (g.user.get("is_admin") or _is_signer(actor_dn)):
+        log_event("sign", "deny_not_signer", job_id=job_id, dn=actor_dn[:128])
+        return jsonify(error="not authorized to sign (signer or admin only)"), 403
+
+    with db() as conn:
+        row = conn.execute(
+            "SELECT status, csr_pem FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        return jsonify(error="job not found"), 404
+    if row["status"] != "pending":
+        return jsonify(error=f"job in status '{row['status']}', cannot sign"), 409
+
+    template = _signing_template()
+    backend = template["signer_backend"]
+    if backend == "manual":
+        return jsonify(error="no automated signing backend is configured; "
+                             "use the manual cert-upload path"), 409
+    # Capability gate for the connected backend (offline boxes shouldn't try).
+    if backend == "openbao" and not capabilities.available(CAP_OPENBAO):
+        return jsonify(error="OpenBao signing is not available in this "
+                             "deployment", capability=capabilities.status(CAP_OPENBAO)), 409
+
+    try:
+        result = sign.sign_csr(row["csr_pem"], template)
+    except sign.BackendUnavailable as e:
+        return jsonify(error=str(e)), 409
+    except sign.SignError as e:
+        log_event("sign", "backend_error", job_id=job_id, backend=backend,
+                  error=str(e)[:200])
+        return jsonify(error=f"signing failed: {e}"), 502
+
+    # Feed the signed cert through the shared completion path (verifies the
+    # cert's pubkey against the job CSR before flipping to 'issued').
+    try:
+        completed = _attach_signed_cert(
+            job_id, result.cert_pem, actor_dn=actor_dn,
+            signed_via=backend, approver_dn=actor_dn, log_action="sign")
+    except CompletionError as e:
+        return jsonify(**e.payload), e.status
+
+    log_event("sign", "issued", job_id=job_id, backend=backend,
+              role=template.get("openbao_role") or "-", approver=actor_dn[:128])
+    return jsonify(ok=True, status="issued", signed_via=backend,
+                   target_host=completed["target_host"],
+                   expires_at=completed["expires_at"],
+                   warnings=completed["warnings"],
+                   chain_pem=result.chain_pem)
+
+
+@bp.get("/api/admin/signing-config")
+@require_admin
+def get_signing_config():
+    return jsonify(**_config_view())
+
+
+@bp.put("/api/admin/signing-config")
+@require_admin
+@require_csrf
+def put_signing_config():
+    payload = request.get_json(silent=True) or {}
+    backend = (payload.get("default_backend") or "manual").strip()
+    if backend not in sign.BACKENDS:
+        return jsonify(error=f"default_backend must be one of {list(sign.BACKENDS)}"), 400
+
+    ttl = payload.get("max_ttl")
+    if ttl not in (None, ""):
+        try:
+            ttl = int(ttl)
+            if ttl <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify(error="max_ttl must be a positive integer (seconds)"), 400
+
+    set_setting("signing_default_backend", backend)
+    set_setting("openbao_addr", (payload.get("openbao_addr") or "").strip())
+    set_setting("openbao_pki_mount", (payload.get("openbao_pki_mount") or "").strip())
+    set_setting("openbao_default_role", (payload.get("openbao_default_role") or "").strip())
+    set_setting("signing_max_ttl", str(ttl) if ttl not in (None, "") else "")
+    log_event("signing_config", "update", backend=backend,
+              actor=g.identity["dn"][:128])
+    return jsonify(ok=True, **_config_view())
+
+
+@bp.post("/api/admin/signing-config/test")
+@require_admin
+@require_csrf
+def test_signing_config():
+    """Prove the OpenBao AppRole login works and the PKI mount answers,
+    without signing anything."""
+    try:
+        info = sign.test_connection()
+    except sign.SignError as e:
+        log_event("signing_config", "test_fail", error=str(e)[:200])
+        return jsonify(ok=False, error=str(e)), 502
+    log_event("signing_config", "test_ok", addr=info.get("addr", "-"))
+    return jsonify(ok=True, **info)
