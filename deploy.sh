@@ -28,7 +28,6 @@ MANIFEST=(
   "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
   "backend/app.py            /opt/csr-dashboard/app.py                         root:csrapi 0640 backend"
   "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
-  "backend/gitlab_integration.py /opt/csr-dashboard/gitlab_integration.py      root:csrapi 0640 backend"
   "backend/import_certs.py   /opt/csr-dashboard/import_certs.py                root:csrapi 0640 backend"
   "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
   "frontend/app.js           /var/www/csr/app.js                               root:nginx  0640 frontend"
@@ -41,6 +40,8 @@ MANIFEST=(
   "systemd/csr-api.service          /etc/systemd/system/csr-api.service          root:root 0644 systemd"
   "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
   "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
+  "tools/csr-uninstall.sh    /usr/local/sbin/csr-uninstall                      root:root 0750 tools"
+  "tools/csr-set-auth        /usr/local/sbin/csr-set-auth                       root:root 0750 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
 MANIFEST+=("nginx/30-csr.conf /etc/nginx/rcdn01.d/30-csr.conf root:root 0644 nginx")
@@ -88,20 +89,6 @@ if [[ ! -f /etc/csr-dashboard/email.conf && -f config/email.conf.example ]]; the
         config/email.conf.example /etc/csr-dashboard/email.conf
     echo "seeded /etc/csr-dashboard/email.conf from example - set the SMG host"
 fi
-# integrations.conf must exist + be csrapi-owned so the app can rewrite it in
-# place from the admin UI (the dir is 0750 root:csrapi - no group create).
-if [[ ! -f /etc/csr-dashboard/integrations.conf ]]; then
-    install -d -o root -g csrapi -m 0750 /etc/csr-dashboard
-    if [[ -f config/integrations.conf.example ]]; then
-        install -o csrapi -g csrapi -m 0640 \
-            config/integrations.conf.example /etc/csr-dashboard/integrations.conf
-    else
-        printf '[gitlab]\nenabled = false\n' > /etc/csr-dashboard/integrations.conf
-        chown csrapi:csrapi /etc/csr-dashboard/integrations.conf
-        chmod 0640 /etc/csr-dashboard/integrations.conf
-    fi
-    echo "seeded /etc/csr-dashboard/integrations.conf (configure via admin UI)"
-fi
 
 # Pre-deploy DB/file backup (after diffing, before service restart)
 command -v csrbackup >/dev/null && csrbackup || echo "WARN: csrbackup not found"
@@ -131,42 +118,52 @@ if [[ "$changed_tags" == *systemd* ]]; then
     systemctl daemon-reload
 fi
 if [[ "$changed_tags" == *nginx* ]]; then
-    # Validate before reloading - a bad config must not take nginx down
+    # Validate before (re)loading - a bad config must not take nginx down.
     if nginx -t; then
-        # reload-or-restart: on a fresh box nginx may be enabled-but-stopped at
-        # first deploy (F9). reload alone fails when the unit is inactive.
+        # reload-or-restart: on a fresh box nginx may be installed-but-stopped,
+        # in which case `reload` fails. reload-or-restart starts it if down and
+        # reloads if up - so first install and steady-state both work (F9).
         systemctl reload-or-restart nginx
-        echo "nginx: reloaded"
+        echo "nginx: reload-or-restart ok"
     else
-        echo "nginx -t FAILED - config NOT reloaded; the new file is on disk" >&2
-        echo "fix it and run: nginx -t && systemctl reload nginx" >&2
+        echo "nginx -t FAILED - config NOT (re)loaded; the new file is on disk" >&2
+        echo "fix it and run: nginx -t && systemctl reload-or-restart nginx" >&2
+        echo "(on first install also ensure nginx.conf includes rcdn01.d/*.conf" >&2
+        echo " and that nginx is enabled - see OFFLINE-INSTALL.md)" >&2
         exit 1
     fi
 fi
 if $RESTART && [[ "$changed_tags" == *backend* || "$changed_tags" == *systemd* ]]; then
     systemctl restart csr-api
     sleep 1
-    systemctl is-active csr-api >/dev/null \
-        && echo "csr-api: active" \
-        || { echo "csr-api FAILED to start - check journalctl -u csr-api"; exit 1; }
+    if ! systemctl is-active csr-api >/dev/null; then
+        echo "csr-api FAILED to start - check journalctl -u csr-api" >&2
+        exit 1
+    fi
+    echo "csr-api: active (restarted)"
 
-    # Post-restart version verification: the app reads VERSION once at startup,
-    # so a stale/old running process is easy to miss. Compare the version the
-    # health endpoint reports to the VERSION we just deployed. A failed loopback
-    # curl (e.g. mTLS required on :443) is treated as "couldn't check", not an
-    # error - the restart already succeeded above.
-    if [[ -f VERSION ]]; then
-        want="$(cat VERSION)"
-        got="$(curl -sk --max-time 5 https://localhost/csr/api/health 2>/dev/null \
-                 | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
-        if [[ -z "$got" ]]; then
-            echo "version check: skipped (could not reach health endpoint on loopback)"
+    # Verify the running app reports the deployed VERSION. app.py reads VERSION
+    # once at startup, so a stale process is the classic "UI shows old version"
+    # bug. This makes the mismatch loud instead of silent.
+    if [[ -f /opt/csr-dashboard/VERSION ]]; then
+        want="$(cat /opt/csr-dashboard/VERSION 2>/dev/null)"
+        # give gunicorn a moment, then ask the unauth health endpoint
+        got=""
+        for _ in 1 2 3; do
+            got="$(curl -sk https://127.0.0.1/csr/api/health 2>/dev/null \
+                   | sed -n 's/.*"version"[: ]*"\([^"]*\)".*/\1/p')"
+            [[ -n "$got" ]] && break
+            sleep 1
+        done
+        if [[ -n "$got" && "$got" != "$want" ]]; then
+            echo "WARN: running version ($got) != deployed VERSION ($want)." >&2
+            echo "      The service may not have fully reloaded; try:" >&2
+            echo "      systemctl restart csr-api" >&2
         elif [[ "$got" == "$want" ]]; then
-            echo "version check: running $got matches deployed $want"
-        else
-            echo "WARNING: running version ($got) != deployed VERSION ($want)" >&2
-            echo "         the csr-api process may be stale - investigate." >&2
+            echo "csr-api: serving v$got"
         fi
+        # (empty $got just means health wasn't reachable over loopback TLS here;
+        #  not fatal - mTLS/cert setup can make local curl fail. Skip silently.)
     fi
 fi
 

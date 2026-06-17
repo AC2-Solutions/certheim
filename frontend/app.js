@@ -3,20 +3,260 @@ const API = "/csr/api";
 const CSRF = { "X-Requested-With": "csr-dashboard", "Content-Type": "application/json" };
 const PAGE_SIZE = 50;
 
-// ===== DoD banner =====
+// ===== DoD banner (now a modal opened from a link on the login page) =====
 const banner = document.getElementById("dod-banner");
-const ACCEPTED_KEY = "csr-dod-accepted";
-const accepted = sessionStorage.getItem(ACCEPTED_KEY) === "1";
-if (accepted) banner.style.display = "none";
-
-document.getElementById("dod-accept").addEventListener("click", () => {
-  sessionStorage.setItem(ACCEPTED_KEY, "1");
-  banner.style.display = "none";
-  init();
+document.getElementById("dod-close").addEventListener("click", () => {
+  banner.hidden = true;
 });
-document.getElementById("dod-decline").addEventListener("click", () => {
-  document.documentElement.innerHTML =
-    "<body style='font-family:sans-serif;padding:40px;'>Access declined. Close this tab.</body>";
+document.getElementById("login-show-banner").addEventListener("click", () => {
+  banner.hidden = false;
+});
+document.getElementById("login-show-banner-2")?.addEventListener("click", () => {
+  banner.hidden = false;
+});
+
+// ===== Login gate =====
+// The app always shows a login gate first. What it offers depends on the
+// server's auth mode (GET /api/auth/info): CAC "Continue" when mTLS is on,
+// username/password when local auth is on (both can show together - CAC stays
+// primary with password as a fallback). On success we reveal the app + run
+// init(). A logout returns here.
+let authInfo = null;
+
+function showLoginView() {
+  document.getElementById("login-view").hidden = false;
+  document.querySelector("header").style.display = "none";
+  document.querySelector("main").style.display = "none";
+}
+function hideLoginView() {
+  document.getElementById("login-view").hidden = true;
+  document.querySelector("header").style.display = "";
+  document.querySelector("main").style.display = "";
+}
+
+async function startApp() {
+  // Mark the gate as passed for this browser session, so subsequent refreshes
+  // skip straight in instead of re-showing the gate. Cleared on sign-out and
+  // when the browser session ends (sessionStorage).
+  sessionStorage.setItem("csr-gate-passed", "1");
+  hideLoginView();
+  await init();
+}
+
+async function bootstrapAuth() {
+  // Ask the server which single auth mode this box uses. A box is EITHER
+  // mTLS (CAC only) OR local (username/password only) - set at install time.
+  // No mixing, which avoids the CAC-vs-password conflict entirely.
+  const r = await jsonReq("/auth/info");
+  authInfo = r.ok ? r.body : { auth_mode: "mtls", local_enabled: false,
+                               registration_open: false };
+  const mtlsOnly = authInfo.auth_mode === "mtls";
+
+  // Gate is passed explicitly once per browser session; afterward a refresh
+  // skips straight in (so reloads don't kick you out).
+  const gatePassed = sessionStorage.getItem("csr-gate-passed") === "1";
+  if (gatePassed) {
+    const me = await jsonReq("/me");
+    if (me.ok && me.body && me.body.dn && !String(me.body.dn).startsWith("ip:")) {
+      return startApp();
+    }
+  }
+
+  if (mtlsOnly) {
+    // CAC-only box: show ONLY the CAC continue button + agreement. No password
+    // fields, no Smartcard checkbox (there's nothing to choose).
+    document.getElementById("login-local").hidden = true;
+    document.getElementById("login-local-btn").hidden = true;
+    document.getElementById("login-cac-row").hidden = true;
+    document.getElementById("login-cac").hidden = false;
+    document.getElementById("login-register-link-wrap").hidden = true;
+    document.getElementById("login-sub").textContent =
+      "Authenticate with your CAC to continue";
+  } else {
+    // Password-only box: show ONLY username/password (+ registration if open).
+    // No CAC anywhere.
+    document.getElementById("login-local").hidden = false;
+    document.getElementById("login-local-btn").hidden = false;
+    document.getElementById("login-cac-row").hidden = true;
+    document.getElementById("login-cac").hidden = true;
+    document.getElementById("login-register-link-wrap").hidden = !authInfo.registration_open;
+    if (authInfo.trusted_email_domain) {
+      document.getElementById("reg-domain-hint").textContent =
+        "(must be @" + authInfo.trusted_email_domain + ")";
+    }
+    document.getElementById("login-sub").textContent =
+      "Sign in with your username and password";
+  }
+
+  _agreeInteracted = false;  // reset so the warning is silent on (re)render
+  _applyAgreementGate();
+  showLoginView();
+}
+
+// Agreement checkbox gates the action buttons. The warning box stays hidden
+// on load (silent) and appears only AFTER the user actively unchecks the box.
+let _agreeInteracted = false;
+function _applyAgreementGate() {
+  const agreed = document.getElementById("login-agree-check").checked;
+  ["login-submit", "login-cac-btn"].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !agreed;
+  });
+  // Silent until the user has actually toggled the box at least once and
+  // left it unchecked. Never shown on initial load.
+  document.getElementById("login-agree-warn").hidden = !( _agreeInteracted && !agreed );
+}
+document.getElementById("login-agree-check").addEventListener("change", () => {
+  _agreeInteracted = true;
+  _applyAgreementGate();
+});
+
+// Smartcard checkbox switches between password (default) and CAC. Password
+// fields are the default; checking "Use Smartcard" reveals the CAC button and
+// hides the password fields. Unchecking returns to password.
+function _applyCacToggle() {
+  const mtlsOn = authInfo && authInfo.auth_mode === "mtls";
+  const useCac = mtlsOn && document.getElementById("login-cac-check")?.checked;
+  // CAC button visible only when the box is checked
+  document.getElementById("login-cac").hidden = !useCac;
+  // password fields + button hidden when using CAC, shown otherwise
+  document.getElementById("login-local").hidden = !!useCac;
+  document.getElementById("login-local-btn").hidden = !!useCac;
+}
+document.getElementById("login-cac-check")?.addEventListener("change", _applyCacToggle);
+
+// CAC: the cert is presented at TLS handshake; "Continue" just proceeds.
+document.getElementById("login-cac-btn").addEventListener("click", async () => {
+  const status = document.getElementById("login-status");
+  if (!document.getElementById("login-agree-check").checked) {
+    _agreeInteracted = true; _applyAgreementGate();
+    setStatus(status, "You must agree to the User Access Agreement first.", "err");
+    return;
+  }
+  setStatus(status, "Verifying CAC…");
+  const me = await jsonReq("/me");
+  if (me.ok && me.body && me.body.dn && !String(me.body.dn).startsWith("ip:")) {
+    startApp();
+  } else {
+    setStatus(status, "No valid CAC detected. Ensure your card is inserted "
+                    + "and you selected your certificate.", "err");
+  }
+});
+
+// Username / password login.
+document.getElementById("login-submit").addEventListener("click", doLogin);
+document.getElementById("login-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doLogin();
+});
+async function doLogin() {
+  const status = document.getElementById("login-status");
+  if (!document.getElementById("login-agree-check").checked) {
+    _agreeInteracted = true; _applyAgreementGate();
+    setStatus(status, "You must agree to the User Access Agreement first.", "err");
+    return;
+  }
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value;
+  if (!username || !password) {
+    setStatus(status, "Enter your username and password.", "err");
+    return;
+  }
+  setStatus(status, "Signing in…");
+  const r = await jsonReq("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  if (r.ok) {
+    startApp();
+  } else {
+    const msg = (r.body && r.body.error) || "Sign-in failed";
+    setStatus(status, msg, "err");
+  }
+}
+
+// Toggle register / login.
+document.getElementById("login-show-register")?.addEventListener("click", () => {
+  document.getElementById("login-local").hidden = true;
+  document.getElementById("login-local-btn").hidden = true;
+  document.getElementById("login-cac").hidden = true;
+  document.getElementById("login-cac-row").hidden = true;
+  document.getElementById("login-agree-row").hidden = true;
+  document.getElementById("login-agree-warn").hidden = true;
+  document.getElementById("register-block").hidden = false;
+  setStatus(document.getElementById("login-status"), "");
+});
+document.getElementById("register-show-login")?.addEventListener("click", () => {
+  document.getElementById("register-block").hidden = true;
+  document.getElementById("login-agree-row").hidden = false;
+  bootstrapAuth();  // re-render the login side
+});
+
+// Live password-policy hints during registration.
+document.getElementById("reg-password")?.addEventListener("input", (e) => {
+  const pw = e.target.value;
+  const rules = {
+    len: pw.length >= 15,
+    upper: /[A-Z]/.test(pw),
+    lower: /[a-z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  };
+  document.querySelectorAll("#reg-pw-hints li").forEach(li => {
+    li.classList.toggle("met", !!rules[li.dataset.rule]);
+  });
+});
+
+document.getElementById("register-submit")?.addEventListener("click", async () => {
+  const status = document.getElementById("login-status");
+  const first = document.getElementById("reg-first").value.trim();
+  const last = document.getElementById("reg-last").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const password = document.getElementById("reg-password").value;
+  if (!first || !last || !email || !password) {
+    setStatus(status, "Fill in every field.", "err");
+    return;
+  }
+  setStatus(status, "Creating account…");
+  const r = await jsonReq("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ first_name: first, last_name: last,
+                           email, password }),
+  });
+  if (!r.ok) {
+    setStatus(status, (r.body && r.body.error) || "Registration failed", "err");
+    return;
+  }
+  if (r.body.status === "pending") {
+    setStatus(status, `Account created as "${r.body.username}". It is awaiting `
+                    + "administrator approval - you'll be able to sign in once "
+                    + "approved.", "ok");
+    document.getElementById("register-block").hidden = true;
+  } else {
+    // active + logged in (cookie set) - show the assigned username, then enter
+    alert(`Your username is "${r.body.username}". Please remember it for `
+        + "future sign-ins.");
+    startApp();
+  }
+});
+
+// Logout (local sessions). Hidden for CAC since the cert is the identity.
+document.getElementById("nav-logout")?.addEventListener("click", async () => {
+  sessionStorage.removeItem("csr-gate-passed");  // force the gate on next load
+  try {
+    await jsonReq("/auth/logout", { method: "POST" });
+  } catch (e) { /* ignore - we reload regardless */ }
+  // After clearing the local session, re-probe. If a CAC cert is still being
+  // presented, the server will re-authenticate us on reload (you can't "log
+  // out" of a presented certificate without removing the card / closing the
+  // browser). Tell the user that rather than silently bouncing back in.
+  const me = await jsonReq("/me");
+  if (me.ok && me.body && me.body.via === "cac") {
+    alert("Your CAC is still presented, so you remain signed in via "
+        + "certificate. To fully sign out, remove your card or close the "
+        + "browser.");
+    return;
+  }
+  location.reload();  // password session cleared -> gate shows
 });
 
 // ===== Theme =====
@@ -385,9 +625,13 @@ async function refreshMyGroups() {
                 <td title="${escapeHtml(m.dn)}"><code>${escapeHtml(m.cn || shortDN(m.dn))}</code></td>
                 <td>${m.email ? escapeHtml(m.email) : "<em>—</em>"}</td>
                 <td>${m.role === "owner" ? '<span class="pill" style="background:#10b981;color:white">owner</span>' : "member"}</td>
-                <td>${m.role !== "owner"
-                  ? `<button class="link-btn mygroup-remove" data-gid="${grp.id}" data-dn="${escapeHtml(m.dn)}" style="color:var(--danger)">Remove</button>`
-                  : ""}</td>
+                <td>
+                  ${m.role !== "owner"
+                    ? `<button class="link-btn mygroup-promote" data-gid="${grp.id}" data-dn="${escapeHtml(m.dn)}">Make owner</button>
+                       &nbsp;|&nbsp;
+                       <button class="link-btn mygroup-remove" data-gid="${grp.id}" data-dn="${escapeHtml(m.dn)}" style="color:var(--danger)">Remove</button>`
+                    : `<button class="link-btn mygroup-demote" data-gid="${grp.id}" data-dn="${escapeHtml(m.dn)}">Make member</button>`}
+                </td>
               </tr>`).join("")}
           </tbody>
         </table>
@@ -397,7 +641,25 @@ async function refreshMyGroups() {
           <button class="mygroup-add-btn" data-gid="${grp.id}" type="button">Add member</button>
           <span class="status mygroup-status" data-gid="${grp.id}"></span>
         </div>` : ""}
+      <div class="row" style="margin-top:8px">
+        <button class="link-btn mygroup-leave" data-gid="${grp.id}" data-name="${escapeHtml(grp.name)}"
+                data-isowner="${grp.role === "owner" ? 1 : 0}" style="color:var(--danger)">Leave group</button>
+      </div>
     </div>`).join("");
+
+  list.querySelectorAll(".mygroup-leave").forEach(b => {
+    b.addEventListener("click", async () => {
+      const name = b.dataset.name;
+      if (!confirm(`Leave the group "${name}"? You'll lose access to its shared `
+                 + `templates and jobs.`)) return;
+      const r2 = await jsonReq(`/groups/${b.dataset.gid}/members`, {
+        method: "DELETE", body: JSON.stringify({ dn: currentUser.dn }),
+      });
+      if (r2.ok) { refreshMyGroups(); return; }
+      // Most likely failure: you're the only owner and must hand off first.
+      alert("Couldn't leave: " + ((r2.body && r2.body.error) || "unknown"));
+    });
+  });
 
   list.querySelectorAll(".mygroup-add-btn").forEach(b => {
     b.addEventListener("click", async () => {
@@ -421,6 +683,25 @@ async function refreshMyGroups() {
       });
       if (r2.ok) refreshMyGroups();
       else alert("Remove failed: " + ((r2.body && r2.body.error) || "unknown"));
+    });
+  });
+  const setRole = async (gid, dn, role) => {
+    const r2 = await jsonReq(`/groups/${gid}/members/role`, {
+      method: "PUT", body: JSON.stringify({ dn, role }),
+    });
+    if (r2.ok) refreshMyGroups();
+    else alert("Role change failed: " + ((r2.body && r2.body.error) || "unknown"));
+  };
+  list.querySelectorAll(".mygroup-promote").forEach(b => {
+    b.addEventListener("click", () => {
+      if (!confirm("Make this member an owner? They'll be able to manage the group.")) return;
+      setRole(b.dataset.gid, b.dataset.dn, "owner");
+    });
+  });
+  list.querySelectorAll(".mygroup-demote").forEach(b => {
+    b.addEventListener("click", () => {
+      if (!confirm("Demote this owner to a regular member?")) return;
+      setRole(b.dataset.gid, b.dataset.dn, "member");
     });
   });
 }
@@ -1191,8 +1472,6 @@ async function refreshAdminView() {
     refreshOrphanKeys(),
     refreshOrphanCerts(),
     loadEmailConfig(),
-    loadGitlabConfig(),
-    loadTrust(),
     refreshAdminTemplates(),
   ]);
 }
@@ -1282,6 +1561,9 @@ document.getElementById("audit-more-btn")?.addEventListener("click", () => loadA
 document.querySelector('#admin-nav button[data-panel="audit"]')
   ?.addEventListener("click", () => loadAudit(false));
 
+document.querySelector('#admin-nav button[data-panel="authentication"]')
+  ?.addEventListener("click", refreshAuthSettings);
+
 document.getElementById("admin-run-expiry-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("audit-status");
   setStatus(status, "Running expiry warnings…");
@@ -1317,69 +1599,38 @@ document.getElementById("admin-template-create-btn")?.addEventListener("click", 
   refreshAdminTemplates();
 });
 
-// Show only the field groups relevant to the selected delivery method.
-function applyEmailProvider(provider) {
-  document.querySelectorAll(".email-provider-fields").forEach((el) => {
-    const forList = (el.dataset.for || "").split(/\s+/);
-    el.style.display = forList.includes(provider) ? "" : "none";
-  });
-}
-
 async function loadEmailConfig() {
   const r = await jsonReq("/admin/email-config");
   if (!r.ok) return;
   const c = r.body;
-  const provider = c.provider || "smg";
-  document.getElementById("email-cfg-provider").value = provider;
   document.getElementById("email-cfg-host").value = c.host || "";
   document.getElementById("email-cfg-port").value = c.port || 25;
   document.getElementById("email-cfg-timeout").value = c.timeout || 10;
-  document.getElementById("email-cfg-security").value = c.security || "none";
-  document.getElementById("email-cfg-username").value = c.username || "";
-  document.getElementById("email-cfg-password").value = "";
-  document.getElementById("email-cfg-password").placeholder =
-    c.password_set ? "(blank = keep current)" : "(none set)";
-  document.getElementById("email-cfg-mg-domain").value = c.mailgun_domain || "";
-  document.getElementById("email-cfg-mg-base").value =
-    c.mailgun_base_url || "https://api.mailgun.net";
-  document.getElementById("email-cfg-mg-key").value = "";
-  document.getElementById("email-cfg-mg-key").placeholder =
-    c.mailgun_api_key_set ? "(blank = keep current)" : "(none set)";
   document.getElementById("email-cfg-from").value = c.from_address || "";
   document.getElementById("email-cfg-cc").value = c.cc || "";
   document.getElementById("email-cfg-url").value = c.dashboard_url || "";
-  applyEmailProvider(provider);
   const state = document.getElementById("email-config-state");
   if (c.enabled) {
-    state.innerHTML = `<span class="pill pill-ok">notifications enabled</span> <span class="status">via ${escapeHtml(provider)}</span>`;
+    state.innerHTML = '<span class="pill pill-ok">notifications enabled</span>';
   } else {
     state.innerHTML = `<span class="pill pill-err">disabled</span> <span class="status">${escapeHtml(c.disabled_reason || "")}</span>`;
   }
 }
 
-document.getElementById("email-cfg-provider")?.addEventListener("change", (e) => {
-  applyEmailProvider(e.target.value);
-});
-
 document.getElementById("email-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("email-cfg-status");
   setStatus(status, "Saving…");
-  const body = {
-    provider: document.getElementById("email-cfg-provider").value,
-    host: document.getElementById("email-cfg-host").value.trim(),
-    port: parseInt(document.getElementById("email-cfg-port").value, 10),
-    timeout: parseInt(document.getElementById("email-cfg-timeout").value, 10),
-    security: document.getElementById("email-cfg-security").value,
-    username: document.getElementById("email-cfg-username").value.trim(),
-    password: document.getElementById("email-cfg-password").value,
-    mailgun_domain: document.getElementById("email-cfg-mg-domain").value.trim(),
-    mailgun_base_url: document.getElementById("email-cfg-mg-base").value,
-    mailgun_api_key: document.getElementById("email-cfg-mg-key").value,
-    from_address: document.getElementById("email-cfg-from").value.trim(),
-    cc: document.getElementById("email-cfg-cc").value.trim(),
-    dashboard_url: document.getElementById("email-cfg-url").value.trim(),
-  };
-  const r = await jsonReq("/admin/email-config", { method: "PUT", body: JSON.stringify(body) });
+  const r = await jsonReq("/admin/email-config", {
+    method: "PUT",
+    body: JSON.stringify({
+      host: document.getElementById("email-cfg-host").value.trim(),
+      port: parseInt(document.getElementById("email-cfg-port").value, 10),
+      timeout: parseInt(document.getElementById("email-cfg-timeout").value, 10),
+      from_address: document.getElementById("email-cfg-from").value.trim(),
+      cc: document.getElementById("email-cfg-cc").value.trim(),
+      dashboard_url: document.getElementById("email-cfg-url").value.trim(),
+    }),
+  });
   if (!r.ok) {
     setStatus(status, (r.body && r.body.error) || "Save failed", "err");
     return;
@@ -1396,93 +1647,7 @@ document.getElementById("admin-email-test-btn")?.addEventListener("click", async
     setStatus(status, (r.body && r.body.error) || (r.body && r.body.reason) || "Test failed", "err");
     return;
   }
-  setStatus(status, `Test email sent to ${r.body.sent_to || "you"}.`, "ok");
-});
-
-async function loadGitlabConfig() {
-  const r = await jsonReq("/admin/gitlab-config");
-  if (!r.ok) return;
-  const c = r.body;
-  document.getElementById("gitlab-enabled").checked = !!c.enabled;
-  document.getElementById("gitlab-base").value = c.base_url || "";
-  document.getElementById("gitlab-project").value = c.project || "";
-  document.getElementById("gitlab-assignees").value = c.assignee_ids || "";
-  document.getElementById("gitlab-labels").value = c.labels || "";
-  const tok = document.getElementById("gitlab-token");
-  tok.value = ""; tok.placeholder = c.api_token_set ? "(blank = keep current)" : "(none set)";
-  const sec = document.getElementById("gitlab-secret");
-  sec.value = ""; sec.placeholder = c.webhook_secret_set ? "(blank = keep current)" : "(none set)";
-  document.getElementById("gitlab-webhook-url").textContent =
-    `${location.origin}/csr/api/webhooks/gitlab`;
-  document.getElementById("gitlab-config-state").innerHTML = c.enabled
-    ? '<span class="pill pill-ok">enabled</span>'
-    : '<span class="pill pill-err">disabled</span>';
-}
-
-document.getElementById("gitlab-save-btn")?.addEventListener("click", async () => {
-  const status = document.getElementById("gitlab-status");
-  setStatus(status, "Saving…");
-  const body = {
-    enabled: document.getElementById("gitlab-enabled").checked,
-    base_url: document.getElementById("gitlab-base").value.trim(),
-    project: document.getElementById("gitlab-project").value.trim(),
-    assignee_ids: document.getElementById("gitlab-assignees").value.trim(),
-    labels: document.getElementById("gitlab-labels").value.trim(),
-    api_token: document.getElementById("gitlab-token").value,
-    webhook_secret: document.getElementById("gitlab-secret").value,
-  };
-  const r = await jsonReq("/admin/gitlab-config", { method: "PUT", body: JSON.stringify(body) });
-  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Save failed", "err"); return; }
-  setStatus(status, r.body.reason || "Saved", "ok");
-  loadGitlabConfig();
-});
-
-document.getElementById("gitlab-test-btn")?.addEventListener("click", async () => {
-  const status = document.getElementById("gitlab-status");
-  setStatus(status, "Testing connection…");
-  const r = await jsonReq("/admin/gitlab-test", { method: "POST" });
-  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Test failed", "err"); return; }
-  setStatus(status, r.body.reason || "OK", "ok");
-});
-
-// ===== Admin: Trust portal (publish CA certs) =====
-async function loadTrust() {
-  const urlEl = document.getElementById("trust-public-url");
-  if (urlEl) urlEl.textContent = `${location.origin}/csr/api/trust`;
-  const box = document.getElementById("trust-list");
-  if (!box) return;
-  const r = await jsonReq("/admin/trust");
-  if (!r.ok) { box.textContent = "Failed to load."; return; }
-  const certs = (r.body && r.body.certs) || [];
-  if (!certs.length) { box.innerHTML = "<em>No CA certificates published yet.</em>"; return; }
-  box.innerHTML = certs.map((c) => `
-    <div class="row" style="justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border,#333)">
-      <div>
-        <a href="${location.origin}/csr/api/trust/${encodeURIComponent(c.name)}">${escapeHtml(c.name)}</a>
-        <div class="status">${escapeHtml(c.subject || "")}</div>
-        <div class="status" style="font-family:monospace; font-size:11px">${escapeHtml(c.sha256 || "")}</div>
-      </div>
-      <button type="button" class="secondary trust-del" data-name="${escapeHtml(c.name)}">Delete</button>
-    </div>`).join("");
-  box.querySelectorAll(".trust-del").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm(`Delete ${b.dataset.name}?`)) return;
-    const rr = await jsonReq(`/admin/trust/${encodeURIComponent(b.dataset.name)}`, { method: "DELETE" });
-    if (rr.ok) loadTrust(); else alert((rr.body && rr.body.error) || "delete failed");
-  }));
-}
-
-document.getElementById("trust-upload-btn")?.addEventListener("click", async () => {
-  const status = document.getElementById("trust-status");
-  const name = document.getElementById("trust-name").value.trim();
-  const pem = document.getElementById("trust-pem").value.trim();
-  if (!name || !pem) { setStatus(status, "Name and PEM required", "err"); return; }
-  setStatus(status, "Publishing…");
-  const r = await jsonReq("/admin/trust", { method: "POST", body: JSON.stringify({ name, pem }) });
-  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Failed", "err"); return; }
-  setStatus(status, "Published", "ok");
-  document.getElementById("trust-name").value = "";
-  document.getElementById("trust-pem").value = "";
-  loadTrust();
+  setStatus(status, `Test email sent to ${r.body.recipient || "you"}.`, "ok");
 });
 
 async function refreshAdminStats() {
@@ -1553,21 +1718,144 @@ async function refreshAdminUsers() {
     tbody.innerHTML = '<tr><td colspan="6" class="status">No users yet.</td></tr>';
     return;
   }
+  const roleCell = (u) =>
+    u.is_admin ? '<span class="pill pill-purple">admin</span>'
+               : '<span class="pill pill-mute">user</span>';
+  const statusCell = (u) => {
+    if (u.auth_status === "pending")
+      return '<span class="pill pill-warn">pending</span>';
+    if (!u.is_active)
+      return '<span class="pill pill-err">inactive</span>';
+    return '<span class="pill pill-ok">active</span>';
+  };
+  const nameCell = (u) => {
+    const label = u.username ? u.username : (u.cn || shortDN(u.dn));
+    return `<code title="${escapeHtml(u.dn)}">${escapeHtml(label)}</code>`;
+  };
+  const actionCell = (u) => {
+    if (u.auth_status === "pending") {
+      return `<button class="link-btn user-approve-btn" data-dn="${escapeHtml(u.dn)}">Approve</button>
+              &nbsp;|&nbsp;
+              <button class="link-btn user-deny-btn" data-dn="${escapeHtml(u.dn)}"
+                      data-name="${escapeHtml(u.username || u.cn || u.dn)}">Deny</button>`;
+    }
+    return `<button class="link-btn user-edit-btn" data-dn="${escapeHtml(u.dn)}">Edit</button>`;
+  };
   tbody.innerHTML = users.map(u => `
     <tr>
-      <td title="${escapeHtml(u.dn)}"><code>${escapeHtml(u.cn || shortDN(u.dn))}</code></td>
+      <td>${nameCell(u)}</td>
       <td>${u.email ? `<code>${escapeHtml(u.email)}</code>` : '<em>—</em>'}</td>
-      <td>${u.is_admin ? '<span class="pill pill-purple">admin</span>' : '<span class="pill pill-mute">user</span>'}</td>
-      <td>${u.is_active ? '<span class="pill pill-ok">active</span>' : '<span class="pill pill-err">inactive</span>'}</td>
+      <td>${roleCell(u)}</td>
+      <td>${statusCell(u)}</td>
       <td title="${fmtTime(u.last_seen_at)}">${fmtRelTime(u.last_seen_at)}</td>
-      <td><button class="link-btn user-edit-btn" data-dn="${escapeHtml(u.dn)}">Edit</button></td>
+      <td>${actionCell(u)}</td>
     </tr>
   `).join("");
   tbody.querySelectorAll(".user-edit-btn").forEach(b => {
     b.addEventListener("click", () => openUserEdit(users.find(u => u.dn === b.dataset.dn)));
   });
+  tbody.querySelectorAll(".user-approve-btn").forEach(b => {
+    b.addEventListener("click", () => approvePendingUser(b.dataset.dn));
+  });
+  tbody.querySelectorAll(".user-deny-btn").forEach(b => {
+    b.addEventListener("click", () => denyPendingUser(b.dataset.dn, b.dataset.name));
+  });
+}
+
+async function approvePendingUser(dn) {
+  const r = await jsonReq(`/admin/users/${encodeURIComponent(dn)}/approve`,
+                          { method: "POST" });
+  if (r.ok) {
+    refreshAdminUsers();
+  } else {
+    alert("Approve failed: " + ((r.body && r.body.error) || "unknown"));
+  }
+}
+
+async function denyPendingUser(dn, name) {
+  if (!confirm(`Deny and remove the pending account "${name}"?`)) return;
+  // Deny = delete the pending user row (uses the existing user-delete endpoint).
+  const r = await jsonReq("/admin/users", {
+    method: "DELETE",
+    body: JSON.stringify({ dn }),
+  });
+  if (r.ok) {
+    refreshAdminUsers();
+  } else {
+    alert("Deny failed: " + ((r.body && r.body.error) || "unknown"));
+  }
 }
 document.getElementById("admin-users-refresh").addEventListener("click", refreshAdminUsers);
+
+// --- Authentication settings panel -----------------------------------------
+async function refreshAuthSettings() {
+  const status = document.getElementById("admin-auth-status");
+  setStatus(status, "Loading…");
+  const r = await jsonReq("/admin/auth-settings");
+  if (!r.ok) {
+    setStatus(status, "Failed to load auth settings", "err");
+    return;
+  }
+  const s = r.body || {};
+  document.getElementById("admin-auth-mode").value = s.auth_mode || "mtls";
+  document.getElementById("admin-auth-domain").value = s.trusted_email_domain || "";
+  document.getElementById("admin-auth-approval").checked = !!s.require_admin_approval;
+  _authToggleLocalOpts();
+  setStatus(status, "");
+}
+
+function _authToggleLocalOpts() {
+  const mode = document.getElementById("admin-auth-mode").value;
+  document.getElementById("admin-auth-local-opts").style.display =
+    (mode === "local") ? "" : "none";
+  // warn when switching to mtls (only if it isn't already mtls server-side)
+  document.getElementById("admin-auth-mtls-warn").hidden = (mode !== "mtls");
+}
+
+document.getElementById("admin-auth-mode")
+  .addEventListener("change", _authToggleLocalOpts);
+
+document.getElementById("admin-auth-refresh")
+  .addEventListener("click", refreshAuthSettings);
+
+document.getElementById("admin-auth-save-btn").addEventListener("click", async () => {
+  const status = document.getElementById("admin-auth-status");
+  const mode = document.getElementById("admin-auth-mode").value;
+  const domain = document.getElementById("admin-auth-domain").value.trim();
+  const approval = document.getElementById("admin-auth-approval").checked;
+
+  const payload = {
+    auth_mode: mode,
+    trusted_email_domain: domain,
+    require_admin_approval: approval,
+  };
+  // Switching to mtls needs explicit confirmation (backend enforces this too).
+  if (mode === "mtls") {
+    if (!confirm("Enable CAC mTLS?\n\nConfirm that CAC certificate "
+               + "verification works on this host first, or admins may be "
+               + "locked out. Password accounts remain as a fallback.")) {
+      return;
+    }
+    payload.confirm_mtls = true;
+  }
+  if (mode === "local" && !domain) {
+    if (!confirm("No trusted email domain set — self-registration will be "
+               + "disabled (admins must create users). Continue?")) {
+      return;
+    }
+  }
+  setStatus(status, "Saving…");
+  const r = await jsonReq("/admin/auth-settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (r.ok) {
+    setStatus(status, "Saved", "ok");
+    refreshAuthSettings();
+  } else {
+    setStatus(status, "Failed: " + ((r.body && r.body.error) || "unknown"), "err");
+  }
+});
 
 document.getElementById("admin-test-email-btn").addEventListener("click", async () => {
   const status = document.getElementById("admin-test-email-status");
@@ -1589,39 +1877,57 @@ document.getElementById("admin-test-email-btn").addEventListener("click", async 
 function openUserEdit(user) {
   document.getElementById("user-edit-dn").textContent = user.dn;
   document.getElementById("user-edit-dn").dataset.dn = user.dn;
+  document.getElementById("user-edit-first").value = user.first_name || "";
+  document.getElementById("user-edit-last").value = user.last_name || "";
+  document.getElementById("user-edit-username").textContent = user.username || "—";
   document.getElementById("user-edit-email").value = user.email || "";
   document.getElementById("user-edit-admin").checked = !!user.is_admin;
   document.getElementById("user-edit-active").checked = !!user.is_active;
   document.getElementById("user-edit-notes").value = user.notes || "";
+  const pwField = document.getElementById("user-edit-password");
+  if (pwField) pwField.value = "";
   const isSelf = currentUser && user.dn === currentUser.dn;
   document.getElementById("user-edit-admin").disabled = isSelf;
   document.getElementById("user-edit-active").disabled = isSelf;
-  // Delete is hidden for your own account (the backend also refuses it).
-  document.getElementById("user-edit-danger").style.display = isSelf ? "none" : "";
+  // Delete is hidden for your own account (the backend also blocks it).
   const delBtn = document.getElementById("user-edit-delete-btn");
+  delBtn.hidden = isSelf;
   delBtn.dataset.dn = user.dn;
-  delBtn.dataset.cn = user.cn || user.dn;
+  delBtn.dataset.cn = user.cn || shortDN(user.dn);
   setStatus(document.getElementById("user-edit-status"),
     isSelf ? "You can't change your own admin or active flags." : "");
   allModalIds.forEach(m => { document.getElementById(m).hidden = (m !== "user-edit-modal"); });
   overlay.hidden = false;
 }
 
-document.getElementById("user-edit-delete-btn")?.addEventListener("click", async () => {
+// Live preview of the username as the admin types first/last.
+function _previewEditUsername() {
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const f = norm(document.getElementById("user-edit-first").value);
+  const l = norm(document.getElementById("user-edit-last").value);
+  const base = [f, l].filter(Boolean).join(".");
+  const el = document.getElementById("user-edit-username");
+  if (base) el.textContent = base + " (a number is added if already taken)";
+}
+document.getElementById("user-edit-first").addEventListener("input", _previewEditUsername);
+document.getElementById("user-edit-last").addEventListener("input", _previewEditUsername);
+
+document.getElementById("user-edit-password-btn").addEventListener("click", async () => {
   const status = document.getElementById("user-edit-status");
-  const btn = document.getElementById("user-edit-delete-btn");
-  const dn = btn.dataset.dn;
-  const cn = btn.dataset.cn || dn;
-  const typed = prompt(
-    `Delete this user account? Their job history is kept; group memberships are removed.\n\n` +
-    `Type the user's CN to confirm:\n${cn}`);
-  if (typed === null) return;
-  if (typed.trim() !== cn) { setStatus(status, "CN did not match — not deleted.", "err"); return; }
-  setStatus(status, "Deleting…");
-  const r = await jsonReq("/admin/users", { method: "DELETE", body: JSON.stringify({ dn }) });
-  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Delete failed", "err"); return; }
-  setStatus(status, `Deleted (${r.body.jobs_retained} job(s) retained).`, "ok");
-  setTimeout(() => { closeModal(); refreshAdminUsers(); }, 800);
+  const dn = document.getElementById("user-edit-dn").dataset.dn;
+  const pw = document.getElementById("user-edit-password").value;
+  if (!pw) { setStatus(status, "Enter a password to set.", "err"); return; }
+  setStatus(status, "Setting password…");
+  const r = await jsonReq("/admin/users/set-password", {
+    method: "POST",
+    body: JSON.stringify({ dn, password: pw }),
+  });
+  if (r.ok) {
+    document.getElementById("user-edit-password").value = "";
+    setStatus(status, "Password set", "ok");
+  } else {
+    setStatus(status, (r.body && r.body.error) || "Failed to set password", "err");
+  }
 });
 
 document.getElementById("user-edit-save-btn").addEventListener("click", async () => {
@@ -1629,6 +1935,8 @@ document.getElementById("user-edit-save-btn").addEventListener("click", async ()
   const dn = document.getElementById("user-edit-dn").dataset.dn;
   const payload = {
     dn,
+    first_name: document.getElementById("user-edit-first").value.trim(),
+    last_name: document.getElementById("user-edit-last").value.trim(),
     email: document.getElementById("user-edit-email").value.trim(),
     is_admin: document.getElementById("user-edit-admin").checked,
     is_active: document.getElementById("user-edit-active").checked,
@@ -1643,8 +1951,40 @@ document.getElementById("user-edit-save-btn").addEventListener("click", async ()
     setStatus(status, (r.body && r.body.error) || "Save failed", "err");
     return;
   }
-  setStatus(status, "Saved", "ok");
-  setTimeout(() => { closeModal(); refreshAdminUsers(); }, 600);
+  const newName = r.body && r.body.username;
+  setStatus(status, newName ? `Saved — username: ${newName}` : "Saved", "ok");
+  setTimeout(() => { closeModal(); refreshAdminUsers(); }, 700);
+});
+
+document.getElementById("user-edit-delete-btn").addEventListener("click", async () => {
+  const status = document.getElementById("user-edit-status");
+  const btn = document.getElementById("user-edit-delete-btn");
+  const dn = btn.dataset.dn;
+  const cn = btn.dataset.cn || dn;
+  // Destructive: require the admin to type the CN to confirm, not just click.
+  const typed = prompt(
+    `Delete user "${cn}"?\n\nTheir group memberships are removed. Their existing ` +
+    `certificate jobs are KEPT as historical records.\n\n` +
+    `Type the name to confirm:`, "");
+  if (typed === null) return;                 // cancelled
+  if (typed.trim() !== cn) {
+    setStatus(status, "Name didn't match - not deleted.", "err");
+    return;
+  }
+  setStatus(status, "Deleting…");
+  const r = await jsonReq("/admin/users", {
+    method: "DELETE",
+    body: JSON.stringify({ dn }),
+  });
+  if (!r.ok) {
+    setStatus(status, (r.body && r.body.error) || "Delete failed", "err");
+    return;
+  }
+  const kept = r.body && r.body.jobs_retained;
+  setStatus(status,
+    "Deleted" + (kept ? ` (${kept} job record${kept === 1 ? "" : "s"} retained)` : ""),
+    "ok");
+  setTimeout(() => { closeModal(); refreshAdminUsers(); }, 800);
 });
 
 // ===== Bulk job cleanup =====
@@ -1837,75 +2177,7 @@ async function refreshOrphanCerts() {
 }
 document.getElementById("admin-orphan-certs-refresh").addEventListener("click", refreshOrphanCerts);
 
-// ===== Auth (local username/password mode) =====
-let AUTH = { mode: "cac", authenticated: false, can_register: false };
-let authRegisterMode = false;
-
-async function authGate() {
-  const r = await jsonReq("/auth/status");
-  if (r.ok && r.body) AUTH = r.body;
-  const logoutBtn = document.getElementById("nav-logout");
-  if (logoutBtn) logoutBtn.hidden = !(AUTH.mode === "local" && AUTH.authenticated);
-  if (AUTH.mode === "local" && !AUTH.authenticated) {
-    showAuthGate();
-    return false;   // stop init() until the user logs in
-  }
-  document.getElementById("auth-gate").hidden = true;
-  return true;
-}
-
-function applyAuthMode() {
-  const reg = authRegisterMode;
-  document.getElementById("auth-gate-title").textContent = reg ? "Create your account" : "Sign in";
-  document.getElementById("auth-gate-sub").textContent = reg
-    ? "Choose a username and password — this becomes your identity. The first account becomes the administrator."
-    : "Sign in to the CSR Dashboard.";
-  document.getElementById("auth-submit-btn").textContent = reg ? "Register" : "Sign in";
-  document.getElementById("auth-password").setAttribute(
-    "autocomplete", reg ? "new-password" : "current-password");
-  const toggle = document.getElementById("auth-gate-toggle");
-  toggle.hidden = !AUTH.can_register;   // no register link when registration is closed
-  toggle.textContent = reg ? "Have an account? Sign in" : "Need an account? Register";
-}
-
-function showAuthGate() {
-  authRegisterMode = false;
-  applyAuthMode();
-  document.getElementById("auth-gate").hidden = false;
-  setTimeout(() => document.getElementById("auth-username").focus(), 50);
-}
-
-async function submitAuth() {
-  const status = document.getElementById("auth-gate-status");
-  const username = document.getElementById("auth-username").value.trim();
-  const password = document.getElementById("auth-password").value;
-  if (!username || !password) { setStatus(status, "Username and password required", "err"); return; }
-  setStatus(status, authRegisterMode ? "Creating account…" : "Signing in…");
-  const r = await jsonReq(authRegisterMode ? "/auth/register" : "/auth/login",
-    { method: "POST", body: JSON.stringify({ username, password }) });
-  if (!r.ok) {
-    setStatus(status, (r.body && r.body.error) || "Failed", "err");
-    return;
-  }
-  location.reload();   // re-run init() with the new session
-}
-
-document.getElementById("auth-gate-toggle")?.addEventListener("click", () => {
-  authRegisterMode = !authRegisterMode;
-  applyAuthMode();
-  setStatus(document.getElementById("auth-gate-status"), "");
-});
-document.getElementById("auth-submit-btn")?.addEventListener("click", submitAuth);
-document.getElementById("auth-password")?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") submitAuth();
-});
-document.getElementById("nav-logout")?.addEventListener("click", async () => {
-  await jsonReq("/auth/logout", { method: "POST" });
-  location.reload();
-});
-
 async function init() {
-  if (!(await authGate())) return;
   await jsonReq("/session");
   await loadMe();
   await loadMyGroups();
@@ -2854,6 +3126,14 @@ document.getElementById("email-gate-input")?.addEventListener("keydown", (e) => 
 const _origInit = init;
 init = async function () {
   await _origInit();
+  // Show the Sign out button only for password (local session) logins. A CAC
+  // user can't truly "sign out" - the cert is re-presented on every request -
+  // so the button would just bounce them back in. Base this on HOW the user
+  // actually authenticated (currentUser.via), not the server's auth mode.
+  if (currentUser && currentUser.via === "local") {
+    const lo = document.getElementById("nav-logout");
+    if (lo) lo.hidden = false;
+  }
   if (currentUser && !currentUser.email) {
     // Email gate blocks everything, including the tour. The tour runs
     // after a successful save instead (see saveEmailGate).
@@ -3028,4 +3308,6 @@ document.getElementById("user-template-create-btn")?.addEventListener("click", a
   refreshUserTemplates();
 });
 
-if (accepted) init();
+// Boot: always show the login gate first; it decides CAC vs password and
+// runs init() once the user is authenticated.
+bootstrapAuth();

@@ -87,11 +87,6 @@ case "$cmd" in
             audit "$cmd ok name=$fname"
         fi
         ;;
-    list-issued)
-        # Read the issued dir AS ROOT so the admin orphan-certs listing works
-        # even when csrapi can't read /home/ansible/issued (STIG: root-owned).
-        list_files "$ISSUED_DIR" '*.cer'
-        ;;
     delete-issued)
         delete_file "$ISSUED_DIR" '^[A-Za-z0-9._-]+\.cer$' "${1:-}"
         ;;
@@ -110,7 +105,6 @@ Usage: $0 <subcommand> [args]
                                     (codesign/ocsp/timestamp cannot combine)
   list-csrs / get-csr / delete-csr <name>
   list-keys / get-key / delete-key <name>
-  list-issued
   chown-issued / delete-issued <name>
 EOF
         exit 64

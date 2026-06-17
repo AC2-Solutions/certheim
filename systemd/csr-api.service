@@ -16,8 +16,6 @@ RestartSec=5
 ProtectSystem=full
 ProtectHome=false
 PrivateTmp=true
-# /etc/csr-dashboard is writable so the admin UI can persist email.conf
-# (and the integrations config) under ProtectSystem=full.
 ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /home/ansible/issued /etc/csr-dashboard
 NoNewPrivileges=false
 

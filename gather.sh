@@ -18,6 +18,9 @@ cp -v /etc/systemd/system/csr-expiry-warn.service systemd/
 cp -v /etc/systemd/system/csr-expiry-warn.timer   systemd/
 cp -v /etc/systemd/system/csr-api.service         systemd/
 cp -v /usr/local/sbin/csrbackup            tools/csrbackup.sh
+cp -v /usr/local/sbin/csr-bootstrap-admin  tools/csr-bootstrap-admin 2>/dev/null || true
+cp -v /usr/local/sbin/csr-uninstall        tools/csr-uninstall.sh 2>/dev/null || true
+cp -v /usr/local/sbin/csr-set-auth         tools/csr-set-auth 2>/dev/null || true
 # nginx include - adjust to your actual filename:
 cp -v /etc/nginx/rcdn01.d/30-csr.conf    nginx/
 # sanitized config example (live email.conf is intentionally NOT tracked)
