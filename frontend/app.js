@@ -225,8 +225,9 @@ document.getElementById("login-show-register")?.addEventListener("click", () => 
 });
 document.getElementById("register-show-login")?.addEventListener("click", () => {
   document.getElementById("register-block").hidden = true;
-  document.getElementById("login-agree-row").hidden = false;
-  bootstrapAuth();  // re-render the login side
+  // Don't force the agreement visible - bootstrapAuth() re-renders the login
+  // side and shows it only if a banner is configured (else it stays hidden).
+  bootstrapAuth();
 });
 
 // Live password-policy hints during registration.
