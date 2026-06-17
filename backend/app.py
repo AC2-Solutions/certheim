@@ -210,6 +210,25 @@ DASHBOARD_URL_FALLBACK = "https://nipat-pl-rcdn01.eucom.mil/csr/"
 WEBHOOK_TYPES = ("generic", "slack", "teams", "discord")
 
 
+def _dashboard_base():
+    """Configured dashboard base URL (from email.conf), else the fallback."""
+    try:
+        u = (notify.get_settings() or {}).get("dashboard_url") or DASHBOARD_URL_FALLBACK
+    except Exception:
+        u = DASHBOARD_URL_FALLBACK
+    return u or DASHBOARD_URL_FALLBACK
+
+
+def _job_link(job_id):
+    """Deep link to a specific job's detail (the SPA opens #job-<id>)."""
+    if not job_id:
+        return None
+    base = _dashboard_base()
+    if not base.endswith("/"):
+        base += "/"
+    return f"{base}#job-{job_id}"
+
+
 def _webhook_payload(event, data):
     """Build the canonical JSON payload posted to generic webhooks."""
     return {
@@ -237,6 +256,14 @@ def _webhook_summary(event, data):
         bits.append(f"host: {data['target_host']}")
     if data.get("cert_type"):
         bits.append(f"type: {data['cert_type']}")
+    # assignee = the group the job belongs to (best-effort name lookup)
+    if data.get("group_id"):
+        try:
+            grp = _group_by_id(data["group_id"])
+            if grp:
+                bits.append(f"group: {grp['name']}")
+        except Exception:
+            pass
     if data.get("job_id"):
         bits.append(f"job: {data['job_id']}")
     who = (data.get("requester_email") or data.get("submitter_email")
@@ -247,16 +274,32 @@ def _webhook_summary(event, data):
 
 
 def _format_webhook(wtype, event, data):
-    """POST body for a webhook, formatted for its integration type."""
+    """POST body for a webhook, formatted for its integration type. Includes a
+    clickable "Open job" link/button to the job's dashboard deep link."""
     if wtype not in ("slack", "teams", "discord"):
         return _webhook_payload(event, data)
     title, detail = _webhook_summary(event, data)
+    link = _job_link(data.get("job_id"))
+
     if wtype == "slack":
-        return {"text": f":bell: *{title}*" + (f"\n{detail}" if detail else "")}
+        text = f":bell: *{title}*" + (f"\n{detail}" if detail else "")
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+        if link:
+            blocks.append({"type": "actions", "elements": [{
+                "type": "button", "url": link,
+                "text": {"type": "plain_text", "text": "Open job"}}]})
+        return {"text": text, "blocks": blocks}  # text = notification fallback
+
     if wtype == "discord":
-        return {"content": f"**{title}**" + (f"\n{detail}" if detail else "")}
-    # teams (Office 365 connector MessageCard)
-    return {
+        embed = {"title": title, "color": 1973492}
+        if detail:
+            embed["description"] = detail
+        if link:
+            embed["url"] = link
+        return {"embeds": [embed]}
+
+    # teams (Office 365 connector MessageCard) - OpenUri action button
+    card = {
         "@type": "MessageCard",
         "@context": "http://schema.org/extensions",
         "summary": title,
@@ -264,6 +307,11 @@ def _format_webhook(wtype, event, data):
         "title": title,
         "text": detail or title,
     }
+    if link:
+        card["potentialAction"] = [{
+            "@type": "OpenUri", "name": "Open job",
+            "targets": [{"os": "default", "uri": link}]}]
+    return card
 
 
 def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):

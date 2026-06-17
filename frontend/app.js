@@ -1483,6 +1483,16 @@ const navDashBtn = document.getElementById("nav-dashboard");
 const navAdminBtn = document.getElementById("nav-admin");
 
 function applyRoute() {
+  // Deep link from a chat notification: #job-<id> opens that job's detail.
+  if ((location.hash || "").startsWith("#job-")) {
+    mainView.hidden = false;
+    adminView.hidden = true;
+    navDashBtn.classList.add("active");
+    navAdminBtn.classList.remove("active");
+    const jobId = decodeURIComponent(location.hash.slice(5));
+    if (jobId) openDetailModal(jobId);
+    return;
+  }
   const wantAdmin = location.hash === "#admin" && currentUser && currentUser.is_admin;
   if (wantAdmin) {
     mainView.hidden = true;
