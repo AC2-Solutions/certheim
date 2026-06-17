@@ -29,6 +29,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, Response, abort, g
 
 import notify
+import capabilities
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -381,6 +382,8 @@ def _slack_interactive_ready():
     configured (http=signing secret, socket=app token)."""
     if get_setting("slack_interactive") != "1":
         return False
+    if not capabilities.available("integrations.slack.interactive"):
+        return False
     mode = get_setting("slack_interactive_mode") or "http"
     if mode == "socket":
         return bool(get_setting("slack_app_token"))
@@ -480,11 +483,18 @@ def fire_webhooks(event, data):
         except (ValueError, TypeError):
             headers = {}
 
+        wtype = r["type"] if "type" in r.keys() else "generic"
+        # Chat integrations need outbound internet; skip them where the
+        # capability isn't available (e.g. air-gapped). Generic webhooks may be
+        # internal, so they're always allowed.
+        if wtype in ("slack", "teams", "discord") \
+                and not capabilities.available("integrations.chat"):
+            continue
+
         try:
             _webhook_pool.submit(
                 _dispatch_webhook_worker,
-                r["id"], r["name"], r["url"], event, data, headers,
-                r["type"] if "type" in r.keys() else "generic",
+                r["id"], r["name"], r["url"], event, data, headers, wtype,
             )
         except RuntimeError:
             # Pool shutdown during interpreter exit, etc. Best-effort.
@@ -1064,6 +1074,9 @@ def set_setting(key, value):
             "INSERT INTO app_settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value))
+
+# Let the capability resolver read admin-declared env flags (cap_*).
+capabilities.configure(get_setting=get_setting)
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
@@ -4497,6 +4510,11 @@ def admin_put_email_config():
                 return jsonify(error="port out of range"), 400
             if k == "timeout" and not (1 <= iv <= 120):
                 return jsonify(error="timeout out of range (1-120s)"), 400
+    if method in ("mailgun", "sendgrid") \
+            and not capabilities.available("notify.email.api"):
+        return jsonify(error="HTTP email providers (Mailgun/SendGrid) are not "
+                             "available in this deployment (no outbound "
+                             "internet). Use an SMTP/SMG relay instead."), 400
     if method in ("smg", "smtp"):
         host = (fields.get("host") or "").strip()
         if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
@@ -5014,6 +5032,15 @@ def admin_put_slack_config():
     log_event("admin_slack_config", "ok",
               mode=get_setting("slack_interactive_mode") or "http")
     return jsonify(ok=True)
+
+
+@app.get("/api/admin/capabilities")
+@require_admin
+def admin_capabilities():
+    """What this deployment can do: per-capability availability + reason, plus
+    the detected/declared environment. Drives the admin UI's show/disable/why."""
+    return jsonify(capabilities=capabilities.all_status(),
+                   environment=capabilities.env_caps())
 
 
 @app.post("/api/slack/interact")

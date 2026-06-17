@@ -10,6 +10,7 @@ PAIRS=(
   "VERSION|/opt/csr-dashboard/VERSION"
   "backend/app.py|/opt/csr-dashboard/app.py"
   "backend/notify.py|/opt/csr-dashboard/notify.py"
+  "backend/capabilities.py|/opt/csr-dashboard/capabilities.py"
   "backend/import_certs.py|/opt/csr-dashboard/import_certs.py"
   "frontend/index.html|/var/www/csr/index.html"
   "frontend/app.js|/var/www/csr/app.js"

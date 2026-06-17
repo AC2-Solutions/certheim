@@ -28,6 +28,7 @@ MANIFEST=(
   "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
   "backend/app.py            /opt/csr-dashboard/app.py                         root:csrapi 0640 backend"
   "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
+  "backend/capabilities.py   /opt/csr-dashboard/capabilities.py                root:csrapi 0640 backend"
   "backend/import_certs.py   /opt/csr-dashboard/import_certs.py                root:csrapi 0640 backend"
   "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
   "frontend/app.js           /var/www/csr/app.js                               root:nginx  0640 frontend"
