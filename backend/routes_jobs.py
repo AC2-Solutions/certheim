@@ -90,7 +90,7 @@ def list_jobs():
     a = request.args
     where, params = [], []
     if status := a.get("status"):
-        if status not in ("pending", "issued", "failed", "cancelled", "expired"):
+        if status not in ("pending", "issued", "failed", "cancelled", "expired", "revoked"):
             return jsonify(error="invalid status"), 400
         where.append("status = ?"); params.append(status)
     if ew := a.get("expiring_within"):
@@ -193,6 +193,14 @@ def get_job(job_id):
         row["status"] == "pending"
         and (user_is_signer or user_is_admin)
         and resolve_signing_policy(_tid)["signer_backend"] != "manual"
+        and capabilities.available("ca.signing.openbao")
+    )
+    # Revoke is offered on issued certs that came from the automated (OpenBao)
+    # backend, for a signer/admin, when OpenBao is usable here.
+    out["can_revoke"] = bool(
+        row["status"] == "issued"
+        and (user_is_signer or user_is_admin)
+        and resolve_signing_policy(_tid)["signer_backend"] == "openbao"
         and capabilities.available("ca.signing.openbao")
     )
     log_event("get_job", "ok", job_id=job_id)
@@ -586,7 +594,7 @@ def export_jobs_csv():
     a = request.args
     where, params = [], []
     if status := a.get("status"):
-        if status in ("pending", "issued", "failed", "cancelled", "expired"):
+        if status in ("pending", "issued", "failed", "cancelled", "expired", "revoked"):
             where.append("status = ?"); params.append(status)
     if source := a.get("source"):
         if source in ("rhel", "external"):

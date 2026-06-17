@@ -13,12 +13,13 @@ dict, so that drops in without touching this flow.
 """
 from flask import Blueprint, request, jsonify, g
 import os
+import time
 import capabilities
 import sign
 from app import (  # noqa: E402
     db, get_setting, set_setting, require_auth, require_admin, require_csrf,
     log_event, _is_signer, _attach_signed_cert, CompletionError, JOB_ID_RE,
-    resolve_signing_policy)
+    resolve_signing_policy, _cert_serial_colons, fire_webhooks)
 
 bp = Blueprint("signing", __name__)
 
@@ -40,6 +41,7 @@ def _config_view():
                                    and os.environ.get("CSR_OPENBAO_SECRET_ID")),
         "backends": list(sign.BACKENDS),
         "capability": cap,
+        "crl_ocsp": sign.crl_ocsp_urls(),
     }
 
 
@@ -102,6 +104,59 @@ def sign_job(job_id):
                    expires_at=completed["expires_at"],
                    warnings=completed["warnings"],
                    chain_pem=result.chain_pem)
+
+
+@bp.post("/api/jobs/<job_id>/revoke")
+@require_auth
+@require_csrf
+def revoke_job(job_id):
+    """Revoke an issued cert via the CA backend that produced it. Signer/admin
+    only. Only certs from an automated (OpenBao) backend are revocable in-UI;
+    others must be revoked at the CA."""
+    if not JOB_ID_RE.match(job_id):
+        return jsonify(error="invalid job id"), 400
+    actor_dn = g.identity["dn"]
+    if not (g.user.get("is_admin") or _is_signer(actor_dn)):
+        log_event("revoke", "deny_not_signer", job_id=job_id, dn=actor_dn[:128])
+        return jsonify(error="not authorized to revoke (signer or admin only)"), 403
+
+    with db() as conn:
+        row = conn.execute(
+            "SELECT status, cert_pem, template_id, target_host "
+            "FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        return jsonify(error="job not found"), 404
+    if row["status"] != "issued":
+        return jsonify(error=f"job in status '{row['status']}', only issued "
+                             "certificates can be revoked"), 409
+
+    backend = resolve_signing_policy(row["template_id"])["signer_backend"]
+    if backend != "openbao":
+        return jsonify(error="this certificate was not issued by an automated "
+                             "backend; revoke it at your CA"), 409
+    if not capabilities.available(CAP_OPENBAO):
+        return jsonify(error="OpenBao is not available in this deployment"), 409
+
+    serial = _cert_serial_colons(row["cert_pem"] or "")
+    if not serial:
+        return jsonify(error="could not read the certificate serial"), 500
+    try:
+        rev_time = sign.revoke_cert(serial)
+    except sign.SignError as e:
+        log_event("revoke", "backend_error", job_id=job_id, error=str(e)[:200])
+        return jsonify(error=f"revoke failed: {e}"), 502
+
+    now = time.time()
+    with db() as conn:
+        conn.execute("UPDATE jobs SET status='revoked', revoked_at=?, "
+                     "revoked_by_dn=? WHERE id=?", (now, actor_dn, job_id))
+    log_event("revoke", "ok", job_id=job_id, serial=serial, actor=actor_dn[:128])
+    fire_webhooks("job.revoked", {
+        "job_id": job_id, "target_host": row["target_host"],
+        "revoked_by_dn": actor_dn, "revoked_by_cn": None, "serial": serial,
+    })
+    return jsonify(ok=True, status="revoked", serial=serial,
+                   revocation_time=rev_time)
 
 
 @bp.get("/api/admin/signing-config")

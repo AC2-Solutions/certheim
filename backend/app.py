@@ -195,6 +195,7 @@ def _normalize_cert_types(value):
 WEBHOOK_EVENTS = (
     "job.created",
     "job.issued",
+    "job.revoked",
     "job.cancelled",
     "job.failed",
     "feedback.submitted",
@@ -771,6 +772,11 @@ def init_db():
     # so the sign route resolves THAT template's backend/role/ttl (not a global).
     if "template_id" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN template_id INTEGER")
+    # v2 revocation: when an issued cert is revoked (status -> 'revoked') + by whom.
+    if "revoked_at" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN revoked_at REAL")
+    if "revoked_by_dn" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN revoked_by_dn TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -1794,6 +1800,25 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
 
     return {"expires_at": expires_at, "warnings": warnings,
             "target_host": row["target_host"]}
+
+
+def _cert_serial_colons(cert_pem):
+    """The certificate serial as OpenBao-style colon-hex (lowercase), parsed
+    from the stored PEM, e.g. '39:dd:2a:...'. None if unreadable. Used to revoke
+    without storing the serial separately."""
+    try:
+        proc = subprocess.run(["openssl", "x509", "-noout", "-serial"],
+                              input=cert_pem, capture_output=True, text=True, timeout=10)
+        if proc.returncode != 0:
+            return None
+        raw = proc.stdout.strip().split("=", 1)[-1].strip().lower()
+        if not raw:
+            return None
+        if len(raw) % 2:
+            raw = "0" + raw
+        return ":".join(raw[i:i + 2] for i in range(0, len(raw), 2))
+    except Exception:
+        return None
 
 
 def _coerce_template_id(value):
