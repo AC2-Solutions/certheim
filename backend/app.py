@@ -597,13 +597,36 @@ def db():
         conn.close()
 
 # ---------- Common helpers ----------
+def _client_ip():
+    """The real client IP for the no-mTLS fallback identity.
+
+    Behind nginx the socket peer (request.remote_addr) is always the proxy
+    (127.0.0.1), so using it makes every user collapse to 'ip:127.0.0.1'.
+    When the request actually arrived over loopback (i.e. from our nginx -
+    the gunicorn backend binds 127.0.0.1:5002 and is unreachable directly,
+    so these headers can't be spoofed by a remote client), trust the
+    proxy-set X-Real-IP / first X-Forwarded-For hop instead."""
+    peer = request.remote_addr or ""
+    if peer in ("127.0.0.1", "::1", ""):
+        xri = request.headers.get("X-Real-IP", "").strip()
+        if xri:
+            return xri
+        xff = request.headers.get("X-Forwarded-For", "").strip()
+        if xff:
+            return xff.split(",")[0].strip()
+    return peer or "unknown"
+
+
 def client_identity():
     dn = request.headers.get("X-Client-DN", "").strip()
     verify = request.headers.get("X-Client-Verify", "").strip()
     serial = request.headers.get("X-Client-Serial", "").strip()
+    # Only a SUCCESS-verified client cert (CAC mTLS) yields a DN identity.
+    # Without mTLS we fall back to the real client IP - NOT the proxy's
+    # 127.0.0.1 - so distinct users aren't merged into one account.
     if verify == "SUCCESS" and dn:
         return {"dn": dn, "serial": serial}
-    return {"dn": f"ip:{request.remote_addr}", "serial": "-"}
+    return {"dn": f"ip:{_client_ip()}", "serial": "-"}
 
 def log_event(action, result, **extra):
     parts = [
