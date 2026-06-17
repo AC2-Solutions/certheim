@@ -1638,16 +1638,52 @@ document.getElementById("admin-template-create-btn")?.addEventListener("click", 
   refreshAdminTemplates();
 });
 
+// Field set per method - must match EMAIL_METHODS in notify.py. Input ids are
+// `${method}-${field}`; secret fields show a "(stored)" hint instead of a value.
+const EMAIL_METHOD_FIELDS = {
+  smg:      ["host", "port", "timeout"],
+  smtp:     ["host", "port", "timeout", "security", "username", "password"],
+  mailgun:  ["api_key", "domain", "region"],
+  sendgrid: ["api_key"],
+};
+const EMAIL_SECRET_FIELDS = new Set(["password", "api_key"]);
+
+function _emailToggleMethod() {
+  const m = document.getElementById("email-cfg-method").value;
+  document.querySelectorAll(".email-method").forEach(d => {
+    d.hidden = (d.dataset.emethod !== m);
+  });
+}
+document.getElementById("email-cfg-method")?.addEventListener("change", _emailToggleMethod);
+
 async function loadEmailConfig() {
   const r = await jsonReq("/admin/email-config");
   if (!r.ok) return;
   const c = r.body;
-  document.getElementById("email-cfg-host").value = c.host || "";
-  document.getElementById("email-cfg-port").value = c.port || 25;
-  document.getElementById("email-cfg-timeout").value = c.timeout || 10;
+  // method dropdown
+  const sel = document.getElementById("email-cfg-method");
+  sel.replaceChildren(...(c.available_methods || []).map(o => {
+    const opt = document.createElement("option");
+    opt.value = o.key; opt.textContent = o.label; return opt;
+  }));
+  sel.value = c.method || "smg";
+  // per-method field values (secrets come back blank with a *_set flag)
+  const M = c.methods || {};
+  for (const [m, vals] of Object.entries(M)) {
+    for (const [f, v] of Object.entries(vals)) {
+      if (f.endsWith("_set")) {
+        const hint = document.getElementById(`${m}-${f.slice(0, -4)}-hint`);
+        if (hint) hint.textContent = v ? "(stored — leave blank to keep)" : "(not set)";
+        continue;
+      }
+      const el = document.getElementById(`${m}-${f}`);
+      if (el) el.value = v;
+    }
+  }
   document.getElementById("email-cfg-from").value = c.from_address || "";
   document.getElementById("email-cfg-cc").value = c.cc || "";
   document.getElementById("email-cfg-url").value = c.dashboard_url || "";
+  _emailToggleMethod();
   const state = document.getElementById("email-config-state");
   if (c.enabled) {
     state.innerHTML = '<span class="pill pill-ok">notifications enabled</span>';
@@ -1658,13 +1694,17 @@ async function loadEmailConfig() {
 
 document.getElementById("email-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("email-cfg-status");
+  const method = document.getElementById("email-cfg-method").value;
+  const fields = {};
+  (EMAIL_METHOD_FIELDS[method] || []).forEach(f => {
+    const el = document.getElementById(`${method}-${f}`);
+    if (el) fields[f] = el.value.trim();
+  });
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/email-config", {
     method: "PUT",
     body: JSON.stringify({
-      host: document.getElementById("email-cfg-host").value.trim(),
-      port: parseInt(document.getElementById("email-cfg-port").value, 10),
-      timeout: parseInt(document.getElementById("email-cfg-timeout").value, 10),
+      method, fields,
       from_address: document.getElementById("email-cfg-from").value.trim(),
       cc: document.getElementById("email-cfg-cc").value.trim(),
       dashboard_url: document.getElementById("email-cfg-url").value.trim(),

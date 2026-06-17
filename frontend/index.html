@@ -871,7 +871,7 @@
       <button type="button" data-panel="groups">Groups</button>
       <button type="button" data-panel="templates">Templates</button>
       <button type="button" data-panel="webhooks">Webhooks</button>
-      <button type="button" data-panel="email">Email (SMG)</button>
+      <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -1089,25 +1089,77 @@
 
     <section class="card admin-panel" data-panel="email">
       <div class="card-header">
-        <h2>Email (SMG) settings</h2>
+        <h2>Email settings</h2>
         <button id="admin-email-test-btn" class="secondary" type="button">Send test email</button>
       </div>
-      <p class="hint">SMTP relay configuration for notifications, read from
+      <p class="hint">Notification delivery method &amp; settings, read from
          <code>/etc/csr-dashboard/email.conf</code>.
          Changes here are written back to that file and take effect
          immediately &mdash; no service restart needed.</p>
       <p id="email-config-state" class="status"></p>
-      <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
-        <label>SMG host/IP:
-          <input type="text" id="email-cfg-host" class="form-input" style="width:220px">
-        </label>
-        <label>Port:
-          <input type="number" id="email-cfg-port" min="1" max="65535" style="width:80px">
-        </label>
-        <label>Timeout (s):
-          <input type="number" id="email-cfg-timeout" min="1" max="120" style="width:70px">
-        </label>
+
+      <label for="email-cfg-method" class="textarea-label">Delivery method</label>
+      <select id="email-cfg-method" class="form-input" style="max-width:320px"></select>
+
+      <!-- SMG: plain SMTP relay -->
+      <div class="email-method" data-emethod="smg" hidden>
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>Relay host/IP:
+            <input type="text" id="smg-host" class="form-input" style="width:220px"></label>
+          <label>Port:
+            <input type="number" id="smg-port" min="1" max="65535" style="width:80px"></label>
+          <label>Timeout (s):
+            <input type="number" id="smg-timeout" min="1" max="120" style="width:70px"></label>
+        </div>
       </div>
+
+      <!-- SMTP: authenticated / TLS -->
+      <div class="email-method" data-emethod="smtp" hidden>
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>SMTP host:
+            <input type="text" id="smtp-host" class="form-input" style="width:220px"></label>
+          <label>Port:
+            <input type="number" id="smtp-port" min="1" max="65535" style="width:80px"></label>
+          <label>Security:
+            <select id="smtp-security">
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">SSL/TLS</option>
+              <option value="none">None</option>
+            </select></label>
+          <label>Timeout (s):
+            <input type="number" id="smtp-timeout" min="1" max="120" style="width:70px"></label>
+        </div>
+        <label for="smtp-username" class="textarea-label">Username</label>
+        <input type="text" id="smtp-username" class="form-input" autocomplete="off">
+        <label for="smtp-password" class="textarea-label">Password
+          <span class="hint" id="smtp-password-hint"></span></label>
+        <input type="password" id="smtp-password" class="form-input" autocomplete="new-password">
+      </div>
+
+      <!-- Mailgun: HTTP API -->
+      <div class="email-method" data-emethod="mailgun" hidden>
+        <label for="mailgun-api_key" class="textarea-label">API key
+          <span class="hint" id="mailgun-api_key-hint"></span></label>
+        <input type="password" id="mailgun-api_key" class="form-input" autocomplete="new-password">
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>Sending domain:
+            <input type="text" id="mailgun-domain" class="form-input" style="width:220px"
+                   placeholder="mg.example.com"></label>
+          <label>Region:
+            <select id="mailgun-region">
+              <option value="us">US</option>
+              <option value="eu">EU</option>
+            </select></label>
+        </div>
+      </div>
+
+      <!-- SendGrid: HTTP API -->
+      <div class="email-method" data-emethod="sendgrid" hidden>
+        <label for="sendgrid-api_key" class="textarea-label">API key
+          <span class="hint" id="sendgrid-api_key-hint"></span></label>
+        <input type="password" id="sendgrid-api_key" class="form-input" autocomplete="new-password">
+      </div>
+
       <label for="email-cfg-from" class="textarea-label">From address</label>
       <input type="email" id="email-cfg-from" class="form-input" placeholder="noreply-csr@rcdn.eucom.mil">
       <label for="email-cfg-cc" class="textarea-label">Global CC <span class="hint">(optional, comma-separated &mdash; copied on every notification)</span></label>

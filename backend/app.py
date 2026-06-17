@@ -4272,22 +4272,17 @@ def admin_get_email_config():
 def admin_put_email_config():
     payload = request.get_json(silent=True) or {}
 
-    host = (payload.get("host") or "").strip()
+    method = (payload.get("method") or "smg").strip().lower()
+    if method not in notify.EMAIL_METHODS:
+        return jsonify(error="unknown email method"), 400
+    fields = payload.get("fields") or {}
+    if not isinstance(fields, dict):
+        return jsonify(error="fields must be an object"), 400
     from_address = (payload.get("from_address") or "").strip()
     dashboard_url = (payload.get("dashboard_url") or "").strip()
     cc = (payload.get("cc") or "").strip()
 
-    try:
-        port = int(payload.get("port", 25))
-        timeout = int(payload.get("timeout", 10))
-    except (TypeError, ValueError):
-        return jsonify(error="port and timeout must be integers"), 400
-    if not (1 <= port <= 65535):
-        return jsonify(error="port out of range"), 400
-    if not (1 <= timeout <= 120):
-        return jsonify(error="timeout out of range (1-120s)"), 400
-    if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
-        return jsonify(error="smtp host is required (hostname or IP)"), 400
+    # Common validation.
     if from_address:
         ok_e, from_address, err_e = _validate_email(from_address)
         if not ok_e or not from_address:
@@ -4301,16 +4296,37 @@ def admin_put_email_config():
     if dashboard_url and not dashboard_url.startswith("https://"):
         return jsonify(error="dashboard_url must start with https://"), 400
 
+    # Method-specific shape checks (notify reports "disabled" if a required
+    # connection field is missing, but catch the obvious ones here).
+    for k in ("port", "timeout"):
+        v = fields.get(k)
+        if v not in (None, ""):
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                return jsonify(error=f"{k} must be an integer"), 400
+            if k == "port" and not (1 <= iv <= 65535):
+                return jsonify(error="port out of range"), 400
+            if k == "timeout" and not (1 <= iv <= 120):
+                return jsonify(error="timeout out of range (1-120s)"), 400
+    if method in ("smg", "smtp"):
+        host = (fields.get("host") or "").strip()
+        if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
+            return jsonify(error="host is required (hostname or IP)"), 400
+    if method == "mailgun":
+        dom = (fields.get("domain") or "").strip()
+        if not dom or not re.match(r"^[A-Za-z0-9.-]+$", dom):
+            return jsonify(error="mailgun sending domain is required"), 400
+
     ok, reason = notify.save_settings({
-        "host": host, "port": port, "timeout": timeout,
-        "from_address": from_address, "cc": cc,
-        "dashboard_url": dashboard_url,
+        "method": method, "fields": fields,
+        "from_address": from_address, "cc": cc, "dashboard_url": dashboard_url,
     })
     if not ok:
         log_event("admin_email_config", "error", reason=reason[:128])
         return jsonify(error=reason), 500
 
-    log_event("admin_email_config", "ok", host=host, port=port)
+    log_event("admin_email_config", "ok", method=method)
     return jsonify(ok=True, reason=reason, **notify.get_settings())
 
 

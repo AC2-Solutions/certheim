@@ -20,14 +20,34 @@ Recipient resolution:
     neither set                                         -> skipped (False, "no recipient")
 Plus the static Cc list from email.conf [recipients] cc, deduplicated.
 """
+import base64
 import configparser
+import json
 import smtplib
 import socket
+import ssl
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
 CONFIG_PATH = Path("/etc/csr-dashboard/email.conf")
+
+# Supported delivery methods and the (non-secret + secret) fields each needs.
+# The admin UI shows a method dropdown and only the fields for the selection.
+EMAIL_METHODS = {
+    "smg":      ["host", "port", "timeout"],
+    "smtp":     ["host", "port", "timeout", "security", "username", "password"],
+    "mailgun":  ["api_key", "domain", "region"],
+    "sendgrid": ["api_key"],
+}
+# config.ini section that backs each method (kept distinct from the legacy
+# [smtp] section, which older configs used for the plain relay = "smg").
+_METHOD_SECTION = {"smg": "smg", "smtp": "smtp_auth",
+                   "mailgun": "mailgun", "sendgrid": "sendgrid"}
+_SECRET_FIELDS = {"password", "api_key"}
 
 _config = None
 _enabled = False
@@ -51,16 +71,33 @@ def _load_config():
         return
 
     try:
-        host = cfg.get("smtp", "host", fallback="").strip()
+        method = (cfg.get("email", "method", fallback="smg") or "smg").strip().lower()
         from_addr = cfg.get("from", "address", fallback="").strip()
     except configparser.Error as e:
         _enabled = False
         _disabled_reason = f"missing required section: {e}"
         return
 
-    if not host or host.startswith("REPLACE"):
+    # The connection requirements differ per method.
+    if method == "mailgun":
+        ok_conn = bool(cfg.get("mailgun", "api_key", fallback="").strip()) and \
+                  bool(cfg.get("mailgun", "domain", fallback="").strip())
+        why = "mailgun api_key/domain not set"
+    elif method == "sendgrid":
+        ok_conn = bool(cfg.get("sendgrid", "api_key", fallback="").strip())
+        why = "sendgrid api_key not set"
+    elif method == "smtp":
+        ok_conn = bool(cfg.get("smtp_auth", "host", fallback="").strip())
+        why = "smtp host not set"
+    else:  # smg (default) - legacy configs kept the relay under [smtp]
+        host = (cfg.get("smg", "host", fallback="") or
+                cfg.get("smtp", "host", fallback="")).strip()
+        ok_conn = bool(host) and not host.startswith("REPLACE")
+        why = "smg host is empty or placeholder"
+
+    if not ok_conn:
         _enabled = False
-        _disabled_reason = "smtp host is empty or placeholder"
+        _disabled_reason = why
         return
     if not from_addr or from_addr.startswith("REPLACE"):
         _enabled = False
@@ -95,16 +132,116 @@ def _cn_from_dn(dn):
         return dn
 
 
-def _send_message(msg, recipients):
-    """Low-level send: plain SMTP, no TLS, no auth.
-    Raises on any SMTP or network error."""
-    host = _config.get("smtp", "host").strip()
-    port = _config.getint("smtp", "port", fallback=25)
-    timeout = _config.getint("smtp", "timeout", fallback=10)
+def _method_of(cfg):
+    try:
+        return (cfg.get("email", "method", fallback="smg") or "smg").strip().lower()
+    except Exception:
+        return "smg"
 
+
+def _field(cfg, method, key, fallback=""):
+    """Read a method field from its section, with backward-compat: older
+    configs stored the plain relay (now "smg") under a [smtp] section."""
+    sec = _METHOD_SECTION.get(method, method)
+    val = cfg.get(sec, key, fallback="")
+    if not val and method == "smg" and key in ("host", "port", "timeout"):
+        val = cfg.get("smtp", key, fallback="")
+    return val if val != "" else fallback
+
+
+def _send_message(msg, recipients):
+    """Dispatch to the configured delivery method. Raises on any error
+    (SMTP/socket/OSError, incl. urllib HTTP errors for the API methods)."""
+    method = _method_of(_config)
+    if method == "mailgun":
+        _send_mailgun(msg)
+    elif method == "sendgrid":
+        _send_sendgrid(msg)
+    elif method == "smtp":
+        _send_smtp(msg, recipients)
+    else:
+        _send_smg(msg, recipients)
+
+
+def _send_smg(msg, recipients):
+    """Plain SMTP relay - no auth, no TLS (the SMG path)."""
+    host = _field(_config, "smg", "host").strip()
+    port = int(_field(_config, "smg", "port", 25))
+    timeout = int(_field(_config, "smg", "timeout", 10))
     with smtplib.SMTP(host, port, timeout=timeout) as s:
         s.ehlo()
         s.send_message(msg, to_addrs=recipients)
+
+
+def _send_smtp(msg, recipients):
+    """Authenticated SMTP with optional STARTTLS/SSL."""
+    host = _field(_config, "smtp", "host").strip()
+    port = int(_field(_config, "smtp", "port", 587))
+    timeout = int(_field(_config, "smtp", "timeout", 10))
+    security = (_field(_config, "smtp", "security", "starttls") or "").strip().lower()
+    username = _field(_config, "smtp", "username").strip()
+    password = _field(_config, "smtp", "password")
+    if security == "ssl":
+        smtp = smtplib.SMTP_SSL(host, port, timeout=timeout,
+                                context=ssl.create_default_context())
+    else:
+        smtp = smtplib.SMTP(host, port, timeout=timeout)
+    with smtp as s:
+        s.ehlo()
+        if security == "starttls":
+            s.starttls(context=ssl.create_default_context())
+            s.ehlo()
+        if username:
+            s.login(username, password)
+        s.send_message(msg, to_addrs=recipients)
+
+
+def _msg_parts(msg):
+    """(from, to[], cc[], subject, text) from an EmailMessage, for the HTTP APIs."""
+    to = [a.strip() for a in (msg.get("To") or "").split(",") if a.strip()]
+    cc = [a.strip() for a in (msg.get("Cc") or "").split(",") if a.strip()]
+    if msg.is_multipart():
+        part = msg.get_body(preferencelist=("plain",))
+        text = part.get_content() if part else ""
+    else:
+        text = msg.get_content()
+    return msg.get("From", ""), to, cc, msg.get("Subject", ""), text
+
+
+def _send_mailgun(msg):
+    """Mailgun HTTP API (US or EU). Raises urllib error on non-2xx."""
+    api_key = _field(_config, "mailgun", "api_key")
+    domain = _field(_config, "mailgun", "domain").strip()
+    region = (_field(_config, "mailgun", "region", "us") or "us").strip().lower()
+    base = "https://api.eu.mailgun.net" if region == "eu" else "https://api.mailgun.net"
+    frm, to, cc, subject, text = _msg_parts(msg)
+    fields = [("from", frm), ("subject", subject), ("text", text)]
+    fields += [("to", a) for a in to] + [("cc", a) for a in cc]
+    req = urllib.request.Request(f"{base}/v3/{domain}/messages",
+                                 data=urllib.parse.urlencode(fields).encode(),
+                                 method="POST")
+    auth = base64.b64encode(f"api:{api_key}".encode()).decode()
+    req.add_header("Authorization", f"Basic {auth}")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        r.read()
+
+
+def _send_sendgrid(msg):
+    """SendGrid v3 mail/send HTTP API. Raises urllib error on non-2xx."""
+    api_key = _field(_config, "sendgrid", "api_key")
+    frm, to, cc, subject, text = _msg_parts(msg)
+    pers = {"to": [{"email": a} for a in to]}
+    if cc:
+        pers["cc"] = [{"email": a} for a in cc]
+    body = {"personalizations": [pers], "from": {"email": frm},
+            "subject": subject,
+            "content": [{"type": "text/plain", "value": text}]}
+    req = urllib.request.Request("https://api.sendgrid.com/v3/mail/send",
+                                 data=json.dumps(body).encode(), method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        r.read()
 
 
 def _resolve_recipients(job, group_email):
@@ -412,10 +549,44 @@ def get_settings():
             cfg.read(CONFIG_PATH)
         except configparser.Error:
             pass
+    method = (cfg.get("email", "method", fallback="smg") or "smg").strip().lower()
+    if method not in EMAIL_METHODS:
+        method = "smg"
+
+    _FIELD_DEFAULTS = {"port": "25", "timeout": "10",
+                       "security": "starttls", "region": "us"}
+
+    def rd(m, key):
+        sec = _METHOD_SECTION.get(m, m)
+        v = cfg.get(sec, key, fallback="")
+        if not v and m == "smg" and key in ("host", "port", "timeout"):
+            v = cfg.get("smtp", key, fallback="")
+        return v
+
+    # Per-method field values. Secrets are NEVER sent to the client - we only
+    # report whether one is stored (so the UI can show "leave blank to keep").
+    methods = {}
+    for m, fields in EMAIL_METHODS.items():
+        vals = {}
+        for f in fields:
+            if f in _SECRET_FIELDS:
+                vals[f] = ""
+                vals[f + "_set"] = bool(rd(m, f))
+            else:
+                default = "587" if (f == "port" and m == "smtp") \
+                    else _FIELD_DEFAULTS.get(f, "")
+                vals[f] = rd(m, f) or default
+        methods[m] = vals
+
     return {
-        "host": cfg.get("smtp", "host", fallback=""),
-        "port": cfg.getint("smtp", "port", fallback=25),
-        "timeout": cfg.getint("smtp", "timeout", fallback=10),
+        "method": method,
+        "methods": methods,
+        "available_methods": [
+            {"key": "smg", "label": "SMG relay (plain SMTP)"},
+            {"key": "smtp", "label": "SMTP (authenticated / TLS)"},
+            {"key": "mailgun", "label": "Mailgun (HTTP API)"},
+            {"key": "sendgrid", "label": "SendGrid (HTTP API)"},
+        ],
         "from_address": cfg.get("from", "address", fallback=""),
         "cc": cfg.get("recipients", "cc", fallback=""),
         "dashboard_url": cfg.get("content", "dashboard_url",
@@ -428,22 +599,48 @@ def get_settings():
 
 def save_settings(d):
     """Write new settings to email.conf and hot-reload. Returns (ok, reason).
-    The file must be writable by the service account (csrapi)."""
+    Preserves the OTHER methods' sections and any unchanged secret (a blank
+    api_key/password keeps the stored one). File must be csrapi-writable."""
     cfg = configparser.ConfigParser()
-    cfg["smtp"] = {
-        "host": d.get("host", "").strip(),
-        "port": str(int(d.get("port", 25))),
-        "timeout": str(int(d.get("timeout", 10))),
-    }
-    cfg["from"] = {"address": d.get("from_address", "").strip()}
-    cfg["recipients"] = {"cc": d.get("cc", "").strip()}
-    cfg["content"] = {"dashboard_url": d.get("dashboard_url", "").strip()}
+    if CONFIG_PATH.exists():
+        try:
+            cfg.read(CONFIG_PATH)
+        except configparser.Error:
+            pass
+
+    method = (d.get("method") or "smg").strip().lower()
+    if method not in EMAIL_METHODS:
+        return False, f"unknown email method: {method}"
+
+    if not cfg.has_section("email"):
+        cfg.add_section("email")
+    cfg.set("email", "method", method)
+
+    sec = _METHOD_SECTION[method]
+    if not cfg.has_section(sec):
+        cfg.add_section(sec)
+    incoming = d.get("fields") or {}
+    for f in EMAIL_METHODS[method]:
+        val = incoming.get(f, None)
+        if f in _SECRET_FIELDS:
+            # blank or the mask placeholder => keep the stored secret
+            s = "" if val is None else str(val).strip()
+            if s and s != "********":
+                cfg.set(sec, f, s)
+        else:
+            cfg.set(sec, f, "" if val is None else str(val).strip())
+
+    for section, key, dkey in (("from", "address", "from_address"),
+                               ("recipients", "cc", "cc"),
+                               ("content", "dashboard_url", "dashboard_url")):
+        if not cfg.has_section(section):
+            cfg.add_section(section)
+        cfg.set(section, key, str(d.get(dkey, "")).strip())
 
     try:
         with open(CONFIG_PATH, "w") as f:
             f.write("# /etc/csr-dashboard/email.conf\n")
-            f.write("# Managed via the dashboard admin UI. Manual edits are\n")
-            f.write("# preserved only for known keys; comments are not.\n")
+            f.write("# Managed via the dashboard admin UI. Comments are not kept.\n")
             cfg.write(f)
     except OSError as e:
         return False, f"could not write {CONFIG_PATH}: {e}"
