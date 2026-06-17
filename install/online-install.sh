@@ -146,7 +146,23 @@ if [[ ! -f /etc/csr-dashboard/csr-dashboard.env && -f config/csr-dashboard.env.e
     install -o "$SVC_USER" -g "$SVC_USER" -m 0640 \
         config/csr-dashboard.env.example /etc/csr-dashboard/csr-dashboard.env
 fi
-echo "  ok"
+# Auth mode: mTLS on => CAC; mTLS off => local username/password accounts.
+if [[ "${ENABLE_MTLS,,}" =~ ^(y|yes|true|1|on)$ ]]; then AUTH_MODE=cac; else AUTH_MODE=local; fi
+ENVF=/etc/csr-dashboard/csr-dashboard.env
+if [[ -f "$ENVF" ]]; then
+    if grep -q '^CSR_AUTH_MODE=' "$ENVF"; then
+        sed -i "s/^CSR_AUTH_MODE=.*/CSR_AUTH_MODE=${AUTH_MODE}/" "$ENVF"
+    else
+        echo "CSR_AUTH_MODE=${AUTH_MODE}" >> "$ENVF"
+    fi
+fi
+# Local mode needs a persistent session signing key.
+if [[ "$AUTH_MODE" == "local" && ! -s /etc/csr-dashboard/secret.key ]]; then
+    openssl rand -hex 32 > /etc/csr-dashboard/secret.key
+    chown "${SVC_USER}:${SVC_USER}" /etc/csr-dashboard/secret.key
+    chmod 0640 /etc/csr-dashboard/secret.key
+fi
+echo "  ok (auth mode: ${AUTH_MODE})"
 
 # ---------------------------------------------------------------------------
 log "7/9  nginx: server block + fragment dir + self-signed cert (PKI placeholder)"
