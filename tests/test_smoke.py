@@ -44,6 +44,11 @@ CRITICAL_ROUTES = [
     ("GET", "/api/admin/webhooks"),
     ("GET", "/api/admin/capabilities"),
     ("GET", "/api/admin/slack-config"),
+    ("GET", "/api/admin/audit"),
+    ("GET", "/api/fleet-certs"),
+    ("GET", "/api/admin/feedback"),
+    ("GET", "/api/templates"),
+    ("POST", "/api/feedback"),
     ("POST", "/api/slack/interact"),
 ]
 
@@ -102,9 +107,40 @@ def test_me_is_admin(client):
     "/api/admin/webhooks",
     "/api/admin/capabilities",
     "/api/admin/slack-config",
+    "/api/admin/audit",
+    "/api/fleet-certs",
+    "/api/admin/feedback",
+    "/api/templates",
 ])
 def test_admin_reads_ok(client, path):
     assert client.get(path, headers=CAC).status_code == 200
+
+
+def test_job_detail_404(client):
+    # a well-formed but nonexistent job id -> 404 (not 500/400)
+    assert client.get("/api/jobs/" + "a" * 32, headers=CAC).status_code == 404
+
+
+# --- negative-auth / CSRF / input validation -------------------------------
+def test_write_requires_csrf(client):
+    # authed admin but missing the X-Requested-With CSRF header -> 403
+    import json
+    r = client.post("/api/admin/groups", headers={**CAC, "Content-Type": "application/json"},
+                    data=json.dumps({"name": "nocsrf"}))
+    assert r.status_code == 403
+
+
+def test_write_requires_auth(client):
+    import json
+    r = client.post("/api/admin/groups", headers=CSRF, data=json.dumps({"name": "noauth"}))
+    assert r.status_code == 403
+
+
+def test_bad_group_name_rejected(client):
+    import json
+    r = client.post("/api/admin/groups", headers=WRITE,
+                    data=json.dumps({"name": "bad name!! @"}))
+    assert r.status_code == 400
 
 
 def test_capabilities_shape(client):
