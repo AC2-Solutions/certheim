@@ -367,6 +367,16 @@ async function loadSigningConfig() {
     ? '<span class="pill pill-ok">AppRole credential configured</span>'
     : '<span class="pill pill-err">no AppRole credential</span> <span class="status">set CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID in the service env</span>';
 
+  // CRL / OCSP distribution points (informational; configured on the mount).
+  const crlEl = document.getElementById("signing-crl-info");
+  const dp = c.crl_ocsp || {};
+  if ((c.default_backend || "manual") !== "manual" && dp.crl) {
+    crlEl.innerHTML = `CRL: <code>${escapeHtml(dp.crl)}</code> &nbsp; OCSP: <code>${escapeHtml(dp.ocsp || "-")}</code>`;
+    crlEl.hidden = false;
+  } else {
+    crlEl.hidden = true;
+  }
+
   // Capability note (offline deployment / missing entitlement self-explains).
   const cap = c.capability || {};
   const note = document.getElementById("cap-note-signing");

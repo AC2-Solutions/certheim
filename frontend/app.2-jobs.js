@@ -179,6 +179,9 @@ function renderDetailModal(job) {
   if (job.status === "issued") {
     actions.push(`<a class="btn" href="${API}/jobs/${job.id}/cert">Download Cert</a>`);
   }
+  if (job.can_revoke) {
+    actions.push(`<button class="btn secondary" data-action="revoke" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}" style="color:var(--danger)">Revoke</button>`);
+  }
   if (job.status === "issued" || job.status === "expired") {
     actions.push(`<button class="btn" data-action="renew" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}">Renew</button>`);
   }
@@ -261,6 +264,7 @@ function renderDetailModal(job) {
       else if (b.dataset.action === "fail") openMarkFailed(id, host);
       else if (b.dataset.action === "renew") renewJob(id, host, b);
       else if (b.dataset.action === "sign") signJob(id, host);
+      else if (b.dataset.action === "revoke") revokeJob(id, host);
     });
   });
 
@@ -310,6 +314,21 @@ async function signJob(jobId, targetHost) {
   alert(msg);
   if (r.body.chain_pem) downloadChainPem(r.body.target_host || jobId, r.body.chain_pem);
   await openDetailModal(jobId);   // re-render: it's now "issued"
+  refreshJobs();
+}
+
+// Revoke an issued cert via its CA backend (signer/admin; shown when can_revoke).
+async function revokeJob(jobId, targetHost) {
+  if (!confirm(`Revoke the certificate for ${targetHost}?\n\n`
+             + "This revokes it at the CA (OpenBao) and marks the job revoked. "
+             + "This cannot be undone.")) return;
+  const r = await jsonReq(`/jobs/${jobId}/revoke`, { method: "POST", body: "{}" });
+  if (!r.ok || !(r.body && r.body.ok)) {
+    alert("Revoke failed: " + ((r.body && r.body.error) || "unknown"));
+    return;
+  }
+  alert(`Revoked ${targetHost} (serial ${r.body.serial}).`);
+  await openDetailModal(jobId);   // re-render: it's now "revoked"
   refreshJobs();
 }
 

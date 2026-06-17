@@ -55,6 +55,7 @@ CRITICAL_ROUTES = [
     ("PUT", "/api/admin/signing-config"),
     ("POST", "/api/admin/signing-config/test"),
     ("PUT", "/api/admin/templates/<int:template_id>/signing"),
+    ("POST", "/api/jobs/<job_id>/revoke"),
 ]
 
 
@@ -227,3 +228,11 @@ def test_template_signing_policy(client):
     # nonexistent template -> 404
     assert client.put("/api/admin/templates/999999/signing", headers=WRITE,
                       data=json.dumps({"signer_backend": "manual"})).status_code == 404
+
+
+def test_revoke_negatives(client):
+    rid = "/api/jobs/" + "a" * 32 + "/revoke"
+    assert client.post(rid, headers=CSRF).status_code == 403   # no identity
+    assert client.post(rid, headers=CAC).status_code == 403    # no CSRF header
+    # admin passes the signer gate; missing job -> 404 (not 500)
+    assert client.post(rid, headers=WRITE).status_code == 404

@@ -184,6 +184,27 @@ def sign_csr(csr_pem, template):
     raise SignError(f"unknown signer_backend: {backend}")
 
 
+def revoke_cert(serial_number):
+    """Revoke a previously-issued certificate by serial via OpenBao PKI.
+    `serial_number` is OpenBao's colon-hex form (e.g. '39:dd:2a:...'). Returns
+    the revocation epoch (or None). Raises SignError. Requires the AppRole
+    policy to allow `update <mount>/revoke` (sign-only won't work)."""
+    if not serial_number:
+        raise SignError("no serial to revoke")
+    addr, mount = _openbao_addr_mount()
+    token = _openbao_login(addr)
+    data = _http(f"{addr}/v1/{mount}/revoke",
+                 {"serial_number": serial_number}, token=token)
+    return (data.get("data") or {}).get("revocation_time")
+
+
+def crl_ocsp_urls():
+    """Best-effort distribution points for display (configured on the mount)."""
+    addr, mount = _openbao_addr_mount()
+    base = f"{addr}/v1/{mount}"
+    return {"crl": f"{base}/crl", "ocsp": f"{base}/ocsp", "ca": f"{base}/ca/pem"}
+
+
 def test_connection():
     """Admin 'Test connection': prove login works and the PKI mount answers,
     WITHOUT signing anything. Returns a small status dict; raises SignError."""
