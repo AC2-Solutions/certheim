@@ -383,13 +383,22 @@
     vertical-align: top;
   }
 
-  /* First-login email gate */
-  #email-gate[hidden] { display: none !important; }
-  #email-gate {
+  /* First-login email gate + local-auth login gate */
+  #email-gate[hidden], #auth-gate[hidden] { display: none !important; }
+  #email-gate, #auth-gate {
     position: fixed; inset: 0; z-index: 10050;
     background: rgba(0,0,0,0.75);
     display: flex; align-items: center; justify-content: center;
   }
+  #auth-gate-card { background: var(--bg-elevated, #1a1f26); color: var(--fg, #e7eaee);
+    border: 1px solid var(--border, #2d343d); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); padding: 22px 24px;
+    max-width: 380px; width: calc(100% - 40px); }
+  #auth-gate-card h2 { margin: 0 0 4px 0; font-size: 17px; color: var(--accent, #4a90c7); }
+  #auth-gate-card p { font-size: 13px; line-height: 1.5; margin: 0 0 14px 0; }
+  #auth-gate-card input { margin-bottom: 10px; }
+  #auth-gate-toggle { background: none; border: none; color: var(--accent, #4a90c7);
+    cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
   #email-gate-card {
     background: var(--bg-elevated, #1a1f26);
     color: var(--fg, #e7eaee);
@@ -464,6 +473,7 @@
     <button id="nav-tour" class="header-nav" type="button" title="Replay the tutorial">Tour</button>
     <button id="nav-feedback" class="header-nav" type="button" title="Send feedback">Feedback</button>
     <button id="nav-settings" class="header-nav" type="button" title="My settings">⚙ Settings</button>
+    <button id="nav-logout" class="header-nav" type="button" title="Sign out" hidden>Sign out</button>
     <button id="theme-toggle" class="theme-toggle" type="button"
             aria-label="Toggle color theme" title="Toggle color theme">
       <span id="theme-toggle-icon" aria-hidden="true">☀</span>
@@ -1423,6 +1433,24 @@
      Deliberately NOT part of the modal system - no close button, no overlay
      click-to-dismiss, no Escape. z-index sits above the tutorial so the tour
      can never appear underneath it. -->
+<div id="auth-gate" hidden>
+  <div id="auth-gate-card">
+    <h2 id="auth-gate-title">Sign in</h2>
+    <p id="auth-gate-sub">Sign in to the CSR Dashboard.</p>
+    <label for="auth-username" class="textarea-label">Username</label>
+    <input type="text" id="auth-username" class="form-input" autocomplete="username"
+           autocapitalize="off" spellcheck="false" placeholder="username">
+    <label for="auth-password" class="textarea-label">Password</label>
+    <input type="password" id="auth-password" class="form-input"
+           autocomplete="current-password" placeholder="password">
+    <div class="row" style="justify-content:space-between; align-items:center; margin-top:6px">
+      <button id="auth-gate-toggle" type="button">Need an account? Register</button>
+      <button id="auth-submit-btn" type="button">Sign in</button>
+    </div>
+    <div id="auth-gate-status" class="status" style="margin-top:8px"></div>
+  </div>
+</div>
+
 <div id="email-gate" hidden>
   <div id="email-gate-card">
     <h2>Welcome &mdash; one thing before you start</h2>

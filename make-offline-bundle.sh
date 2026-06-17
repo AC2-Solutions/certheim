@@ -518,6 +518,24 @@ if [[ -f /etc/csr-dashboard/csr-dashboard.env ]]; then
         echo "CSR_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/csr-dashboard/csr-dashboard.env
     fi
     echo "  first-admin bootstrap: CSR_BOOTSTRAP_FIRST_ADMIN=${want}"
+
+    # Auth mode: mTLS on => CAC DN identity; mTLS off => local username/password
+    # accounts (users self-register a username+password on first login; the
+    # first account becomes admin).
+    if truthy "$ENABLE_MTLS"; then AUTH_MODE=cac; else AUTH_MODE=local; fi
+    if grep -q '^CSR_AUTH_MODE=' /etc/csr-dashboard/csr-dashboard.env; then
+        sed -i "s/^CSR_AUTH_MODE=.*/CSR_AUTH_MODE=${AUTH_MODE}/" /etc/csr-dashboard/csr-dashboard.env
+    else
+        echo "CSR_AUTH_MODE=${AUTH_MODE}" >> /etc/csr-dashboard/csr-dashboard.env
+    fi
+    echo "  auth mode: CSR_AUTH_MODE=${AUTH_MODE}"
+    # Local mode needs a persistent session signing key.
+    if [[ "$AUTH_MODE" == "local" && ! -s /etc/csr-dashboard/secret.key ]]; then
+        openssl rand -hex 32 > /etc/csr-dashboard/secret.key
+        chown "${SVC_USER}:${SVC_USER}" /etc/csr-dashboard/secret.key
+        chmod 0640 /etc/csr-dashboard/secret.key
+        echo "  generated /etc/csr-dashboard/secret.key (session signing)"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

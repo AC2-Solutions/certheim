@@ -1837,7 +1837,75 @@ async function refreshOrphanCerts() {
 }
 document.getElementById("admin-orphan-certs-refresh").addEventListener("click", refreshOrphanCerts);
 
+// ===== Auth (local username/password mode) =====
+let AUTH = { mode: "cac", authenticated: false, can_register: false };
+let authRegisterMode = false;
+
+async function authGate() {
+  const r = await jsonReq("/auth/status");
+  if (r.ok && r.body) AUTH = r.body;
+  const logoutBtn = document.getElementById("nav-logout");
+  if (logoutBtn) logoutBtn.hidden = !(AUTH.mode === "local" && AUTH.authenticated);
+  if (AUTH.mode === "local" && !AUTH.authenticated) {
+    showAuthGate();
+    return false;   // stop init() until the user logs in
+  }
+  document.getElementById("auth-gate").hidden = true;
+  return true;
+}
+
+function applyAuthMode() {
+  const reg = authRegisterMode;
+  document.getElementById("auth-gate-title").textContent = reg ? "Create your account" : "Sign in";
+  document.getElementById("auth-gate-sub").textContent = reg
+    ? "Choose a username and password — this becomes your identity. The first account becomes the administrator."
+    : "Sign in to the CSR Dashboard.";
+  document.getElementById("auth-submit-btn").textContent = reg ? "Register" : "Sign in";
+  document.getElementById("auth-password").setAttribute(
+    "autocomplete", reg ? "new-password" : "current-password");
+  const toggle = document.getElementById("auth-gate-toggle");
+  toggle.hidden = !AUTH.can_register;   // no register link when registration is closed
+  toggle.textContent = reg ? "Have an account? Sign in" : "Need an account? Register";
+}
+
+function showAuthGate() {
+  authRegisterMode = false;
+  applyAuthMode();
+  document.getElementById("auth-gate").hidden = false;
+  setTimeout(() => document.getElementById("auth-username").focus(), 50);
+}
+
+async function submitAuth() {
+  const status = document.getElementById("auth-gate-status");
+  const username = document.getElementById("auth-username").value.trim();
+  const password = document.getElementById("auth-password").value;
+  if (!username || !password) { setStatus(status, "Username and password required", "err"); return; }
+  setStatus(status, authRegisterMode ? "Creating account…" : "Signing in…");
+  const r = await jsonReq(authRegisterMode ? "/auth/register" : "/auth/login",
+    { method: "POST", body: JSON.stringify({ username, password }) });
+  if (!r.ok) {
+    setStatus(status, (r.body && r.body.error) || "Failed", "err");
+    return;
+  }
+  location.reload();   // re-run init() with the new session
+}
+
+document.getElementById("auth-gate-toggle")?.addEventListener("click", () => {
+  authRegisterMode = !authRegisterMode;
+  applyAuthMode();
+  setStatus(document.getElementById("auth-gate-status"), "");
+});
+document.getElementById("auth-submit-btn")?.addEventListener("click", submitAuth);
+document.getElementById("auth-password")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitAuth();
+});
+document.getElementById("nav-logout")?.addEventListener("click", async () => {
+  await jsonReq("/auth/logout", { method: "POST" });
+  location.reload();
+});
+
 async function init() {
+  if (!(await authGate())) return;
   await jsonReq("/session");
   await loadMe();
   await loadMyGroups();

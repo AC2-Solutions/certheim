@@ -23,7 +23,8 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, request, jsonify, Response, abort, g
+from flask import Flask, request, jsonify, Response, abort, g, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 import notify
 import gitlab_integration
@@ -47,6 +48,9 @@ _ENV_DEFAULTS = {
     # users table is created as admin (self-disables once any user exists).
     # Only safe where mTLS verifies real CACs. Default off.
     "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
+    # Authentication mode: "cac" (CAC mTLS, default) or "local" (username +
+    # password with sessions, for non-mTLS boxes). Set by the installer.
+    "CSR_AUTH_MODE": "cac",
 }
 
 def _load_env_file():
@@ -346,6 +350,47 @@ audit.addHandler(_h)
 
 app = Flask(__name__)
 
+# ---------- Authentication mode ----------
+# "cac"   : identity from CAC mTLS (X-Client-DN), the production default.
+# "local" : username/password accounts with server-side sessions, for boxes
+#           where mTLS is not configured (chosen at install when mTLS=no).
+AUTH_MODE = _ENV.get("CSR_AUTH_MODE", "cac").strip().lower()
+if AUTH_MODE not in ("cac", "local"):
+    AUTH_MODE = "cac"
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
+MIN_PASSWORD_LEN = 8
+SECRET_KEY_PATH = Path("/etc/csr-dashboard/secret.key")
+
+
+def _load_secret_key():
+    """Session signing key. Prefer the env, then a persisted file; in local
+    mode generate + persist one if absent (so sessions survive restarts)."""
+    k = _ENV.get("CSR_SECRET_KEY", "").strip()
+    if k:
+        return k
+    try:
+        if SECRET_KEY_PATH.exists():
+            v = SECRET_KEY_PATH.read_text().strip()
+            if v:
+                return v
+        if AUTH_MODE == "local":
+            v = secrets.token_hex(32)
+            SECRET_KEY_PATH.write_text(v + "\n")
+            os.chmod(SECRET_KEY_PATH, 0o640)
+            return v
+    except OSError as e:
+        sys.stderr.write(f"secret key persistence failed: {e}\n")
+    return secrets.token_hex(32)  # ephemeral fallback (sessions reset on restart)
+
+
+app.secret_key = _load_secret_key()
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,   # served only over HTTPS
+    PERMANENT_SESSION_LIFETIME=_env_int("CSR_SESSION_TTL"),
+)
+
 # ---------- DB ----------
 def init_db():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -404,8 +449,19 @@ def init_db():
     user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "tutorial_dismissed" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN tutorial_dismissed INTEGER NOT NULL DEFAULT 0")
+    # Local-auth password hash (NULL for CAC/mTLS users)
+    if "password_hash" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_admin ON users(is_admin)")
+
+    # Key/value app settings (e.g. local-auth registration open/closed)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
 
     # User feedback for the admin dashboard
     conn.execute("""
@@ -618,15 +674,45 @@ def _client_ip():
 
 
 def client_identity():
+    # Local username/password mode: identity comes from the signed session,
+    # established by /api/auth/login or /api/auth/register. No session =
+    # unauthenticated (the frontend shows the login screen).
+    if AUTH_MODE == "local":
+        uid = session.get("uid")
+        return {"dn": uid, "serial": "-"} if uid else None
+    # CAC mTLS mode: identity from the verified client cert DN.
     dn = request.headers.get("X-Client-DN", "").strip()
     verify = request.headers.get("X-Client-Verify", "").strip()
     serial = request.headers.get("X-Client-Serial", "").strip()
-    # Only a SUCCESS-verified client cert (CAC mTLS) yields a DN identity.
-    # Without mTLS we fall back to the real client IP - NOT the proxy's
-    # 127.0.0.1 - so distinct users aren't merged into one account.
     if verify == "SUCCESS" and dn:
         return {"dn": dn, "serial": serial}
+    # Fallback (mTLS not yet enforced): the real client IP, NOT the proxy's
+    # 127.0.0.1, so distinct users aren't merged into one account.
     return {"dn": f"ip:{_client_ip()}", "serial": "-"}
+
+
+def _get_setting(key, default=None):
+    with db() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def _set_setting(key, value):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+
+
+def _registration_open():
+    # Default open in local mode so first-time users can self-enroll; admins
+    # can close it once everyone's registered.
+    return _get_setting("registration_open", "1") == "1"
+
+
+def _local_user_count():
+    with db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users WHERE dn LIKE 'local:%'").fetchone()[0]
 
 def log_event(action, result, **extra):
     parts = [
@@ -713,8 +799,13 @@ def require_csrf(fn):
 
 # ---------- User account helpers ----------
 def _cn_from_dn(dn):
-    """Extract CN from a subject DN for display."""
-    if not dn or "CN=" not in dn:
+    """Extract CN from a subject DN for display. Local-auth identities are
+    'local:<username>' and display as the bare username."""
+    if not dn:
+        return dn
+    if dn.startswith("local:"):
+        return dn[len("local:"):]
+    if "CN=" not in dn:
         return dn
     try:
         return dn.split("CN=", 1)[1].split(",", 1)[0].strip()
@@ -730,9 +821,18 @@ def _load_user(dn):
     return dict(row) if row else None
 
 def _upsert_user(dn):
-    """Create user row if missing, update last_seen_at. Returns user dict."""
+    """Create user row if missing, update last_seen_at. Returns user dict.
+    Local-auth users (local:<username>) are created ONLY via registration -
+    never auto-created here - so a stale session for a deleted account does
+    not silently resurrect it."""
     if not dn:
         return None
+    if dn.startswith("local:"):
+        u = _load_user(dn)
+        if u:
+            with db() as conn:
+                conn.execute("UPDATE users SET last_seen_at=? WHERE dn=?", (time.time(), dn))
+        return u
     cn = _cn_from_dn(dn)
     now = time.time()
     with db() as conn:
@@ -1113,6 +1213,127 @@ def _verify_cert_matches_csr(csr_pem, cert_pem):
 @app.get("/api/health")
 def health():
     return jsonify(ok=True, version=APP_VERSION)
+
+
+# ============================================================
+# Local username/password authentication (AUTH_MODE == "local")
+# ============================================================
+@app.get("/api/auth/status")
+def auth_status():
+    """PUBLIC: tells the frontend whether to render a login/register screen."""
+    authed = bool(g.identity and g.identity.get("dn"))
+    out = {"mode": AUTH_MODE, "authenticated": authed, "version": APP_VERSION}
+    if AUTH_MODE == "local":
+        # First local user is always allowed (becomes admin); otherwise honor
+        # the registration_open toggle.
+        out["can_register"] = (_local_user_count() == 0) or _registration_open()
+        out["username"] = _cn_from_dn(g.identity["dn"]) if authed else None
+    return jsonify(out)
+
+
+def _validate_credentials(username, password):
+    if not USERNAME_RE.match(username or ""):
+        return "username must be 2-32 chars: letters, digits, . _ -"
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LEN:
+        return f"password must be at least {MIN_PASSWORD_LEN} characters"
+    if len(password) > 256:
+        return "password too long"
+    return None
+
+
+@app.post("/api/auth/register")
+@require_csrf
+def auth_register():
+    """Self-service first-login registration (local mode only). The FIRST
+    local account becomes admin; the rest are active regular users while
+    registration is open."""
+    if AUTH_MODE != "local":
+        return jsonify(error="local registration is disabled (CAC mode)"), 400
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    err = _validate_credentials(username, password)
+    if err:
+        return jsonify(error=err), 400
+
+    dn = f"local:{username}"
+    now = time.time()
+    with db() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE dn=?", (dn,)).fetchone():
+            return jsonify(error="username already taken"), 409
+        n_local = conn.execute("SELECT COUNT(*) FROM users WHERE dn LIKE 'local:%'").fetchone()[0]
+        first = (n_local == 0)
+        if not first and not _registration_open():
+            return jsonify(error="registration is closed - ask an admin to create your account"), 403
+        conn.execute("""
+            INSERT INTO users (dn, cn, email, is_admin, is_active, password_hash,
+                               created_at, last_seen_at)
+            VALUES (?, ?, NULL, ?, 1, ?, ?, ?)
+        """, (dn, username, 1 if first else 0, generate_password_hash(password), now, now))
+    session.clear()
+    session["uid"] = dn
+    session.permanent = True
+    log_event("auth_register", "ok", dn=dn[:128], first_admin=int(first))
+    if first:
+        log_event("admin_bootstrap", "ok", dn=dn[:128])
+    return jsonify(ok=True, username=username, is_admin=bool(first))
+
+
+@app.post("/api/auth/login")
+@require_csrf
+def auth_login():
+    if AUTH_MODE != "local":
+        return jsonify(error="local login is disabled (CAC mode)"), 400
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    dn = f"local:{username}"
+    with db() as conn:
+        row = conn.execute(
+            "SELECT dn, password_hash, is_active FROM users WHERE dn=?", (dn,)
+        ).fetchone()
+    # Always run a hash check to blunt user-enumeration timing.
+    stored = row["password_hash"] if row else None
+    ok = check_password_hash(stored, password) if stored else (generate_password_hash("x") and False)
+    if not row or not ok:
+        log_event("auth_login", "deny_bad_credentials", dn=dn[:128])
+        return jsonify(error="invalid username or password"), 401
+    if not row["is_active"]:
+        log_event("auth_login", "deny_inactive", dn=dn[:128])
+        return jsonify(error="account is deactivated"), 403
+    session.clear()
+    session["uid"] = dn
+    session.permanent = True
+    with db() as conn:
+        conn.execute("UPDATE users SET last_seen_at=? WHERE dn=?", (time.time(), dn))
+    log_event("auth_login", "ok", dn=dn[:128])
+    return jsonify(ok=True, username=username)
+
+
+@app.post("/api/auth/logout")
+@require_csrf
+def auth_logout():
+    session.clear()
+    return jsonify(ok=True)
+
+
+@app.get("/api/admin/registration")
+@require_admin
+def admin_get_registration():
+    return jsonify(mode=AUTH_MODE, open=_registration_open(),
+                   local_users=_local_user_count())
+
+
+@app.put("/api/admin/registration")
+@require_admin
+@require_csrf
+def admin_set_registration():
+    """Open/close local self-registration (local mode only)."""
+    payload = request.get_json(silent=True) or {}
+    is_open = bool(payload.get("open"))
+    _set_setting("registration_open", "1" if is_open else "0")
+    log_event("admin_registration", "ok", open=int(is_open))
+    return jsonify(ok=True, open=is_open)
 
 @app.get("/api/whoami")
 @require_auth
