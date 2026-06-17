@@ -2793,6 +2793,7 @@ let webhookAvailableEvents = [];
 async function refreshAdminWebhooks() {
   const tbody = document.getElementById("admin-webhooks-tbody");
   if (!tbody) return;
+  loadSlackConfig();
   tbody.innerHTML = '<tr><td colspan="6" class="status">Loading…</td></tr>';
   const r = await jsonReq("/admin/webhooks");
   if (!r.ok) {
@@ -2843,6 +2844,33 @@ async function refreshAdminWebhooks() {
 
 document.getElementById("admin-webhooks-refresh")?.addEventListener("click", refreshAdminWebhooks);
 document.getElementById("admin-webhook-create-btn")?.addEventListener("click", () => openWebhookEdit(null));
+
+// --- Slack interactivity config -------------------------------------------
+async function loadSlackConfig() {
+  const r = await jsonReq("/admin/slack-config");
+  if (!r.ok) return;
+  const c = r.body || {};
+  document.getElementById("slack-request-url").value =
+    location.origin + (c.request_path || "/csr/api/slack/interact");
+  document.getElementById("slack-interactive-enabled").checked = !!c.enabled;
+  document.getElementById("slack-secret-hint").textContent =
+    c.signing_secret_set ? "(stored — leave blank to keep)" : "(not set)";
+}
+document.getElementById("slack-config-save-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("slack-config-status");
+  const body = { enabled: document.getElementById("slack-interactive-enabled").checked };
+  const sec = document.getElementById("slack-signing-secret").value.trim();
+  if (sec) body.signing_secret = sec;
+  setStatus(status, "Saving…");
+  const r = await jsonReq("/admin/slack-config", { method: "PUT", body: JSON.stringify(body) });
+  if (r.ok) {
+    setStatus(status, "Saved", "ok");
+    document.getElementById("slack-signing-secret").value = "";
+    loadSlackConfig();
+  } else {
+    setStatus(status, (r.body && r.body.error) || "Save failed", "err");
+  }
+});
 
 function openWebhookEdit(wh) {
   const modal = document.getElementById("webhook-edit-modal");

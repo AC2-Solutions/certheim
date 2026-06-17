@@ -284,10 +284,25 @@ def _format_webhook(wtype, event, data):
     if wtype == "slack":
         text = f":bell: *{title}*" + (f"\n{detail}" if detail else "")
         blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+        elements = []
         if link:
-            blocks.append({"type": "actions", "elements": [{
-                "type": "button", "url": link,
-                "text": {"type": "plain_text", "text": "Open job"}}]})
+            elements.append({"type": "button", "url": link,
+                             "text": {"type": "plain_text", "text": "Open job"}})
+        # Interactive "assign to group" select - only when Slack interactivity
+        # is configured (app + signing secret) and this is a job event.
+        jid = data.get("job_id")
+        if jid and get_setting("slack_interactive") == "1" \
+                and get_setting("slack_signing_secret"):
+            opts = _slack_group_options()
+            if opts:
+                elements.append({
+                    "type": "static_select", "action_id": "assign_group",
+                    "placeholder": {"type": "plain_text", "text": "Assign to group"},
+                    "options": opts})
+        if elements:
+            blocks.append({"type": "actions",
+                           "block_id": f"job_{jid}" if jid else "noop",
+                           "elements": elements})
         return {"text": text, "blocks": blocks}  # text = notification fallback
 
     if wtype == "discord":
@@ -312,6 +327,54 @@ def _format_webhook(wtype, event, data):
             "@type": "OpenUri", "name": "Open job",
             "targets": [{"os": "default", "uri": link}]}]
     return card
+
+
+def _slack_group_options():
+    """Slack static_select options for the groups a job can be assigned to."""
+    try:
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT id, name FROM groups ORDER BY name COLLATE NOCASE LIMIT 24"
+            ).fetchall()
+        return [{"text": {"type": "plain_text", "text": (r["name"] or "")[:75]},
+                 "value": str(r["id"])} for r in rows]
+    except Exception:
+        return []
+
+
+def _verify_slack_signature(body_bytes, timestamp, signature, secret):
+    """Verify a Slack request signature (v0 HMAC-SHA256) with replay protection."""
+    if not secret or not timestamp or not signature:
+        return False
+    try:
+        if abs(time.time() - int(timestamp)) > 300:
+            return False
+    except (TypeError, ValueError):
+        return False
+    base = b"v0:" + timestamp.encode() + b":" + body_bytes
+    mac = hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
+    return hmac.compare_digest("v0=" + mac, signature)
+
+
+def _slack_assign_job(job_id, group_id, slack_user):
+    """Reassign a job's group from a Slack interaction. Returns (ok, message)."""
+    if not JOB_ID_RE.match(job_id or ""):
+        return False, "invalid job id"
+    try:
+        gid = int(group_id)
+    except (TypeError, ValueError):
+        return False, "invalid group"
+    grp = _group_by_id(gid)
+    if not grp:
+        return False, "group not found"
+    with db() as conn:
+        cur = conn.execute("UPDATE jobs SET group_id = ? WHERE id = ?", (gid, job_id))
+        if cur.rowcount == 0:
+            return False, f"job {job_id} not found"
+    audit.info(f"req=slack action=slack_assign result=ok job_id={job_id} "
+               f"group={grp['name']!r} slack_user={slack_user!r}")
+    return True, (f":white_check_mark: Job `{job_id}` assigned to "
+                  f"*{grp['name']}* by {slack_user}")
 
 
 def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
@@ -4900,6 +4963,77 @@ def admin_test_webhook(webhook_id):
               webhook_id=webhook_id, status=status_code,
               error=(error_msg or "-")[:96])
     return jsonify(ok=ok, status_code=status_code, error=error_msg)
+
+
+# ============================================================
+# Slack interactivity (assign jobs from a Slack message)
+# ============================================================
+@app.get("/api/admin/slack-config")
+@require_admin
+def admin_get_slack_config():
+    return jsonify(
+        enabled=(get_setting("slack_interactive") == "1"),
+        signing_secret_set=bool(get_setting("slack_signing_secret")),
+        request_path="/csr/api/slack/interact",
+    )
+
+
+@app.put("/api/admin/slack-config")
+@require_admin
+@require_csrf
+def admin_put_slack_config():
+    payload = request.get_json(silent=True) or {}
+    if "enabled" in payload:
+        set_setting("slack_interactive", "1" if payload["enabled"] else "0")
+    if "signing_secret" in payload:
+        s = (payload["signing_secret"] or "").strip()
+        if s and s != "********":        # blank/placeholder keeps the stored one
+            set_setting("slack_signing_secret", s)
+    log_event("admin_slack_config", "ok")
+    return jsonify(ok=True)
+
+
+@app.post("/api/slack/interact")
+def slack_interact():
+    """Slack interactivity callback. Authenticated by the Slack request
+    signature (NOT a user session), so it carries no auth/csrf decorators."""
+    secret = get_setting("slack_signing_secret") or ""
+    if get_setting("slack_interactive") != "1" or not secret:
+        return ("", 404)
+    body = request.get_data(cache=True) or b""
+    ts = request.headers.get("X-Slack-Request-Timestamp", "")
+    sig = request.headers.get("X-Slack-Signature", "")
+    if not _verify_slack_signature(body, ts, sig, secret):
+        log_event("slack_interact", "deny_bad_signature")
+        return ("invalid signature", 401)
+
+    form = urllib.parse.parse_qs(body.decode("utf-8", "replace"))
+    try:
+        p = json.loads((form.get("payload") or [""])[0])
+    except (ValueError, TypeError):
+        return ("", 400)
+    if p.get("type") != "block_actions":
+        return ("", 200)
+
+    actions = p.get("actions") or []
+    act = actions[0] if actions else {}
+    block_id = act.get("block_id", "") or ""
+    job_id = block_id[4:] if block_id.startswith("job_") else None
+    group_id = (act.get("selected_option") or {}).get("value")
+    slack_user = ((p.get("user") or {}).get("username")
+                  or (p.get("user") or {}).get("name") or "slack-user")
+    response_url = p.get("response_url")
+
+    if act.get("action_id") == "assign_group" and job_id and group_id:
+        ok, msg = _slack_assign_job(job_id, group_id, slack_user)
+        if response_url:
+            # Confirm back in the channel (async; never block the 200 ack).
+            try:
+                _webhook_pool.submit(_send_webhook_sync, response_url,
+                                     {"replace_original": False, "text": msg}, {})
+            except RuntimeError:
+                pass
+    return ("", 200)
 
 
 # ============================================================

@@ -1085,6 +1085,28 @@
           <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
         </tbody>
       </table>
+
+      <details class="openssl-toggle" style="margin-top:16px">
+        <summary><strong>Slack interactivity</strong> <span class="hint">(assign jobs from a Slack message)</span></summary>
+        <div style="padding:10px 2px">
+          <p class="hint">Lets a Slack message's <em>Assign to group</em> menu actually
+             reassign the job. Requires a Slack app with Interactivity enabled,
+             pointing its Request URL at this dashboard. Paste the app's
+             <strong>Signing Secret</strong> below.</p>
+          <label class="textarea-label">Request URL <span class="hint">(set in Slack app → Interactivity; must be publicly reachable)</span></label>
+          <input type="text" id="slack-request-url" class="form-input" readonly>
+          <label for="slack-signing-secret" class="textarea-label">Signing secret
+            <span class="hint" id="slack-secret-hint"></span></label>
+          <input type="password" id="slack-signing-secret" class="form-input" autocomplete="new-password">
+          <label class="checkbox-row" style="margin-top:10px">
+            <input type="checkbox" id="slack-interactive-enabled"> Enable interactive assignment
+          </label>
+          <div class="row" style="margin-top:10px">
+            <button id="slack-config-save-btn" type="button">Save</button>
+            <span id="slack-config-status" class="status"></span>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="card admin-panel" data-panel="email">
