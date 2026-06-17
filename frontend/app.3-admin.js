@@ -9,6 +9,7 @@ async function refreshAdminView() {
     refreshOrphanCerts(),
     loadEmailConfig(),
     refreshAdminTemplates(),
+    loadSigningConfig(),
   ]);
 }
 
@@ -274,6 +275,91 @@ document.getElementById("admin-email-test-btn")?.addEventListener("click", async
     return;
   }
   setStatus(status, `Test email sent to ${r.body.recipient || "you"}.`, "ok");
+});
+
+// ===== Admin: Signing / CA (v2 in-UI signing) =====
+// Mirrors the email-config tab: load a config object into fields, PUT to save,
+// POST .../test to prove the backend answers. The capability + AppRole status
+// lines self-explain why automated signing may be unavailable in a deployment.
+let _signingCfgCache = null;
+
+function _signingToggleBackend() {
+  const b = document.getElementById("signing-cfg-backend").value;
+  document.getElementById("signing-openbao-fields").hidden = (b !== "openbao");
+}
+document.getElementById("signing-cfg-backend")?.addEventListener("change", _signingToggleBackend);
+
+async function loadSigningConfig() {
+  const r = await jsonReq("/admin/signing-config");
+  if (!r.ok) return;
+  const c = r.body;
+  _signingCfgCache = c;
+  document.getElementById("signing-cfg-backend").value = c.default_backend || "manual";
+  document.getElementById("signing-cfg-addr").value = c.openbao_addr || "";
+  document.getElementById("signing-cfg-mount").value = c.openbao_pki_mount || "";
+  document.getElementById("signing-cfg-role").value = c.openbao_default_role || "";
+  document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
+  _signingToggleBackend();
+
+  // AppRole credential presence (env-only; never the value).
+  document.getElementById("signing-approle-state").innerHTML = c.approle_configured
+    ? '<span class="pill pill-ok">AppRole credential configured</span>'
+    : '<span class="pill pill-err">no AppRole credential</span> <span class="status">set CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID in the service env</span>';
+
+  // Capability note (offline deployment / missing entitlement self-explains).
+  const cap = c.capability || {};
+  const note = document.getElementById("cap-note-signing");
+  if (cap.available === false) {
+    note.textContent = "⚠ OpenBao signing unavailable here" + (cap.reason ? " — " + cap.reason : "");
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+  }
+
+  // Overall state line, like email-config-state.
+  const state = document.getElementById("signing-config-state");
+  if ((c.default_backend || "manual") === "manual") {
+    state.innerHTML = '<span class="pill pill-mute">manual signing</span> <span class="status">automated Approve &amp; sign is disabled</span>';
+  } else if (cap.available === false) {
+    state.innerHTML = `<span class="pill pill-err">unavailable</span> <span class="status">${escapeHtml(cap.reason || "automated backend not usable here")}</span>`;
+  } else if (!c.approle_configured) {
+    state.innerHTML = '<span class="pill pill-err">not configured</span> <span class="status">AppRole credential missing</span>';
+  } else {
+    state.innerHTML = `<span class="pill pill-ok">automated signing enabled</span> <span class="status">via ${escapeHtml(c.default_backend)}</span>`;
+  }
+}
+
+document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("signing-cfg-status");
+  const ttlRaw = document.getElementById("signing-cfg-ttl").value.trim();
+  setStatus(status, "Saving…");
+  const r = await jsonReq("/admin/signing-config", {
+    method: "PUT",
+    body: JSON.stringify({
+      default_backend: document.getElementById("signing-cfg-backend").value,
+      openbao_addr: document.getElementById("signing-cfg-addr").value.trim(),
+      openbao_pki_mount: document.getElementById("signing-cfg-mount").value.trim(),
+      openbao_default_role: document.getElementById("signing-cfg-role").value.trim(),
+      max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
+    }),
+  });
+  if (!r.ok) {
+    setStatus(status, (r.body && r.body.error) || "Save failed", "err");
+    return;
+  }
+  setStatus(status, "Saved", "ok");
+  loadSigningConfig();
+});
+
+document.getElementById("signing-cfg-test-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("signing-cfg-status");
+  setStatus(status, "Testing connection…");
+  const r = await jsonReq("/admin/signing-config/test", { method: "POST" });
+  if (!r.ok || !(r.body && r.body.ok)) {
+    setStatus(status, (r.body && r.body.error) || "Connection failed", "err");
+    return;
+  }
+  setStatus(status, `OK — ${r.body.addr || "?"} (mount: ${r.body.mount || "?"})`, "ok");
 });
 
 async function refreshAdminStats() {

@@ -2,8 +2,9 @@
 from flask import Blueprint, Response, abort, g, jsonify, request, session
 import csv, io, json, os, re, subprocess, time, uuid, zipfile
 import notify
+import capabilities
 from app import (  # noqa: E402
-    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, CompletionError, _add_session_keys, _attach_signed_cert, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, log_event, require_auth, require_csrf, run_helper)
+    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, CompletionError, _add_session_keys, _attach_signed_cert, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, get_setting, log_event, require_auth, require_csrf, run_helper)
 bp = Blueprint("jobs", __name__)
 
 # ============================================================
@@ -183,6 +184,15 @@ def get_job(job_id):
         grp = _group_by_id(out["group_id"])
         if grp:
             out["group_name"] = grp["name"]
+    # Approve-&-sign is offered only when this user may sign (signer or admin),
+    # the job is pending, AND an automated backend is configured + usable here.
+    # Authoritative server-side gate (the /sign route enforces the same).
+    out["can_sign"] = bool(
+        row["status"] == "pending"
+        and (user_is_signer or user_is_admin)
+        and (get_setting("signing_default_backend") or "manual") != "manual"
+        and capabilities.available("ca.signing.openbao")
+    )
     log_event("get_job", "ok", job_id=job_id)
     return jsonify(out)
 

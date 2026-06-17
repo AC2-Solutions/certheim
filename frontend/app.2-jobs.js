@@ -183,6 +183,9 @@ function renderDetailModal(job) {
     actions.push(`<button class="btn" data-action="renew" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}">Renew</button>`);
   }
   if (job.status === "pending") {
+    if (job.can_sign) {
+      actions.push(`<button class="btn" data-action="sign" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}">Approve &amp; sign</button>`);
+    }
     actions.push(`<button class="btn" data-action="upload" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}">Upload Cert</button>`);
     if (job.can_cancel) {
       actions.push(`<button class="btn secondary" data-action="cancel" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}">Cancel Job</button>`);
@@ -257,6 +260,7 @@ function renderDetailModal(job) {
       else if (b.dataset.action === "cancel") openCancel(id, host);
       else if (b.dataset.action === "fail") openMarkFailed(id, host);
       else if (b.dataset.action === "renew") renewJob(id, host, b);
+      else if (b.dataset.action === "sign") signJob(id, host);
     });
   });
 
@@ -285,6 +289,41 @@ function renderDetailModal(job) {
       }
     });
   });
+}
+
+// ===== Approve & sign (v2 in-UI signing) =====
+// The button is shown only when the server says job.can_sign (this user may
+// sign + an automated backend is configured/usable). POST /jobs/<id>/sign
+// issues the cert via the CA backend, then we re-render and offer the chain.
+async function signJob(jobId, targetHost) {
+  if (!confirm(`Approve and sign the request for ${targetHost}?\n\n`
+             + "This issues the certificate via the configured CA backend "
+             + "and marks the job issued.")) return;
+  const r = await jsonReq(`/jobs/${jobId}/sign`, { method: "POST", body: "{}" });
+  if (!r.ok || !(r.body && r.body.ok)) {
+    alert("Sign failed: " + ((r.body && r.body.error) || "unknown"));
+    return;
+  }
+  const warns = r.body.warnings || [];
+  let msg = `Issued for ${r.body.target_host} via ${r.body.signed_via}.`;
+  if (warns.length) msg += "\n\nWarnings:\n• " + warns.join("\n• ");
+  alert(msg);
+  if (r.body.chain_pem) downloadChainPem(r.body.target_host || jobId, r.body.chain_pem);
+  await openDetailModal(jobId);   // re-render: it's now "issued"
+  refreshJobs();
+}
+
+// Client-side blob download for the returned cert chain.
+function downloadChainPem(name, pem) {
+  const blob = new Blob([pem], { type: "application/x-pem-file" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${name}-chain.pem`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ===== Upload cert =====
