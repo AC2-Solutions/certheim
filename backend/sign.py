@@ -77,9 +77,11 @@ def _ssl_context():
     return ssl.create_default_context()
 
 
-def _http(url, payload=None, token=None, timeout=15):
+def _http(url, payload=None, token=None, timeout=15, raw=False):
     """POST (payload given) or GET (payload None) a Vault/OpenBao API path.
-    Returns the parsed JSON dict. Raises SignError on transport/HTTP error."""
+    Returns the parsed JSON dict, or the raw text body when raw=True (some
+    endpoints like `<mount>/ca/pem` return PEM, not JSON). Raises SignError on
+    transport/HTTP error."""
     headers = {"Content-Type": "application/json"}
     if token:
         headers["X-Vault-Token"] = token
@@ -101,6 +103,8 @@ def _http(url, payload=None, token=None, timeout=15):
         raise SignError(f"OpenBao unreachable at {_redact(url)}: {e.reason}")
     except Exception as e:  # noqa: BLE001 - surface a clean message
         raise SignError(f"OpenBao request failed: {e}")
+    if raw:
+        return body
     try:
         return json.loads(body) if body else {}
     except ValueError:
@@ -185,6 +189,9 @@ def test_connection():
     WITHOUT signing anything. Returns a small status dict; raises SignError."""
     addr, mount = _openbao_addr_mount()
     token = _openbao_login(addr)  # proves the AppRole credential is valid
-    # read the mount CA to confirm the PKI mount exists/answers (no token needed)
-    _http(f"{addr}/v1/{mount}/ca/pem", token=token)
+    # read the mount CA to confirm the PKI mount exists/answers; it returns raw
+    # PEM (not JSON), so fetch it raw and sanity-check it looks like a cert.
+    ca = _http(f"{addr}/v1/{mount}/ca/pem", token=token, raw=True)
+    if "BEGIN CERTIFICATE" not in (ca or ""):
+        raise SignError(f"PKI mount '{mount}' did not return a CA certificate")
     return {"ok": True, "addr": addr, "mount": mount}
