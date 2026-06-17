@@ -18,7 +18,7 @@ python-syntax:
   stage: lint
   script:
     - $PYBIN --version
-    - $PYBIN -m py_compile backend/app.py backend/notify.py backend/capabilities.py backend/import_certs.py
+    - $PYBIN -m py_compile backend/*.py
     - echo "python OK"
 
 bash-syntax:
