@@ -28,9 +28,14 @@ MANIFEST=(
   "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
   "backend/app.py            /opt/csr-dashboard/app.py                         root:csrapi 0640 backend"
   "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
+  "backend/capabilities.py   /opt/csr-dashboard/capabilities.py                root:csrapi 0640 backend"
   "backend/import_certs.py   /opt/csr-dashboard/import_certs.py                root:csrapi 0640 backend"
   "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
-  "frontend/app.js           /var/www/csr/app.js                               root:nginx  0640 frontend"
+  "frontend/app.css          /var/www/csr/app.css                              root:nginx  0640 frontend"
+  "frontend/app.1-core.js    /var/www/csr/app.1-core.js                        root:nginx  0640 frontend"
+  "frontend/app.2-jobs.js    /var/www/csr/app.2-jobs.js                        root:nginx  0640 frontend"
+  "frontend/app.3-admin.js   /var/www/csr/app.3-admin.js                       root:nginx  0640 frontend"
+  "frontend/app.4-misc-boot.js /var/www/csr/app.4-misc-boot.js                 root:nginx  0640 frontend"
   "helper/csr_dashboard_helper.sh /root/sslcerts/scripts/csr_dashboard_helper.sh root:root 0750 helper"
   "helper/csr_dashboard_helper.d/00-common.sh    /root/sslcerts/scripts/csr_dashboard_helper.d/00-common.sh    root:root 0640 helper"
   "helper/csr_dashboard_helper.d/10-certtypes.sh /root/sslcerts/scripts/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
@@ -94,7 +99,7 @@ fi
 command -v csrbackup >/dev/null && csrbackup || echo "WARN: csrbackup not found"
 
 if [[ "$changed_tags" == *frontend* ]]; then
-    restorecon -v /var/www/csr/index.html /var/www/csr/app.js || true
+    restorecon -Rv /var/www/csr/ || true
 fi
 if [[ "$changed_tags" == *backend* ]]; then
     fapolicyd-cli --file update /opt/csr-dashboard/ || true

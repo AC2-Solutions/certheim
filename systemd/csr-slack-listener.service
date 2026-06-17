@@ -1,0 +1,21 @@
+[Unit]
+# Homelab-only Slack Socket Mode listener. Outbound-only (no inbound exposure).
+# NOT installed by deploy.sh - deploy + enable manually where wanted. Air-gapped
+# prod has no path to Slack, so leave it off there.
+Description=CSR Dashboard Slack Socket Mode listener
+After=network-online.target csr-api.service
+Wants=network-online.target
+
+[Service]
+User=csrapi
+Group=csrapi
+EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
+ExecStart=/opt/csr-dashboard/venv/bin/python /opt/csr-dashboard/slack_listener.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

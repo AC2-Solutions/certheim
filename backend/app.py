@@ -29,6 +29,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, Response, abort, g
 
 import notify
+import capabilities
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -207,14 +208,186 @@ _webhook_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
 DASHBOARD_URL_FALLBACK = "https://nipat-pl-rcdn01.eucom.mil/csr/"
 
 
+WEBHOOK_TYPES = ("generic", "slack", "teams", "discord")
+
+
+def _dashboard_base():
+    """Configured dashboard base URL (from email.conf), else the fallback."""
+    try:
+        u = (notify.get_settings() or {}).get("dashboard_url") or DASHBOARD_URL_FALLBACK
+    except Exception:
+        u = DASHBOARD_URL_FALLBACK
+    return u or DASHBOARD_URL_FALLBACK
+
+
+def _job_link(job_id):
+    """Deep link to a specific job's detail (the SPA opens #job-<id>)."""
+    if not job_id:
+        return None
+    base = _dashboard_base()
+    if not base.endswith("/"):
+        base += "/"
+    return f"{base}#job-{job_id}"
+
+
 def _webhook_payload(event, data):
-    """Build the canonical JSON payload posted to webhooks."""
+    """Build the canonical JSON payload posted to generic webhooks."""
     return {
         "event": event,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "dashboard_url": DASHBOARD_URL_FALLBACK,
         "data": data,
     }
+
+
+def _webhook_summary(event, data):
+    """A human title + one-line detail for chat integrations."""
+    titles = {
+        "job.created": "New CSR request",
+        "job.issued": "Certificate issued",
+        "job.cancelled": "CSR request cancelled",
+        "job.failed": "CSR request failed",
+        "job.expired": "Certificate expiring soon",
+        "feedback.submitted": "Feedback submitted",
+        "test": "Test notification from CSR Dashboard",
+    }
+    title = titles.get(event, event)
+    bits = []
+    if data.get("target_host"):
+        bits.append(f"host: {data['target_host']}")
+    if data.get("cert_type"):
+        bits.append(f"type: {data['cert_type']}")
+    # assignee = the group the job belongs to (best-effort name lookup)
+    if data.get("group_id"):
+        try:
+            grp = _group_by_id(data["group_id"])
+            if grp:
+                bits.append(f"group: {grp['name']}")
+        except Exception:
+            pass
+    if data.get("job_id"):
+        bits.append(f"job: {data['job_id']}")
+    who = (data.get("requester_email") or data.get("submitter_email")
+           or data.get("completed_by_dn") or data.get("cancelled_by_dn"))
+    if who:
+        bits.append("by: " + (_cn_from_dn(who) if "CN=" in str(who) else str(who)))
+    return title, "  •  ".join(bits)
+
+
+def _format_webhook(wtype, event, data):
+    """POST body for a webhook, formatted for its integration type. Includes a
+    clickable "Open job" link/button to the job's dashboard deep link."""
+    if wtype not in ("slack", "teams", "discord"):
+        return _webhook_payload(event, data)
+    title, detail = _webhook_summary(event, data)
+    link = _job_link(data.get("job_id"))
+
+    if wtype == "slack":
+        text = f":bell: *{title}*" + (f"\n{detail}" if detail else "")
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+        elements = []
+        if link:
+            elements.append({"type": "button", "url": link,
+                             "text": {"type": "plain_text", "text": "Open job"}})
+        # Interactive "assign to group" select - only when Slack interactivity
+        # is configured (app + signing secret) and this is a job event.
+        jid = data.get("job_id")
+        if jid and _slack_interactive_ready():
+            opts = _slack_group_options()
+            if opts:
+                elements.append({
+                    "type": "static_select", "action_id": "assign_group",
+                    "placeholder": {"type": "plain_text", "text": "Assign to group"},
+                    "options": opts})
+        if elements:
+            blocks.append({"type": "actions",
+                           "block_id": f"job_{jid}" if jid else "noop",
+                           "elements": elements})
+        return {"text": text, "blocks": blocks}  # text = notification fallback
+
+    if wtype == "discord":
+        embed = {"title": title, "color": 1973492}
+        if detail:
+            embed["description"] = detail
+        if link:
+            embed["url"] = link
+        return {"embeds": [embed]}
+
+    # teams (Office 365 connector MessageCard) - OpenUri action button
+    card = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": title,
+        "themeColor": "0076D7",
+        "title": title,
+        "text": detail or title,
+    }
+    if link:
+        card["potentialAction"] = [{
+            "@type": "OpenUri", "name": "Open job",
+            "targets": [{"os": "default", "uri": link}]}]
+    return card
+
+
+def _slack_group_options():
+    """Slack static_select options for the groups a job can be assigned to."""
+    try:
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT id, name FROM groups ORDER BY name COLLATE NOCASE LIMIT 24"
+            ).fetchall()
+        return [{"text": {"type": "plain_text", "text": (r["name"] or "")[:75]},
+                 "value": str(r["id"])} for r in rows]
+    except Exception:
+        return []
+
+
+def _verify_slack_signature(body_bytes, timestamp, signature, secret):
+    """Verify a Slack request signature (v0 HMAC-SHA256) with replay protection."""
+    if not secret or not timestamp or not signature:
+        return False
+    try:
+        if abs(time.time() - int(timestamp)) > 300:
+            return False
+    except (TypeError, ValueError):
+        return False
+    base = b"v0:" + timestamp.encode() + b":" + body_bytes
+    mac = hmac.new(secret.encode(), base, hashlib.sha256).hexdigest()
+    return hmac.compare_digest("v0=" + mac, signature)
+
+
+def _slack_assign_job(job_id, group_id, slack_user):
+    """Reassign a job's group from a Slack interaction. Returns (ok, message)."""
+    if not JOB_ID_RE.match(job_id or ""):
+        return False, "invalid job id"
+    try:
+        gid = int(group_id)
+    except (TypeError, ValueError):
+        return False, "invalid group"
+    grp = _group_by_id(gid)
+    if not grp:
+        return False, "group not found"
+    with db() as conn:
+        cur = conn.execute("UPDATE jobs SET group_id = ? WHERE id = ?", (gid, job_id))
+        if cur.rowcount == 0:
+            return False, f"job {job_id} not found"
+    audit.info(f"req=slack action=slack_assign result=ok job_id={job_id} "
+               f"group={grp['name']!r} slack_user={slack_user!r}")
+    return True, (f":white_check_mark: Job `{job_id}` assigned to "
+                  f"*{grp['name']}* by {slack_user}")
+
+
+def _slack_interactive_ready():
+    """True when interactive assignment is enabled AND the active transport is
+    configured (http=signing secret, socket=app token)."""
+    if get_setting("slack_interactive") != "1":
+        return False
+    if not capabilities.available("integrations.slack.interactive"):
+        return False
+    mode = get_setting("slack_interactive_mode") or "http"
+    if mode == "socket":
+        return bool(get_setting("slack_app_token"))
+    return bool(get_setting("slack_signing_secret"))
 
 
 def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
@@ -254,10 +427,11 @@ def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
     return status_code, error_msg
 
 
-def _dispatch_webhook_worker(webhook_id, name, url, event, data, headers):
+def _dispatch_webhook_worker(webhook_id, name, url, event, data, headers,
+                             wtype="generic"):
     """Worker function for a single webhook delivery. Logs result and
     updates the webhook row's last_* counters. Runs in webhook thread pool."""
-    payload = _webhook_payload(event, data)
+    payload = _format_webhook(wtype, event, data)
     status_code, error_msg = _send_webhook_sync(url, payload, headers)
 
     try:
@@ -291,7 +465,7 @@ def fire_webhooks(event, data):
     try:
         with db() as conn:
             rows = conn.execute(
-                "SELECT id, name, url, events, headers FROM webhooks WHERE enabled = 1"
+                "SELECT id, name, url, events, headers, type FROM webhooks WHERE enabled = 1"
             ).fetchall()
     except Exception as e:
         sys.stderr.write(f"webhook list failed: {e}\n")
@@ -309,10 +483,18 @@ def fire_webhooks(event, data):
         except (ValueError, TypeError):
             headers = {}
 
+        wtype = r["type"] if "type" in r.keys() else "generic"
+        # Chat integrations need outbound internet; skip them where the
+        # capability isn't available (e.g. air-gapped). Generic webhooks may be
+        # internal, so they're always allowed.
+        if wtype in ("slack", "teams", "discord") \
+                and not capabilities.available("integrations.chat"):
+            continue
+
         try:
             _webhook_pool.submit(
                 _dispatch_webhook_worker,
-                r["id"], r["name"], r["url"], event, data, headers,
+                r["id"], r["name"], r["url"], event, data, headers, wtype,
             )
         except RuntimeError:
             # Pool shutdown during interpreter exit, etc. Best-effort.
@@ -515,6 +697,11 @@ def init_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled)")
+    # Idempotent migration: integration type controls the payload format
+    # (generic JSON, or Slack/Teams/Discord chat message).
+    wh_cols = {row[1] for row in conn.execute("PRAGMA table_info(webhooks)").fetchall()}
+    if "type" not in wh_cols:
+        conn.execute("ALTER TABLE webhooks ADD COLUMN type TEXT NOT NULL DEFAULT 'generic'")
 
     # Groups for team-shared key access
     conn.execute("""
@@ -764,16 +951,109 @@ def password_policy_errors(pw):
     if not re.search(r"[^A-Za-z0-9]", pw or ""): e.append("a special character")
     return e
 
+# --- login banners ----------------------------------------------------------
+# The login page can show a consent/notice banner gated by an "I agree"
+# checkbox. The banner is chosen post-install from the admin UI (or "none").
+# Each preset: label (admin dropdown), link (the agreement link text), title
+# (modal heading), paragraphs[] and items[] (rendered as <p> then a <ul>).
+LOGIN_BANNERS = {
+    "dod": {
+        "label": "DoD / U.S. Government (USG)",
+        "link": "DoD System User Access Agreement",
+        "title": "U.S. Government (USG) Notice and Consent Banner",
+        "paragraphs": [
+            "You are accessing a U.S. Government (USG) Information System (IS) "
+            "that is provided for USG-authorized use only.",
+            "By using this IS (which includes any device attached to this IS), "
+            "you consent to the following conditions:",
+        ],
+        "items": [
+            "The USG routinely intercepts and monitors communications on this "
+            "IS for purposes including, but not limited to, penetration "
+            "testing, COMSEC monitoring, network operations and defense, "
+            "personnel misconduct (PM), law enforcement (LE), and "
+            "counterintelligence (CI) investigations.",
+            "At any time, the USG may inspect and seize data stored on this IS.",
+            "Communications using, or data stored on, this IS are not private, "
+            "are subject to routine monitoring, interception, and search, and "
+            "may be disclosed or used for any USG-authorized purpose.",
+            "This IS includes security measures (e.g., authentication and "
+            "access controls) to protect USG interests — not for your "
+            "personal benefit or privacy.",
+            "Notwithstanding the above, using this IS does not constitute "
+            "consent to PM, LE or CI investigative searching or monitoring of "
+            "the content of privileged communications, or work product, "
+            "related to personal representation or services by attorneys, "
+            "psychotherapists, or clergy, and their assistants. Such "
+            "communications and work product are private and confidential. "
+            "See User Agreement for details.",
+        ],
+    },
+    "hipaa": {
+        "label": "HIPAA Privacy Notice",
+        "link": "HIPAA Notice",
+        "title": "HIPAA Notice — Protected Health Information (PHI)",
+        "paragraphs": [
+            "This system may contain Protected Health Information (PHI) "
+            "subject to the Health Insurance Portability and Accountability "
+            "Act (HIPAA) and is restricted to authorized users only.",
+            "By accessing this system you acknowledge and agree that:",
+        ],
+        "items": [
+            "You will access, use, and disclose PHI only as permitted by HIPAA "
+            "and your organization's policies, limited to the minimum "
+            "necessary for your role.",
+            "All access to PHI is logged and subject to audit; unauthorized "
+            "access, use, or disclosure may result in disciplinary action and "
+            "civil or criminal penalties.",
+            "You will safeguard PHI from unauthorized viewing, sharing, or "
+            "storage, and report any suspected breach immediately.",
+            "This system is monitored to ensure compliance with the HIPAA "
+            "Privacy and Security Rules.",
+        ],
+    },
+    "nsa": {
+        "label": "NSA / National Security System",
+        "link": "U.S. Government User Agreement",
+        "title": "U.S. Government Information System — Notice and Consent",
+        "paragraphs": [
+            "You are accessing a U.S. Government (USG) Information System (IS), "
+            "which may be a National Security System, provided for "
+            "USG-authorized use only.",
+            "By using this IS, you consent to the following conditions:",
+        ],
+        "items": [
+            "The USG routinely intercepts and monitors communications on this "
+            "IS for authorized purposes, including security monitoring, "
+            "network operations and defense, and investigations.",
+            "At any time, the USG may inspect and seize data stored on this IS.",
+            "Communications using, or data stored on, this IS are not private "
+            "and may be disclosed or used for any USG-authorized purpose.",
+            "This IS includes security measures to protect USG interests — "
+            "not for your personal benefit or privacy.",
+            "Unauthorized use may subject you to administrative action and "
+            "civil or criminal penalties.",
+        ],
+    },
+}
+
 # --- instance settings (key/value) -----------------------------------------
 _SETTINGS_DEFAULTS = {
     # "mtls" = CAC required (current/default behavior). "local" = username/
     # password auth (set by installer when mTLS isn't available).
     "auth_mode": "mtls",
-    # Trusted email domain for local self-registration (e.g. "eucom.mil").
-    # Empty = self-registration disabled.
+    # Optional filter for self-registration: if set, only emails at this exact
+    # domain may register. Empty = no domain restriction (any valid email).
     "trusted_email_domain": "",
     # "1" = new local registrations require admin approval before active.
     "require_admin_approval": "0",
+    # "1" = self-registration is open (independent of the email domain filter).
+    "allow_registration": "0",
+    # Login consent banner: "none" or a key in LOGIN_BANNERS, or "custom".
+    "login_banner": "dod",
+    # Custom banner content (used only when login_banner == "custom").
+    "login_banner_custom_title": "Notice and Consent",
+    "login_banner_custom_text": "",
 }
 
 def get_setting(key):
@@ -795,8 +1075,43 @@ def set_setting(key, value):
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value))
 
+# Let the capability resolver read admin-declared env flags (cap_*).
+capabilities.configure(get_setting=get_setting)
+
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
+
+def current_banner():
+    """Resolve the configured login banner to a render-ready dict, or None.
+    Public (the login page needs it pre-auth). Returns:
+      {key, label, link, title, paragraphs[], items[]}  or  None ("none"/empty).
+    """
+    key = (get_setting("login_banner") or "dod").strip().lower()
+    if key == "none":
+        return None
+    if key == "custom":
+        title = (get_setting("login_banner_custom_title") or "Notice and Consent").strip()
+        text = (get_setting("login_banner_custom_text") or "").strip()
+        if not text:
+            return None
+        # Blank-line-separated blocks become paragraphs; no items for custom.
+        paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        return {"key": "custom", "label": "Custom", "link": title or "Notice",
+                "title": title or "Notice and Consent",
+                "paragraphs": paras or [text], "items": []}
+    b = LOGIN_BANNERS.get(key)
+    if not b:
+        return None
+    return {"key": key, "label": b["label"], "link": b["link"],
+            "title": b["title"], "paragraphs": list(b["paragraphs"]),
+            "items": list(b["items"])}
+
+def banner_options():
+    """Admin dropdown choices: built-in presets + none + custom."""
+    opts = [{"key": "none", "label": "No banner"}]
+    opts += [{"key": k, "label": v["label"]} for k, v in LOGIN_BANNERS.items()]
+    opts.append({"key": "custom", "label": "Custom message…"})
+    return opts
 
 # --- local sessions ---------------------------------------------------------
 LOCAL_SESSION_COOKIE = "csr_session"
@@ -1386,12 +1701,18 @@ def auth_info():
     self-registration is open, so it can show the right login/register UI."""
     mode = auth_mode()
     domain = get_setting("trusted_email_domain") or ""
+    banner = current_banner()
     return jsonify(
         auth_mode=mode,
         local_enabled=(mode == "local"),
-        registration_open=bool(domain) if mode == "local" else False,
+        # Self-registration is its own toggle now, independent of the (optional)
+        # email-domain filter - a domain is "not always going to be a thing".
+        registration_open=(mode == "local"
+                           and get_setting("allow_registration") == "1"),
         trusted_email_domain=domain,
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        banner=banner,
+        require_agreement=bool(banner),
     )
 
 @app.post("/api/auth/login")
@@ -1467,9 +1788,10 @@ def auth_register():
     username is returned to the caller for display."""
     if auth_mode() != "local":
         return jsonify(error="registration not available"), 403
-    domain = (get_setting("trusted_email_domain") or "").strip().lower()
-    if not domain:
+    if get_setting("allow_registration") != "1":
         return jsonify(error="self-registration is disabled"), 403
+    # Optional email-domain filter (empty = any valid email may register).
+    domain = (get_setting("trusted_email_domain") or "").strip().lower()
 
     payload = request.get_json(silent=True) or {}
     first = (payload.get("first_name") or "").strip()
@@ -1484,8 +1806,9 @@ def auth_register():
         return jsonify(error="name must contain letters"), 400
     if not EMAIL_RE.match(email):
         return jsonify(error="valid email required"), 400
-    # Trusted-domain enforcement (case-insensitive, exact domain match).
-    if email.rsplit("@", 1)[-1] != domain:
+    # Trusted-domain enforcement (case-insensitive, exact domain match) - only
+    # when an admin configured a domain; otherwise any valid email is allowed.
+    if domain and email.rsplit("@", 1)[-1] != domain:
         log_event("register", "deny_domain", email=email[:128])
         return jsonify(error=f"email must be @{domain}"), 403
     pol = password_policy_errors(password)
@@ -1558,6 +1881,11 @@ def admin_get_auth_settings():
         auth_mode=auth_mode(),
         trusted_email_domain=get_setting("trusted_email_domain") or "",
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        allow_registration=(get_setting("allow_registration") == "1"),
+        login_banner=get_setting("login_banner") or "dod",
+        login_banner_custom_title=get_setting("login_banner_custom_title") or "",
+        login_banner_custom_text=get_setting("login_banner_custom_text") or "",
+        banner_options=banner_options(),
     )
 
 @app.put("/api/admin/auth-settings")
@@ -1587,6 +1915,27 @@ def admin_set_auth_settings():
         val = "1" if payload["require_admin_approval"] else "0"
         set_setting("require_admin_approval", val)
         changed["require_admin_approval"] = val
+    if "allow_registration" in payload:
+        val = "1" if payload["allow_registration"] else "0"
+        set_setting("allow_registration", val)
+        changed["allow_registration"] = val
+    if "login_banner" in payload:
+        b = (payload["login_banner"] or "none").strip().lower()
+        if b not in ("none", "custom") and b not in LOGIN_BANNERS:
+            return jsonify(error="invalid login_banner"), 400
+        set_setting("login_banner", b)
+        changed["login_banner"] = b
+    if "login_banner_custom_title" in payload:
+        t = (payload["login_banner_custom_title"] or "").strip()[:120]
+        set_setting("login_banner_custom_title", t)
+        changed["login_banner_custom_title"] = t
+    if "login_banner_custom_text" in payload:
+        txt = payload["login_banner_custom_text"]
+        if txt is not None and not isinstance(txt, str):
+            return jsonify(error="login_banner_custom_text must be string"), 400
+        txt = (txt or "")[:8000]
+        set_setting("login_banner_custom_text", txt)
+        changed["login_banner_custom_text"] = "set" if txt else "(empty)"
     log_event("admin_auth_settings", "ok", **{k: str(v)[:64] for k, v in changed.items()})
     return jsonify(ok=True, **changed)
 
@@ -4113,22 +4462,28 @@ def admin_get_email_config():
 def admin_put_email_config():
     payload = request.get_json(silent=True) or {}
 
-    host = (payload.get("host") or "").strip()
+    method = (payload.get("method") or "smg").strip().lower()
+    if method != "none" and method not in notify.EMAIL_METHODS:
+        return jsonify(error="unknown email method"), 400
+    fields = payload.get("fields") or {}
+    if not isinstance(fields, dict):
+        return jsonify(error="fields must be an object"), 400
     from_address = (payload.get("from_address") or "").strip()
     dashboard_url = (payload.get("dashboard_url") or "").strip()
     cc = (payload.get("cc") or "").strip()
 
-    try:
-        port = int(payload.get("port", 25))
-        timeout = int(payload.get("timeout", 10))
-    except (TypeError, ValueError):
-        return jsonify(error="port and timeout must be integers"), 400
-    if not (1 <= port <= 65535):
-        return jsonify(error="port out of range"), 400
-    if not (1 <= timeout <= 120):
-        return jsonify(error="timeout out of range (1-120s)"), 400
-    if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
-        return jsonify(error="smtp host is required (hostname or IP)"), 400
+    # "none" disables email entirely - skip the delivery-field validation.
+    if method == "none":
+        ok, reason = notify.save_settings({
+            "method": "none", "fields": {},
+            "from_address": from_address, "cc": cc, "dashboard_url": dashboard_url,
+        })
+        if not ok:
+            return jsonify(error=reason), 500
+        log_event("admin_email_config", "ok", method="none")
+        return jsonify(ok=True, reason=reason, **notify.get_settings())
+
+    # Common validation.
     if from_address:
         ok_e, from_address, err_e = _validate_email(from_address)
         if not ok_e or not from_address:
@@ -4142,16 +4497,42 @@ def admin_put_email_config():
     if dashboard_url and not dashboard_url.startswith("https://"):
         return jsonify(error="dashboard_url must start with https://"), 400
 
+    # Method-specific shape checks (notify reports "disabled" if a required
+    # connection field is missing, but catch the obvious ones here).
+    for k in ("port", "timeout"):
+        v = fields.get(k)
+        if v not in (None, ""):
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                return jsonify(error=f"{k} must be an integer"), 400
+            if k == "port" and not (1 <= iv <= 65535):
+                return jsonify(error="port out of range"), 400
+            if k == "timeout" and not (1 <= iv <= 120):
+                return jsonify(error="timeout out of range (1-120s)"), 400
+    if method in ("mailgun", "sendgrid") \
+            and not capabilities.available("notify.email.api"):
+        return jsonify(error="HTTP email providers (Mailgun/SendGrid) are not "
+                             "available in this deployment (no outbound "
+                             "internet). Use an SMTP/SMG relay instead."), 400
+    if method in ("smg", "smtp"):
+        host = (fields.get("host") or "").strip()
+        if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
+            return jsonify(error="host is required (hostname or IP)"), 400
+    if method == "mailgun":
+        dom = (fields.get("domain") or "").strip()
+        if not dom or not re.match(r"^[A-Za-z0-9.-]+$", dom):
+            return jsonify(error="mailgun sending domain is required"), 400
+
     ok, reason = notify.save_settings({
-        "host": host, "port": port, "timeout": timeout,
-        "from_address": from_address, "cc": cc,
-        "dashboard_url": dashboard_url,
+        "method": method, "fields": fields,
+        "from_address": from_address, "cc": cc, "dashboard_url": dashboard_url,
     })
     if not ok:
         log_event("admin_email_config", "error", reason=reason[:128])
         return jsonify(error=reason), 500
 
-    log_event("admin_email_config", "ok", host=host, port=port)
+    log_event("admin_email_config", "ok", method=method)
     return jsonify(ok=True, reason=reason, **notify.get_settings())
 
 
@@ -4432,7 +4813,7 @@ def _validate_webhook_headers(headers):
 def admin_list_webhooks():
     with db() as conn:
         rows = conn.execute("""
-            SELECT id, name, url, events, headers, enabled,
+            SELECT id, name, url, events, headers, enabled, type,
                    created_at, created_by_dn,
                    last_called_at, last_status_code, last_error, call_count
               FROM webhooks
@@ -4450,8 +4831,10 @@ def admin_list_webhooks():
             d["headers"] = json.loads(d["headers"] or "{}") if d["headers"] else {}
         except (ValueError, TypeError):
             d["headers"] = {}
+        d["type"] = d.get("type") or "generic"
         out.append(d)
-    return jsonify(webhooks=out, available_events=list(WEBHOOK_EVENTS))
+    return jsonify(webhooks=out, available_events=list(WEBHOOK_EVENTS),
+                   available_types=list(WEBHOOK_TYPES))
 
 
 @app.post("/api/admin/webhooks")
@@ -4475,16 +4858,20 @@ def admin_create_webhook():
     if not ok:
         return jsonify(error=err), 400
 
+    wtype = (payload.get("type") or "generic").strip().lower()
+    if wtype not in WEBHOOK_TYPES:
+        return jsonify(error="invalid integration type"), 400
+
     enabled = bool(payload.get("enabled", True))
 
     with db() as conn:
         cur = conn.execute("""
             INSERT INTO webhooks (name, url, events, headers, enabled,
-                                  created_at, created_by_dn)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                                  created_at, created_by_dn, type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             name, url, json.dumps(events), json.dumps(headers) if headers else None,
-            1 if enabled else 0, time.time(), g.identity["dn"],
+            1 if enabled else 0, time.time(), g.identity["dn"], wtype,
         ))
         wid = cur.lastrowid
 
@@ -4525,6 +4912,12 @@ def admin_update_webhook(webhook_id):
         fields.append("headers = ?")
         params.append(json.dumps(headers) if headers else None)
 
+    if "type" in payload:
+        wtype = (payload["type"] or "generic").strip().lower()
+        if wtype not in WEBHOOK_TYPES:
+            return jsonify(error="invalid integration type"), 400
+        fields.append("type = ?"); params.append(wtype)
+
     if "enabled" in payload:
         fields.append("enabled = ?")
         params.append(1 if bool(payload["enabled"]) else 0)
@@ -4563,7 +4956,7 @@ def admin_test_webhook(webhook_id):
     """Send a synchronous test payload and return the result inline."""
     with db() as conn:
         row = conn.execute(
-            "SELECT name, url, headers FROM webhooks WHERE id = ?", (webhook_id,)
+            "SELECT name, url, headers, type FROM webhooks WHERE id = ?", (webhook_id,)
         ).fetchone()
     if not row:
         return jsonify(error="webhook not found"), 404
@@ -4573,9 +4966,11 @@ def admin_test_webhook(webhook_id):
     except (ValueError, TypeError):
         headers = {}
 
-    payload = _webhook_payload("test", {
+    wtype = (row["type"] if "type" in row.keys() else "generic") or "generic"
+    payload = _format_webhook(wtype, "test", {
         "message": "This is a test from the CSR Dashboard admin panel.",
         "triggered_by": _cn_from_dn(g.identity["dn"]),
+        "target_host": "example.test",
     })
     status_code, error_msg = _send_webhook_sync(row["url"], payload, headers)
 
@@ -4596,6 +4991,101 @@ def admin_test_webhook(webhook_id):
               webhook_id=webhook_id, status=status_code,
               error=(error_msg or "-")[:96])
     return jsonify(ok=ok, status_code=status_code, error=error_msg)
+
+
+# ============================================================
+# Slack interactivity (assign jobs from a Slack message)
+# ============================================================
+@app.get("/api/admin/slack-config")
+@require_admin
+def admin_get_slack_config():
+    return jsonify(
+        enabled=(get_setting("slack_interactive") == "1"),
+        mode=get_setting("slack_interactive_mode") or "http",
+        signing_secret_set=bool(get_setting("slack_signing_secret")),
+        app_token_set=bool(get_setting("slack_app_token")),
+        bot_token_set=bool(get_setting("slack_bot_token")),
+        request_path="/csr/api/slack/interact",
+    )
+
+
+@app.put("/api/admin/slack-config")
+@require_admin
+@require_csrf
+def admin_put_slack_config():
+    payload = request.get_json(silent=True) or {}
+    if "enabled" in payload:
+        set_setting("slack_interactive", "1" if payload["enabled"] else "0")
+    if "mode" in payload:
+        m = (payload["mode"] or "http").strip().lower()
+        if m not in ("http", "socket"):
+            return jsonify(error="mode must be 'http' or 'socket'"), 400
+        set_setting("slack_interactive_mode", m)
+    # secrets: blank or the mask placeholder keeps the stored value
+    for key, setting in (("signing_secret", "slack_signing_secret"),
+                         ("app_token", "slack_app_token"),
+                         ("bot_token", "slack_bot_token")):
+        if key in payload:
+            s = (payload[key] or "").strip()
+            if s and s != "********":
+                set_setting(setting, s)
+    log_event("admin_slack_config", "ok",
+              mode=get_setting("slack_interactive_mode") or "http")
+    return jsonify(ok=True)
+
+
+@app.get("/api/admin/capabilities")
+@require_admin
+def admin_capabilities():
+    """What this deployment can do: per-capability availability + reason, plus
+    the detected/declared environment. Drives the admin UI's show/disable/why."""
+    return jsonify(capabilities=capabilities.all_status(),
+                   environment=capabilities.env_caps())
+
+
+@app.post("/api/slack/interact")
+def slack_interact():
+    """Slack interactivity callback. Authenticated by the Slack request
+    signature (NOT a user session), so it carries no auth/csrf decorators."""
+    secret = get_setting("slack_signing_secret") or ""
+    if get_setting("slack_interactive") != "1" \
+            or (get_setting("slack_interactive_mode") or "http") != "http" \
+            or not secret:
+        return ("", 404)
+    body = request.get_data(cache=True) or b""
+    ts = request.headers.get("X-Slack-Request-Timestamp", "")
+    sig = request.headers.get("X-Slack-Signature", "")
+    if not _verify_slack_signature(body, ts, sig, secret):
+        log_event("slack_interact", "deny_bad_signature")
+        return ("invalid signature", 401)
+
+    form = urllib.parse.parse_qs(body.decode("utf-8", "replace"))
+    try:
+        p = json.loads((form.get("payload") or [""])[0])
+    except (ValueError, TypeError):
+        return ("", 400)
+    if p.get("type") != "block_actions":
+        return ("", 200)
+
+    actions = p.get("actions") or []
+    act = actions[0] if actions else {}
+    block_id = act.get("block_id", "") or ""
+    job_id = block_id[4:] if block_id.startswith("job_") else None
+    group_id = (act.get("selected_option") or {}).get("value")
+    slack_user = ((p.get("user") or {}).get("username")
+                  or (p.get("user") or {}).get("name") or "slack-user")
+    response_url = p.get("response_url")
+
+    if act.get("action_id") == "assign_group" and job_id and group_id:
+        ok, msg = _slack_assign_job(job_id, group_id, slack_user)
+        if response_url:
+            # Confirm back in the channel (async; never block the 200 ack).
+            try:
+                _webhook_pool.submit(_send_webhook_sync, response_url,
+                                     {"replace_original": False, "text": msg}, {})
+            except RuntimeError:
+                pass
+    return ("", 200)
 
 
 # ============================================================

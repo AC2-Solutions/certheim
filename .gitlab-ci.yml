@@ -9,7 +9,7 @@
 variables:
   PYBIN: "python3.9"
 
-stages: [lint]
+stages: [lint, test]
 
 default:
   tags: [shell]
@@ -18,7 +18,7 @@ python-syntax:
   stage: lint
   script:
     - $PYBIN --version
-    - $PYBIN -m py_compile backend/app.py backend/notify.py backend/import_certs.py
+    - $PYBIN -m py_compile backend/app.py backend/notify.py backend/capabilities.py backend/import_certs.py
     - echo "python OK"
 
 bash-syntax:
@@ -32,8 +32,21 @@ bash-syntax:
 js-syntax:
   stage: lint
   script:
-    - node --check frontend/app.js
+    # app.js is split into ordered pieces; each must parse on its own.
+    - for f in frontend/app.*.js; do node --check "$f"; done
     - echo "js OK"
+
+smoke-tests:
+  stage: test
+  # Bootstrap: non-blocking until the runner's pip/internet is confirmed, then
+  # drop allow_failure to make it a hard gate (it's green locally).
+  allow_failure: true
+  script:
+    # Endpoint smoke net (route registration + auth + shapes). Catches a
+    # dropped/broken route from refactors (e.g. the planned blueprint split).
+    - $PYBIN -m venv /tmp/cienv
+    - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
+    - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
 
 # NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
 # it lives in the /var/automation repo and is covered by that project's

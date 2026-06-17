@@ -11,486 +11,14 @@
   })();
 </script>
 
-<style>
-  :root {
-    --fg: #e7eaee;
-    --fg-muted: #8a93a0;
-    --bg: #0e1116;
-    --bg-elevated: #1a1f26;
-    --bg-input: #11161c;
-    --border: #2d343d;
-    --border-input: #3a424d;
-    --accent: #4a90c7;
-    --accent-fg: #0e1116;
-    --header-bg: #15243a;
-    --header-fg: #e7eaee;
-    --table-header-bg: #1f262e;
-    --table-row-border: #2d343d;
-    --table-row-hover: #1f262e;
-    --secondary: #3a424d;
-    --secondary-fg: #e7eaee;
-    --danger: #ff7a7a;
-    --warning: #f0b86c;
-    --ok: #5fdc7a;
-    --purple: #b380e8;
-    --log-bg: #050709;
-    --log-fg: #c4cad2;
-    --modal-bg: #1a1f26;
-    --modal-overlay: rgba(0,0,0,0.88);
-    --code-bg: rgba(255,255,255,0.06);
-    --toggle-bg: rgba(255,255,255,0.12);
-    --toggle-bg-hover: rgba(255,255,255,0.22);
-    --toggle-border: rgba(255,255,255,0.18);
-  }
-
-  :root[data-theme="light"] {
-    --fg: #111;
-    --fg-muted: #666;
-    --bg: #f6f7f9;
-    --bg-elevated: #fff;
-    --bg-input: #fff;
-    --border: #d8dde3;
-    --border-input: #ccd2d8;
-    --accent: #1f4e79;
-    --accent-fg: #fff;
-    --header-bg: #1f4e79;
-    --header-fg: #fff;
-    --table-header-bg: #f0f2f5;
-    --table-row-border: #eee;
-    --table-row-hover: #f5f7fa;
-    --secondary: #555;
-    --secondary-fg: #fff;
-    --danger: #a00;
-    --warning: #b35900;
-    --ok: #1a7f37;
-    --purple: #6a3a9c;
-    --log-bg: #0e1116;
-    --log-fg: #dde3ea;
-    --modal-bg: #fff;
-    --modal-overlay: rgba(0,0,0,0.82);
-    --code-bg: rgba(0,0,0,0.05);
-    --toggle-bg: rgba(255,255,255,0.18);
-    --toggle-bg-hover: rgba(255,255,255,0.32);
-    --toggle-border: rgba(255,255,255,0.28);
-  }
-
-  * { box-sizing: border-box; }
-  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-         margin: 0; background: var(--bg); color: var(--fg); }
-
-  header { background: var(--header-bg); color: var(--header-fg); padding: 14px 20px;
-           display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-  .theme-toggle { background: var(--toggle-bg); color: var(--header-fg);
-                  border: 1px solid var(--toggle-border); border-radius: 4px;
-                  padding: 6px 12px; font-size: 13px; cursor: pointer;
-                  display: inline-flex; align-items: center; gap: 6px; }
-  .theme-toggle:hover { background: var(--toggle-bg-hover); }
-
-  main { max-width: 1200px; margin: 20px auto; padding: 0 20px;
-         display: grid; gap: 16px; }
-
-  .card { background: var(--bg-elevated); border: 1px solid var(--border);
-          border-radius: 6px; padding: 16px; color: var(--fg); min-width: 0; }
-  .card h2 { margin: 0 0 10px; font-size: 15px; }
-  .card.warn-card { border-left: 3px solid var(--warning); }
-  .card-header { display: flex; justify-content: space-between; align-items: center;
-                 margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
-  .card-header h2 { margin: 0; }
-
-  /* Collapsible certlist section */
-  details.card summary { cursor: pointer; list-style: none; padding: 0;
-                          display: flex; align-items: center; gap: 8px; }
-  details.card summary::-webkit-details-marker { display: none; }
-  details.card summary::before { content: "▶"; display: inline-block;
-                                  font-size: 11px; color: var(--fg-muted);
-                                  transition: transform 0.2s; }
-  details.card[open] summary::before { transform: rotate(90deg); }
-  details.card summary h2 { display: inline; margin: 0; font-size: 15px; }
-  .details-body { margin-top: 14px; }
-  hr.divider { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
-
-  textarea { width: 100%; min-height: 160px;
-             font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
-             padding: 10px; border: 1px solid var(--border-input); border-radius: 4px;
-             background: var(--bg-input); color: var(--fg); }
-  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-
-  button, .btn { background: var(--accent); color: var(--accent-fg); border: 0;
-                 border-radius: 4px; padding: 8px 14px; font-size: 13px; cursor: pointer;
-                 font-family: inherit; }
-  button.secondary, .btn.secondary { background: var(--secondary); color: var(--secondary-fg); }
-  button.danger, .btn.danger { background: var(--danger); color: #fff; }
-  button:disabled, .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-  button:hover:not(:disabled), .btn:hover:not(:disabled) { opacity: 0.9; }
-  .btn { display: inline-block; text-decoration: none; }
-
-  .link-btn { background: transparent; color: var(--accent); border: 0; padding: 0;
-              cursor: pointer; font-size: 13px; text-decoration: underline; font-family: inherit; }
-  .link-btn:hover { opacity: 0.8; }
-
-  .status { font-size: 12px; color: var(--fg-muted); }
-  .status.ok { color: var(--ok); }
-  .status.err { color: var(--danger); }
-
-  pre.log { background: var(--log-bg); color: var(--log-fg); padding: 12px;
-            border-radius: 4px; max-height: 300px; overflow: auto;
-            font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
-            word-break: break-word;
-            border: 1px solid var(--border); margin: 12px 0 0; }
-
-  table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--fg); }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--table-row-border); }
-  th { background: var(--table-header-bg); font-weight: 600; }
-  td.size { text-align: right; font-variant-numeric: tabular-nums; }
-  tbody tr:hover { background: var(--table-row-hover); }
-
-  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
-         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
-  /* Emphasised badge for the auto-append rule - makes it obvious to
-     first-time users. Sans-serif for the phrase; the domain inside stays
-     monospace via the nested .dom span. */
-  .suffix-badge { display: inline-block; background: var(--accent);
-         color: var(--accent-fg); padding: 2px 9px; border-radius: 4px;
-         font-size: 12px; font-weight: 600; letter-spacing: 0.2px; }
-  .suffix-badge .dom { font-family: ui-monospace, Menlo, Consolas, monospace; }
-  a.dl { color: var(--accent); text-decoration: none; }
-  a.dl:hover { text-decoration: underline; }
-  .hint { font-size: 12px; color: var(--fg-muted); margin: 4px 0 8px; }
-
-  /* Pills */
-  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px;
-          font-size: 11px; font-weight: 600; text-transform: uppercase;
-          letter-spacing: 0.5px; border: 1px solid; }
-  .pill-pending { background: rgba(240,184,108,0.12); color: var(--warning); border-color: var(--warning); }
-  .pill-ok      { background: rgba(95,220,122,0.12); color: var(--ok); border-color: var(--ok); }
-  .pill-err     { background: rgba(255,122,122,0.12); color: var(--danger); border-color: var(--danger); }
-  .pill-mute    { background: rgba(138,147,160,0.12); color: var(--fg-muted); border-color: var(--fg-muted); }
-  .pill-blue    { background: rgba(74,144,199,0.12); color: var(--accent); border-color: var(--accent); }
-  .pill-purple  { background: rgba(179,128,232,0.12); color: var(--purple); border-color: var(--purple); }
-
-  /* Filter bar */
-  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .filter-bar input[type="search"] { flex: 1 1 220px; }
-  .filter-bar input, .filter-bar select {
-    padding: 8px 10px; background: var(--bg-input); color: var(--fg);
-    border: 1px solid var(--border-input); border-radius: 4px; font-size: 13px;
-    font-family: inherit;
-  }
-  .filter-bar input:focus, .filter-bar select:focus {
-    outline: 2px solid var(--accent); outline-offset: -1px;
-  }
-
-  /* Pagination */
-  .pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px;
-                font-size: 13px; color: var(--fg-muted); }
-
-  .mode-tabs { display: flex; border-bottom: 1px solid var(--border);
-               margin-bottom: 14px; gap: 0; }
-  .mode-tab { background: transparent; color: var(--fg-muted); border: 0;
-              border-bottom: 2px solid transparent; padding: 8px 16px;
-              cursor: pointer; font-family: inherit; font-size: 13px; }
-  .mode-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .mode-tab:hover:not(.active) { color: var(--fg); }
-
-  .form-input { width: 100%; padding: 8px 10px; background: var(--bg-input);
-                color: var(--fg); border: 1px solid var(--border-input);
-                border-radius: 4px; font-size: 13px; font-family: inherit; }
-  .form-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  .textarea-label { display: block; margin-top: 12px; margin-bottom: 4px;
-                    font-size: 13px; color: var(--fg-muted); }
-  .textarea-label .hint { display: inline; margin: 0; }
-
-  .san-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-  .san-row .san-input { flex: 1; }
-  .san-row .san-remove { background: transparent; color: var(--danger);
-                         border: 0; padding: 4px 10px; cursor: pointer;
-                         font-size: 18px; line-height: 1;
-                         font-family: inherit; }
-  .san-row .san-remove:hover { color: var(--fg); }
-
-  .header-actions { display: flex; gap: 8px; align-items: center; }
-  .header-nav { background: var(--toggle-bg); color: var(--header-fg);
-                border: 1px solid var(--toggle-border); border-radius: 4px;
-                padding: 6px 12px; font-size: 13px; cursor: pointer;
-                font-family: inherit;
-                display: inline-flex; align-items: center; gap: 6px;
-                text-decoration: none; }
-  .header-nav:hover { background: var(--toggle-bg-hover); }
-  .header-nav.active { background: var(--accent); color: var(--accent-fg);
-                       border-color: var(--accent); }
-  .admin-only { display: none; }
-  body.is-admin .admin-only { display: inline-flex; }
-
-  .bulk-row { display: flex; gap: 8px; align-items: center; padding: 10px;
-              background: var(--bg-input); border-radius: 4px;
-              margin-bottom: 10px; flex-wrap: wrap; }
-  .checkbox-cell { width: 32px; text-align: center; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 12px; margin-top: 8px; }
-  .stat-tile { background: var(--bg-input); border: 1px solid var(--border);
-               border-radius: 4px; padding: 10px; }
-  .stat-tile .label { font-size: 11px; color: var(--fg-muted);
-                      text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-tile .value { font-size: 18px; font-weight: 600; margin-top: 2px;
-                      font-variant-numeric: tabular-nums; }
-  .stat-tile .sub { font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
-
-  /* Modal */
-  .modal-overlay { position: fixed; inset: 0; background: var(--modal-overlay);
-                    z-index: 999; display: flex; align-items: center; justify-content: center;
-                    padding: 20px; }
-  .modal-overlay[hidden] { display: none; }
-  .modal { background: var(--modal-bg); border: 1px solid var(--border);
-            border-radius: 6px; padding: 24px; max-width: 600px; width: 100%;
-            max-height: 90vh; overflow: auto; color: var(--fg); }
-  .modal-wide { max-width: 860px; }
-  .modal h2 { margin-top: 0; margin-bottom: 12px; font-size: 16px; }
-  .modal label { display: block; margin-top: 12px; margin-bottom: 4px;
-                  font-size: 13px; color: var(--fg-muted); }
-  .modal input[type="text"], .modal input[type="search"] {
-    width: 100%; padding: 8px 10px; background: var(--bg-input); color: var(--fg);
-    border: 1px solid var(--border-input); border-radius: 4px; font-size: 13px;
-    font-family: inherit;
-  }
-  .modal input[type="file"] { font-size: 13px; color: var(--fg); }
-  .modal textarea { margin-top: 4px; min-height: 140px; }
-
-  .detail-table { width: 100%; }
-  .detail-table th { background: transparent; text-align: left; font-weight: 500;
-                      color: var(--fg-muted); width: 130px;
-                      border-bottom: 1px solid var(--table-row-border); }
-  .detail-table td { border-bottom: 1px solid var(--table-row-border);
-                     word-break: break-all; }
-  .error-box { background: rgba(255,122,122,0.1); border: 1px solid var(--danger);
-                border-radius: 4px; padding: 10px; margin-top: 12px; font-size: 13px;
-                color: var(--danger); word-break: break-word; }
-  .pem-preview { background: var(--log-bg); color: var(--log-fg); padding: 10px;
-                  border-radius: 4px; font-size: 11px; max-height: 200px;
-                  overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-                  border: 1px solid var(--border); margin-top: 6px; }
-  .openssl-text { background: var(--log-bg); color: var(--log-fg); padding: 12px;
-                  border-radius: 4px; font-size: 11px; max-height: 400px;
-                  overflow: auto; white-space: pre;
-                  font-family: ui-monospace, Menlo, Consolas, monospace;
-                  border: 1px solid var(--border); margin: 6px 0 0; }
-  details.openssl-toggle { margin-top: 12px; }
-  details.openssl-toggle > summary { cursor: pointer; padding: 6px 0;
-                                     color: var(--accent); font-size: 13px;
-                                     list-style: none; }
-  details.openssl-toggle > summary::-webkit-details-marker { display: none; }
-  details.openssl-toggle > summary::before { content: "▶"; display: inline-block;
-                                              margin-right: 6px; font-size: 11px;
-                                              transition: transform 0.2s; }
-  details.openssl-toggle[open] > summary::before { transform: rotate(90deg); }
-
-  /* DoD banner - now a modal opened from a link on the login page.
-     Use :not([hidden]) so the hidden attribute actually hides it (a bare
-     display:flex would override [hidden]'s display:none). */
-  #dod-banner:not([hidden]) { position: fixed; inset: 0; background: var(--modal-overlay);
-                z-index: 9999; display: flex; align-items: center; justify-content: center;
-                padding: 20px; }
-  #dod-banner[hidden] { display: none; }
-  #dod-banner .inner { background: var(--modal-bg); color: var(--fg);
-                       max-width: 780px; max-height: 90vh; overflow: auto;
-                       border-radius: 6px; padding: 24px; font-size: 13px; line-height: 1.5;
-                       border: 1px solid var(--border); }
-  #dod-banner h2 { margin: 0 0 12px; color: var(--danger); }
-  #dod-banner ul { padding-left: 20px; }
-  #dod-banner .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-
-  /* Login gate - :not([hidden]) so the hidden attribute works */
-  #login-view:not([hidden]) { position: fixed; inset: 0; z-index: 9000;
-                display: flex; align-items: center; justify-content: center;
-                padding: 20px; background: var(--bg); }
-  #login-view[hidden] { display: none; }
-  #login-card { background: var(--modal-bg); border: 1px solid var(--border);
-                border-radius: 8px; padding: 32px; width: 100%; max-width: 400px;
-                box-shadow: 0 8px 28px rgba(0,0,0,0.18); }
-  #login-card h1 { font-size: 19px; margin: 0 0 4px; }
-  #login-card .sub { color: var(--fg-muted); font-size: 13px; margin: 0 0 22px; }
-  #login-card .auth-block { margin-bottom: 18px; }
-  #login-card .auth-block.cac { text-align: center; }
-  #login-card .divider { display: flex; align-items: center; gap: 10px;
-                         color: var(--fg-muted); font-size: 12px; margin: 18px 0; }
-  #login-card .divider::before, #login-card .divider::after {
-                content: ""; flex: 1; height: 1px; background: var(--border); }
-  #login-card label { display: block; font-size: 12px; color: var(--fg-muted);
-                      margin: 10px 0 4px; }
-  #login-card input { width: 100%; box-sizing: border-box; }
-  #login-card button.full { width: 100%; margin-top: 16px; }
-  #login-card .login-foot { margin-top: 18px; text-align: center; font-size: 13px; }
-  #login-status { margin-top: 12px; font-size: 13px; min-height: 1.2em; }
-  .pw-hints { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.5; }
-  .pw-hints li.met { color: var(--ok); }
-  /* Agreement warning shown after the user unchecks the agreement box */
-  .agree-warn { display: flex; gap: 8px; align-items: flex-start;
-                background: var(--info-bg, rgba(80,150,220,0.12));
-                border: 1px solid var(--info-border, rgba(80,150,220,0.4));
-                color: var(--fg); border-radius: 6px; padding: 10px 12px;
-                font-size: 12.5px; line-height: 1.4; margin: 14px 0; }
-  .agree-warn-icon { font-size: 15px; line-height: 1; flex-shrink: 0; }
-  #login-card .checkbox-row { display: flex; align-items: center; gap: 8px;
-                              font-size: 13px; margin: 12px 0; }
-  #login-card .checkbox-row input { width: auto; }
-  /* Multi-request rows editor */
-  .request-header, .request-row {
-    display: grid;
-    grid-template-columns: 1fr 1.2fr 32px;
-    gap: 6px; align-items: center;
-  }
-  .request-header { margin-bottom: 4px; }
-  .request-row { margin-bottom: 6px; }
-  .request-row .req-remove {
-    background: transparent; border: 1px solid var(--border);
-    color: var(--fg-muted); border-radius: 4px; cursor: pointer;
-    height: 30px; width: 30px; font-size: 15px; line-height: 1;
-  }
-  .request-row .req-remove:hover { color: var(--danger); border-color: var(--danger); }
-  @media (max-width: 700px) {
-    .request-header { display: none; }
-    .request-row { grid-template-columns: 1fr 32px; }
-    .request-row .req-sans { grid-column: 1 / 2; }
-  }
-
-  /* Cert type checkbox grid */
-  .cert-type-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 6px;
-    font-size: 13px;
-    margin-top: 4px;
-  }
-  .cert-type-grid label {
-    display: flex; gap: 6px; align-items: center;
-    cursor: pointer; user-select: none;
-    transition: opacity 0.12s ease;
-  }
-  .cert-type-grid label.disabled {
-    opacity: 0.35; cursor: not-allowed;
-  }
-
-  /* Admin nav badge for unread feedback count */
-  .nav-badge {
-    display: inline-block; margin-left: 6px;
-    background: var(--danger); color: white;
-    font-size: 11px; font-weight: 600;
-    padding: 1px 7px; border-radius: 10px; line-height: 14px;
-    vertical-align: middle;
-  }
-
-  /* Tutorial walkthrough overlay */
-  /* Side-nav layout (admin + dashboard) */
-  .panel-layout {
-    display: grid; grid-template-columns: 170px 1fr;
-    gap: 16px; align-items: start;
-  }
-  .panel-nav {
-    position: sticky; top: 70px;
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .panel-nav button {
-    text-align: left; font-size: 13px; cursor: pointer;
-    padding: 8px 12px; border-radius: 6px;
-    background: transparent; color: var(--fg);
-    border: 1px solid transparent;
-  }
-  .panel-nav button:hover { background: var(--bg-elevated); }
-  .panel-nav button.active {
-    background: var(--bg-elevated);
-    border-color: var(--border);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .panel-body { min-width: 0; }
-  .panel-body [data-panel][hidden] { display: none !important; }
-  @media (max-width: 760px) {
-    .panel-layout { grid-template-columns: 1fr; }
-    .panel-nav { position: static; flex-direction: row; flex-wrap: wrap; }
-  }
-
-  .pill-warn { background: var(--warning); color: #1a1a1a; }
-
-  /* Audit table: keep long detail strings inside the card */
-  .audit-table { table-layout: fixed; width: 100%; }
-  .audit-table th:nth-child(1) { width: 64px; }
-  .audit-table th:nth-child(2) { width: 20%; }
-  .audit-table th:nth-child(3) { width: 17%; }
-  .audit-table th:nth-child(4) { width: 76px; }
-  .audit-table td {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    vertical-align: top;
-  }
-
-  /* First-login email gate */
-  #email-gate[hidden] { display: none !important; }
-  #email-gate {
-    position: fixed; inset: 0; z-index: 10050;
-    background: rgba(0,0,0,0.75);
-    display: flex; align-items: center; justify-content: center;
-  }
-  #email-gate-card {
-    background: var(--bg-elevated, #1a1f26);
-    color: var(--fg, #e7eaee);
-    border: 1px solid var(--border, #2d343d); border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    padding: 22px 24px;
-    max-width: 440px; width: calc(100% - 40px);
-  }
-  #email-gate-card h2 { margin: 0 0 10px 0; font-size: 16px; color: var(--accent, #4a90c7); }
-  #email-gate-card p { font-size: 13px; line-height: 1.5; margin: 0 0 12px 0; }
-
-  #tutorial-overlay { position: fixed; inset: 0; z-index: 9999; }
-  #tutorial-mask {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-    pointer-events: auto;
-  }
-  /* The highlighted element gets a glow via box-shadow rather than a hole-cut,
-     since clip-path with insets gets messy on dynamic page reflow */
-  .tutorial-spotlight {
-    position: relative !important;
-    z-index: 10000 !important;
-    box-shadow: 0 0 0 4px var(--accent, #4a90c7), 0 0 0 9999px rgba(0,0,0,0.55) !important;
-    border-radius: 6px;
-    transition: box-shadow 0.15s ease-out;
-  }
-  #tutorial-tooltip[hidden] { display: none !important; }
-  #tutorial-tooltip {
-    position: fixed; z-index: 10001;
-    background: var(--bg-elevated, #1a1f26);
-    color: var(--fg, #e7eaee);
-    border: 1px solid var(--border, #2d343d); border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    padding: 16px 18px;
-    max-width: 380px; min-width: 280px;
-  }
-  #tutorial-tooltip h3 {
-    margin: 0 0 8px 0; font-size: 15px; color: var(--accent, #4a90c7);
-  }
-  #tutorial-tooltip p { margin: 0; font-size: 13px; line-height: 1.5; }
-  #tutorial-progress {
-    margin-top: 8px; font-size: 11px; color: var(--fg-muted, #8a93a0);
-    text-align: center;
-  }
-</style>
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
 <div id="dod-banner" role="dialog" aria-modal="true" aria-labelledby="dod-title" hidden>
   <div class="inner">
-    <h2 id="dod-title">U.S. Government (USG) Notice and Consent Banner</h2>
-    <p><strong>You are accessing a U.S. Government (USG) Information System (IS) that is provided for USG-authorized use only.</strong></p>
-    <p>By using this IS (which includes any device attached to this IS), you consent to the following conditions:</p>
-    <ul>
-      <li>The USG routinely intercepts and monitors communications on this IS for purposes including, but not limited to, penetration testing, COMSEC monitoring, network operations and defense, personnel misconduct (PM), law enforcement (LE), and counterintelligence (CI) investigations.</li>
-      <li>At any time, the USG may inspect and seize data stored on this IS.</li>
-      <li>Communications using, or data stored on, this IS are not private, are subject to routine monitoring, interception, and search, and may be disclosed or used for any USG-authorized purpose.</li>
-      <li>This IS includes security measures (e.g., authentication and access controls) to protect USG interests &mdash; not for your personal benefit or privacy.</li>
-      <li>Notwithstanding the above, using this IS does not constitute consent to PM, LE or CI investigative searching or monitoring of the content of privileged communications, or work product, related to personal representation or services by attorneys, psychotherapists, or clergy, and their assistants. Such communications and work product are private and confidential. See User Agreement for details.</li>
-    </ul>
+    <h2 id="dod-title">Notice and Consent</h2>
+    <div id="dod-body"><!-- populated from /auth/info banner --></div>
     <div class="buttons">
       <button id="dod-close" type="button">Close</button>
     </div>
@@ -523,11 +51,12 @@
       Use Smartcard (CAC) authentication
     </label>
 
-    <!-- Agreement checkbox - gates the action buttons -->
-    <label class="checkbox-row" id="login-agree-row">
+    <!-- Agreement checkbox - gates the action buttons. Default hidden; the
+         gate JS reveals it only when a login banner is configured. -->
+    <label class="checkbox-row" id="login-agree-row" hidden>
       <input type="checkbox" id="login-agree-check">
       I agree to the
-      <button class="link-btn" id="login-show-banner" type="button">DoD System User Access Agreement</button>
+      <button class="link-btn" id="login-show-banner" type="button">User Access Agreement</button>
     </label>
 
     <!-- Action buttons: disabled until the agreement is checked -->
@@ -547,7 +76,7 @@
       <input type="text" id="reg-first" class="form-input" autocomplete="given-name">
       <label for="reg-last">Last name</label>
       <input type="text" id="reg-last" class="form-input" autocomplete="family-name">
-      <label for="reg-email">Email <span id="reg-domain-hint" class="pw-hints"></span></label>
+      <label for="reg-email">Email</label>
       <input type="email" id="reg-email" class="form-input" autocomplete="email">
       <label for="reg-password">Password</label>
       <input type="password" id="reg-password" class="form-input" autocomplete="new-password">
@@ -872,8 +401,8 @@
       <button type="button" data-panel="authentication">Authentication</button>
       <button type="button" data-panel="groups">Groups</button>
       <button type="button" data-panel="templates">Templates</button>
-      <button type="button" data-panel="webhooks">Webhooks</button>
-      <button type="button" data-panel="email">Email (SMG)</button>
+      <button type="button" data-panel="webhooks">Integrations</button>
+      <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -936,11 +465,20 @@
 
       <div id="admin-auth-local-opts">
         <div class="form-row">
-          <label for="admin-auth-domain">Trusted email domain</label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="admin-auth-allow-reg">
+            Allow self-registration
+          </label>
+          <p class="hint">When on, visitors can create their own account from
+             the login page.</p>
+        </div>
+        <div class="form-row">
+          <label for="admin-auth-domain">Trusted email domain
+             <span class="hint">(optional)</span></label>
           <input type="text" id="admin-auth-domain" class="form-input"
-                 maxlength="255" placeholder="eucom.mil">
-          <p class="hint">Only emails at this exact domain may self-register.
-             Leave blank to disable self-registration (admins create users).</p>
+                 maxlength="255" placeholder="(any domain)">
+          <p class="hint">Optional filter: if set, only emails at this exact
+             domain may self-register. Leave blank to allow any valid email.</p>
         </div>
         <div class="form-row">
           <label class="checkbox-row">
@@ -949,6 +487,26 @@
           </label>
           <p class="hint">When on, new registrations are <em>pending</em> until
              an admin approves them in the Users tab.</p>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:14px">
+        <label for="admin-banner-select">Login banner</label>
+        <select id="admin-banner-select" class="form-input"></select>
+        <p class="hint">Consent/notice banner shown on the login page behind an
+           &ldquo;I agree&rdquo; gate. Pick a preset, a custom message, or
+           &ldquo;No banner&rdquo;. Applies to both CAC and password logins.</p>
+      </div>
+      <div id="admin-banner-custom" hidden>
+        <div class="form-row">
+          <label for="admin-banner-custom-title">Custom banner title</label>
+          <input type="text" id="admin-banner-custom-title" class="form-input"
+                 maxlength="120" placeholder="Notice and Consent">
+        </div>
+        <div class="form-row">
+          <label for="admin-banner-custom-text">Custom banner message</label>
+          <textarea id="admin-banner-custom-text" class="form-input" rows="6"
+                    placeholder="Your banner text. Separate paragraphs with a blank line."></textarea>
         </div>
       </div>
 
@@ -1036,13 +594,14 @@
 
     <section class="card admin-panel" data-panel="webhooks">
       <div class="card-header">
-        <h2>Webhooks <span class="hint">(integrations)</span></h2>
+        <h2>Integrations <span class="hint">(chat & webhooks)</span></h2>
         <div class="row" style="gap:6px">
           <button id="admin-webhook-create-btn" type="button">+ Add webhook</button>
           <button id="admin-webhooks-refresh" class="secondary" type="button">Refresh</button>
         </div>
       </div>
-      <p class="hint">Fire outbound HTTP POST to ServiceNow, GitLab, Slack, or any HTTPS endpoint when events happen. Sent asynchronously &mdash; webhook failures never block user actions.</p>
+      <p class="hint">Notify Slack, Microsoft Teams, Discord, or any HTTPS endpoint when events happen (job created / issued / cancelled / failed, feedback). Sent asynchronously &mdash; webhook failures never block user actions.</p>
+      <p id="cap-note-chat" class="hint" style="color:var(--danger)" hidden></p>
       <table>
         <thead>
           <tr>
@@ -1058,29 +617,126 @@
           <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
         </tbody>
       </table>
+
+      <details class="openssl-toggle" style="margin-top:16px">
+        <summary><strong>Slack interactivity</strong> <span class="hint">(assign jobs from a Slack message)</span></summary>
+        <div style="padding:10px 2px">
+          <p class="hint">Lets a Slack message's <em>Assign to group</em> menu actually
+             reassign the job. Choose how Slack reaches the dashboard.</p>
+          <p id="cap-note-slack" class="hint" style="color:var(--danger)" hidden></p>
+          <label class="checkbox-row">
+            <input type="checkbox" id="slack-interactive-enabled"> Enable interactive assignment
+          </label>
+          <label for="slack-mode" class="textarea-label">Transport</label>
+          <select id="slack-mode" class="form-input" style="max-width:380px">
+            <option value="http">HTTP Request URL (needs public exposure)</option>
+            <option value="socket">Socket Mode (outbound-only, no public exposure)</option>
+          </select>
+
+          <div class="slack-mode-fields" data-smode="http">
+            <label class="textarea-label">Request URL <span class="hint">(set in Slack app → Interactivity; must be publicly reachable)</span></label>
+            <input type="text" id="slack-request-url" class="form-input" readonly>
+            <label for="slack-signing-secret" class="textarea-label">Signing secret
+              <span class="hint" id="slack-secret-hint"></span></label>
+            <input type="password" id="slack-signing-secret" class="form-input" autocomplete="new-password">
+          </div>
+
+          <div class="slack-mode-fields" data-smode="socket" hidden>
+            <p class="hint">No public exposure — the dashboard connects out to Slack.
+               Turn on <strong>Socket Mode</strong> in your Slack app and paste its
+               <strong>app-level token</strong> (<code>xapp-…</code>, scope
+               <code>connections:write</code>). Handled by the
+               <code>csr-slack-listener</code> service.</p>
+            <label for="slack-app-token" class="textarea-label">App-level token (xapp-)
+              <span class="hint" id="slack-apptoken-hint"></span></label>
+            <input type="password" id="slack-app-token" class="form-input" autocomplete="new-password">
+          </div>
+
+          <div class="row" style="margin-top:10px">
+            <button id="slack-config-save-btn" type="button">Save</button>
+            <span id="slack-config-status" class="status"></span>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="card admin-panel" data-panel="email">
       <div class="card-header">
-        <h2>Email (SMG) settings</h2>
+        <h2>Email settings</h2>
         <button id="admin-email-test-btn" class="secondary" type="button">Send test email</button>
       </div>
-      <p class="hint">SMTP relay configuration for notifications, read from
+      <p class="hint">Notification delivery method &amp; settings, read from
          <code>/etc/csr-dashboard/email.conf</code>.
          Changes here are written back to that file and take effect
          immediately &mdash; no service restart needed.</p>
       <p id="email-config-state" class="status"></p>
-      <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
-        <label>SMG host/IP:
-          <input type="text" id="email-cfg-host" class="form-input" style="width:220px">
-        </label>
-        <label>Port:
-          <input type="number" id="email-cfg-port" min="1" max="65535" style="width:80px">
-        </label>
-        <label>Timeout (s):
-          <input type="number" id="email-cfg-timeout" min="1" max="120" style="width:70px">
-        </label>
+
+      <label for="email-cfg-method" class="textarea-label">Delivery method</label>
+      <select id="email-cfg-method" class="form-input" style="max-width:320px"></select>
+      <p id="email-none-note" class="hint" hidden>Email notifications are
+         disabled. No mail is sent (you can still configure chat integrations
+         under the Webhooks tab).</p>
+      <p id="cap-note-email-api" class="hint" style="color:var(--danger)" hidden></p>
+
+      <!-- SMG: plain SMTP relay -->
+      <div class="email-method" data-emethod="smg" hidden>
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>Relay host/IP:
+            <input type="text" id="smg-host" class="form-input" style="width:220px"></label>
+          <label>Port:
+            <input type="number" id="smg-port" min="1" max="65535" style="width:80px"></label>
+          <label>Timeout (s):
+            <input type="number" id="smg-timeout" min="1" max="120" style="width:70px"></label>
+        </div>
       </div>
+
+      <!-- SMTP: authenticated / TLS -->
+      <div class="email-method" data-emethod="smtp" hidden>
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>SMTP host:
+            <input type="text" id="smtp-host" class="form-input" style="width:220px"></label>
+          <label>Port:
+            <input type="number" id="smtp-port" min="1" max="65535" style="width:80px"></label>
+          <label>Security:
+            <select id="smtp-security">
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">SSL/TLS</option>
+              <option value="none">None</option>
+            </select></label>
+          <label>Timeout (s):
+            <input type="number" id="smtp-timeout" min="1" max="120" style="width:70px"></label>
+        </div>
+        <label for="smtp-username" class="textarea-label">Username</label>
+        <input type="text" id="smtp-username" class="form-input" autocomplete="off">
+        <label for="smtp-password" class="textarea-label">Password
+          <span class="hint" id="smtp-password-hint"></span></label>
+        <input type="password" id="smtp-password" class="form-input" autocomplete="new-password">
+      </div>
+
+      <!-- Mailgun: HTTP API -->
+      <div class="email-method" data-emethod="mailgun" hidden>
+        <label for="mailgun-api_key" class="textarea-label">API key
+          <span class="hint" id="mailgun-api_key-hint"></span></label>
+        <input type="password" id="mailgun-api_key" class="form-input" autocomplete="new-password">
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px">
+          <label>Sending domain:
+            <input type="text" id="mailgun-domain" class="form-input" style="width:220px"
+                   placeholder="mg.example.com"></label>
+          <label>Region:
+            <select id="mailgun-region">
+              <option value="us">US</option>
+              <option value="eu">EU</option>
+            </select></label>
+        </div>
+      </div>
+
+      <!-- SendGrid: HTTP API -->
+      <div class="email-method" data-emethod="sendgrid" hidden>
+        <label for="sendgrid-api_key" class="textarea-label">API key
+          <span class="hint" id="sendgrid-api_key-hint"></span></label>
+        <input type="password" id="sendgrid-api_key" class="form-input" autocomplete="new-password">
+      </div>
+
       <label for="email-cfg-from" class="textarea-label">From address</label>
       <input type="email" id="email-cfg-from" class="form-input" placeholder="noreply-csr@rcdn.eucom.mil">
       <label for="email-cfg-cc" class="textarea-label">Global CC <span class="hint">(optional, comma-separated &mdash; copied on every notification)</span></label>
@@ -1460,17 +1116,26 @@
     </div>
     <div id="feedback-detail-status-msg" class="status" style="margin-top:8px"></div>
   </div>  <div class="modal modal-wide" id="webhook-edit-modal" hidden>
-    <h2 id="webhook-edit-title">Webhook</h2>
+    <h2 id="webhook-edit-title">Integration</h2>
     <label for="webhook-edit-name" class="textarea-label">Name</label>
-    <input type="text" id="webhook-edit-name" class="form-input" placeholder="ServiceNow PROD">
+    <input type="text" id="webhook-edit-name" class="form-input" placeholder="Platform Slack">
 
-    <label for="webhook-edit-url" class="textarea-label">URL</label>
-    <input type="text" id="webhook-edit-url" class="form-input" placeholder="https://your-instance.service-now.com/api/x_/csr_webhook">
+    <label for="webhook-edit-type" class="textarea-label">Type</label>
+    <select id="webhook-edit-type" class="form-input" style="max-width:280px">
+      <option value="slack">Slack</option>
+      <option value="teams">Microsoft Teams</option>
+      <option value="discord">Discord</option>
+      <option value="generic">Generic webhook (raw JSON)</option>
+    </select>
+    <p class="hint" id="webhook-edit-type-hint"></p>
+
+    <label for="webhook-edit-url" class="textarea-label">Webhook URL</label>
+    <input type="text" id="webhook-edit-url" class="form-input" placeholder="https://hooks.slack.com/services/T000/B000/XXXX">
 
     <label class="textarea-label">Events</label>
     <div id="webhook-edit-events" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:6px; font-size:13px"></div>
 
-    <div style="margin-top:14px">
+    <div style="margin-top:14px" id="webhook-edit-headers-wrap">
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px">
         <label class="textarea-label" style="margin:0">Custom headers <span class="hint">(secrets like API tokens go here)</span></label>
         <button id="webhook-edit-add-header-btn" class="secondary" type="button" style="padding:4px 8px; font-size:12px">+ Add header</button>
@@ -1536,6 +1201,10 @@
   <div id="tutorial-progress"></div>
 </div>
 
-<script src="app.js"></script>
+<!-- App JS split into logical pieces; load in order (shared global scope). -->
+<script src="app.1-core.js"></script>
+<script src="app.2-jobs.js"></script>
+<script src="app.3-admin.js"></script>
+<script src="app.4-misc-boot.js"></script>
 </body>
 </html>
