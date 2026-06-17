@@ -38,9 +38,8 @@ js-syntax:
 
 smoke-tests:
   stage: test
-  # Bootstrap: non-blocking until the runner's pip/internet is confirmed, then
-  # drop allow_failure to make it a hard gate (it's green locally).
-  allow_failure: true
+  # Hard gate: it passed on the runner, and it's how we keep the blueprint
+  # split honest (every extraction must keep all routes registered + working).
   script:
     # Endpoint smoke net (route registration + auth + shapes). Catches a
     # dropped/broken route from refactors (e.g. the planned blueprint split).
