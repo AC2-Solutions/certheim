@@ -960,6 +960,11 @@ async function generateRhel() {
                  key_algo: document.getElementById("generate-key-algo").value };
   if (notifyEmail) body.requester_email = notifyEmail;
   if (groupId) body.group_id = parseInt(groupId, 10);
+  // Carry the chosen template so the request inherits its signing policy.
+  const tplSel = document.getElementById("generate-template");
+  if (tplSel && tplSel.value && tplSel.value !== "__custom__") {
+    body.template_id = parseInt(tplSel.value, 10);
+  }
   const r = await jsonReq("/rhel/generate", {
     method: "POST",
     body: JSON.stringify(body),

@@ -681,6 +681,44 @@ def create_template():
     return jsonify(ok=True, id=tid, cert_types=cert_types)
 
 
+@bp.put("/api/admin/templates/<int:template_id>/signing")
+@require_admin
+@require_csrf
+def admin_set_template_signing(template_id):
+    """Set a template's signing policy (admin only - it controls CA issuance).
+    signer_backend 'manual' inherits the global signing default; 'openbao' uses
+    this template's role/ttl and optional auto_sign (issue on request, no human
+    approval)."""
+    payload = request.get_json(silent=True) or {}
+    backend = (payload.get("signer_backend") or "manual").strip()
+    if backend not in ("manual", "openbao"):
+        return jsonify(error="signer_backend must be 'manual' or 'openbao'"), 400
+    role = (payload.get("openbao_role") or "").strip() or None
+    ttl = payload.get("max_ttl")
+    if ttl in (None, ""):
+        ttl = None
+    else:
+        try:
+            ttl = int(ttl)
+            if ttl <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify(error="max_ttl must be a positive integer (seconds)"), 400
+    auto_sign = 1 if payload.get("auto_sign") else 0
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM cert_templates WHERE id = ?",
+                            (template_id,)).fetchone():
+            return jsonify(error="template not found"), 404
+        conn.execute(
+            "UPDATE cert_templates SET signer_backend = ?, openbao_role = ?, "
+            "max_ttl = ?, auto_sign = ? WHERE id = ?",
+            (backend, role, ttl, auto_sign, template_id))
+    log_event("template_signing", "update", template_id=template_id,
+              backend=backend, auto_sign=auto_sign, actor=g.identity["dn"][:128])
+    return jsonify(ok=True, template_id=template_id, signer_backend=backend,
+                   openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign))
+
+
 @bp.delete("/api/templates/<int:template_id>")
 @require_auth
 @require_csrf

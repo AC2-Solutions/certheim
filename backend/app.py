@@ -767,6 +767,10 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN approved_at REAL")
     if "signed_via" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN signed_via TEXT")
+    # v2 per-template signing policy: the template the request was made under,
+    # so the sign route resolves THAT template's backend/role/ttl (not a global).
+    if "template_id" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN template_id INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -1790,6 +1794,54 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
 
     return {"expires_at": expires_at, "warnings": warnings,
             "target_host": row["target_host"]}
+
+
+def _coerce_template_id(value):
+    """Validate an optional template id from a request body: an int that
+    references an existing template, else None (the request just won't carry a
+    per-template signing policy)."""
+    if value is None:
+        return None
+    try:
+        tid = int(value)
+    except (TypeError, ValueError):
+        return None
+    with db() as conn:
+        if conn.execute("SELECT 1 FROM cert_templates WHERE id = ?", (tid,)).fetchone():
+            return tid
+    return None
+
+
+def resolve_signing_policy(template_id=None):
+    """Effective signing policy for a job: the job's template overrides the
+    global default WHEN it opts into a backend. A template left at the default
+    'manual' inherits the global signing-config; a template explicitly set to
+    'openbao' uses its own role/ttl/auto_sign. Returns a dict the sign route
+    feeds to sign.sign_csr (plus the auto_sign flag)."""
+    if template_id:
+        with db() as conn:
+            t = conn.execute(
+                "SELECT signer_backend, openbao_role, max_ttl, auto_sign "
+                "FROM cert_templates WHERE id = ?", (template_id,)).fetchone()
+        if t and (t["signer_backend"] or "manual") != "manual":
+            return {
+                "signer_backend": t["signer_backend"],
+                "openbao_role": (t["openbao_role"] or "").strip()
+                                or (get_setting("openbao_default_role") or "").strip() or None,
+                "max_ttl": t["max_ttl"],
+                "auto_sign": bool(t["auto_sign"]),
+            }
+    ttl = get_setting("signing_max_ttl")
+    try:
+        ttl = int(ttl) if ttl else None
+    except (TypeError, ValueError):
+        ttl = None
+    return {
+        "signer_backend": (get_setting("signing_default_backend") or "manual"),
+        "openbao_role": (get_setting("openbao_default_role") or "").strip() or None,
+        "max_ttl": ttl,
+        "auto_sign": False,
+    }
 
 
 init_db()

@@ -69,13 +69,14 @@ async function refreshAdminTemplates() {
     return `<span class="pill pill-blue">${escapeHtml(t.group_name || "group")}</span>`;
   };
   if (!myTemplates.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="status">No templates.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="status">No templates.</td></tr>';
   } else {
     tbody.innerHTML = myTemplates.map(t => `
       <tr>
         <td><code>${escapeHtml(t.name)}</code>${t.description ? `<br><span class="status">${escapeHtml(t.description)}</span>` : ""}</td>
         <td>${certTypePill(t.cert_types)}</td>
         <td>${scopeLabel(t)}</td>
+        <td class="tmpl-sign" data-id="${t.id}">${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button></td>
         <td class="status">${t.created_by_dn === "system" ? "system" : escapeHtml(shortDN(t.created_by_dn || ""))}</td>
         <td><button class="link-btn admin-template-del" data-id="${t.id}" data-name="${escapeHtml(t.name)}" style="color:var(--danger)">Delete</button></td>
       </tr>`).join("");
@@ -85,6 +86,12 @@ async function refreshAdminTemplates() {
         const r = await jsonReq("/admin/templates/" + b.dataset.id, { method: "DELETE" });
         if (r.ok) refreshAdminTemplates();
         else alert("Delete failed: " + ((r.body && r.body.error) || "unknown"));
+      });
+    });
+    tbody.querySelectorAll(".admin-template-sign").forEach(b => {
+      b.addEventListener("click", () => {
+        const t = myTemplates.find(x => String(x.id) === b.dataset.id);
+        if (t) editTemplateSigning(b.closest(".tmpl-sign"), t);
       });
     });
   }
@@ -97,6 +104,60 @@ async function refreshAdminTemplates() {
         `<option value="${grp.id}">Group: ${escapeHtml(grp.name)}</option>`).join("");
     if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }
+}
+
+// Per-template signing policy: 'manual' inherits the global Signing/CA default;
+// 'openbao' uses this template's role/TTL and optional auto-sign.
+function signingBadge(t) {
+  if ((t.signer_backend || "manual") === "manual") {
+    return '<span class="pill pill-mute">inherit</span>';
+  }
+  return `<span class="pill pill-ok">${escapeHtml(t.signer_backend)}</span>`
+       + (t.auto_sign ? ' <span class="pill pill-purple">auto-sign</span>' : "");
+}
+
+function editTemplateSigning(td, t) {
+  const isOB = (t.signer_backend || "manual") !== "manual";
+  td.innerHTML = `
+    <select class="sig-backend form-input" style="width:auto;display:inline-block">
+      <option value="manual"${!isOB ? " selected" : ""}>Inherit global</option>
+      <option value="openbao"${isOB ? " selected" : ""}>OpenBao</option>
+    </select>
+    <span class="sig-ob"${isOB ? "" : " hidden"}>
+      <input class="sig-role form-input" style="width:130px;display:inline-block"
+             placeholder="role (optional)" value="${escapeHtml(t.openbao_role || "")}">
+      <input class="sig-ttl form-input" type="number" min="1" style="width:90px;display:inline-block"
+             placeholder="TTL s" value="${t.max_ttl || ""}">
+      <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-auto"${t.auto_sign ? " checked" : ""}> auto-sign</label>
+    </span>
+    <button class="btn sig-save" style="padding:2px 10px">Save</button>
+    <button class="link-btn sig-cancel">Cancel</button>
+    <span class="sig-status status"></span>`;
+  const backSel = td.querySelector(".sig-backend");
+  const obWrap = td.querySelector(".sig-ob");
+  backSel.addEventListener("change", () => { obWrap.hidden = backSel.value !== "openbao"; });
+  td.querySelector(".sig-cancel").addEventListener("click", () => {
+    td.innerHTML = `${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button>`;
+    td.querySelector(".admin-template-sign").addEventListener("click", () => editTemplateSigning(td, t));
+  });
+  td.querySelector(".sig-save").addEventListener("click", async () => {
+    const ttlRaw = td.querySelector(".sig-ttl").value.trim();
+    const body = {
+      signer_backend: backSel.value,
+      openbao_role: td.querySelector(".sig-role").value.trim(),
+      max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
+      auto_sign: td.querySelector(".sig-auto").checked,
+    };
+    setStatus(td.querySelector(".sig-status"), "Saving…");
+    const r = await jsonReq(`/admin/templates/${t.id}/signing`, {
+      method: "PUT", body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      setStatus(td.querySelector(".sig-status"), (r.body && r.body.error) || "Save failed", "err");
+      return;
+    }
+    refreshAdminTemplates();
+  });
 }
 
 document.getElementById("admin-templates-refresh")?.addEventListener("click", refreshAdminTemplates);
