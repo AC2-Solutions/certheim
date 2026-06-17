@@ -2,9 +2,34 @@
 from flask import Blueprint, Response, abort, g, jsonify, request, session
 import csv, json, string, subprocess, time, uuid
 import notify
+import capabilities
+import sign
 from app import (  # noqa: E402
-    CERTLIST_LINE_RE, HOSTNAME_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERTLIST_BYTES, MAX_CSR_BYTES, _add_session_keys, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _normalize_cert_types, _parse_csr_subject, _parse_helper_listing, _set_session_cookie, _signer_recipients, _user_group_ids, _validate_email, db, fire_webhooks, log_event, require_auth, require_csrf, run_helper)
+    CERTLIST_LINE_RE, HOSTNAME_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERTLIST_BYTES, MAX_CSR_BYTES, _add_session_keys, _attach_signed_cert, _cn_from_dn, _coerce_template_id, _get_or_create_session, _get_session_keys, _group_by_id, _normalize_cert_types, _parse_csr_subject, _parse_helper_listing, _set_session_cookie, _signer_recipients, _user_group_ids, _validate_email, db, fire_webhooks, log_event, require_auth, require_csrf, resolve_signing_policy, run_helper)
 bp = Blueprint("requests", __name__)
+
+
+def _auto_sign_jobs(job_ids, template_id):
+    """If the request's template opts into an automated backend with auto_sign,
+    issue each created job immediately (no human approval). Best-effort per job;
+    on any failure the job stays pending for normal manual approval."""
+    if not job_ids:
+        return
+    policy = resolve_signing_policy(template_id)
+    if not (policy.get("auto_sign") and policy["signer_backend"] != "manual"
+            and capabilities.available("ca.signing.openbao")):
+        return
+    for jid in job_ids:
+        try:
+            with db() as conn:
+                jr = conn.execute("SELECT csr_pem FROM jobs WHERE id=?", (jid,)).fetchone()
+            res = sign.sign_csr(jr["csr_pem"], policy)
+            _attach_signed_cert(jid, res.cert_pem, actor_dn=g.identity["dn"],
+                                signed_via=policy["signer_backend"],
+                                approver_dn=None, log_action="auto_sign")
+            log_event("auto_sign", "issued", job_id=jid, backend=policy["signer_backend"])
+        except Exception as e:  # noqa: BLE001 - never fail the request over auto-sign
+            log_event("auto_sign", "error", job_id=jid, error=str(e)[:160])
 
 # ============================================================
 # Linux certlist
@@ -93,6 +118,10 @@ def generate_rhel():
     if key_algo not in KEY_ALGOS_ALLOWED:
         return jsonify(error=f"invalid key_algo (allowed: {', '.join(KEY_ALGOS_ALLOWED)})"), 400
 
+    # Optional template the request is made under: drives per-template signing
+    # policy (and auto-sign). Stored only if it references an existing template.
+    template_id = _coerce_template_id(payload.get("template_id"))
+
     log_event("generate_rhel", "start",
               email=("set" if requester_email else "none"),
               group_id=(group_id if group_id else "-"),
@@ -132,15 +161,15 @@ def generate_rhel():
                 INSERT INTO jobs (id, created_at, requester_dn, requester_serial,
                                   requester_ip, requester_email, target_host, sans_json,
                                   csr_pem, status, has_local_key, local_key_name, source,
-                                  group_id, cert_type, key_algo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'rhel', ?, ?, ?)
+                                  group_id, cert_type, key_algo, template_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'rhel', ?, ?, ?, ?)
             """, (
                 job_id, time.time(),
                 g.identity["dn"], g.identity.get("serial", "-"), request.remote_addr,
                 requester_email,
                 target, json.dumps(sans), csr_pem,
                 1 if has_key else 0, local_key if has_key else None,
-                group_id, cert_type, key_algo,
+                group_id, cert_type, key_algo, template_id,
             ))
         job_ids.append(job_id)
         created_targets.append(target)
@@ -159,6 +188,8 @@ def generate_rhel():
 
     log_event("generate_rhel", "ok", jobs=len(job_ids), keys=len(new_keys),
               cert_type=cert_type)
+
+    _auto_sign_jobs(job_ids, template_id)
 
     # Notify signer groups (one aggregated email per batch). Best-effort.
     if job_ids:
@@ -246,6 +277,7 @@ def submit_external():
         log_event("submit_external", "error_validation")
         return jsonify(error="CSR validation error"), 400
 
+    template_id = _coerce_template_id(payload.get("template_id"))
     cn, sans = _parse_csr_subject(csr_pem)
     job_id = uuid.uuid4().hex
     with db() as conn:
@@ -253,14 +285,14 @@ def submit_external():
             INSERT INTO jobs (id, created_at, requester_dn, requester_serial,
                               requester_ip, requester_email, target_host, sans_json,
                               csr_pem, status, has_local_key, source, group_id,
-                              cert_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'external', ?, ?)
+                              cert_type, template_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'external', ?, ?, ?)
         """, (
             job_id, time.time(),
             g.identity["dn"], g.identity.get("serial", "-"), request.remote_addr,
             requester_email,
             target_host, json.dumps(sans), csr_pem,
-            group_id, cert_type_in,
+            group_id, cert_type_in, template_id,
         ))
     log_event("submit_external", "ok", job_id=job_id, target=target_host,
               cn=cn or "-", email=("set" if requester_email else "none"),
@@ -290,7 +322,13 @@ def submit_external():
         log_event("email_notify", "exception", event="csrs_created",
                   error=str(e)[:128])
 
-    return jsonify(job_id=job_id, status="pending", cn=cn, sans=sans)
+    _auto_sign_jobs([job_id], template_id)
+
+    # Re-read status: auto-sign may have flipped it to 'issued'.
+    with db() as conn:
+        st = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    return jsonify(job_id=job_id, status=(st["status"] if st else "pending"),
+                   cn=cn, sans=sans)
 
 # ============================================================
 # Linux key downloads (kept; session-scoped)

@@ -54,6 +54,7 @@ CRITICAL_ROUTES = [
     ("GET", "/api/admin/signing-config"),
     ("PUT", "/api/admin/signing-config"),
     ("POST", "/api/admin/signing-config/test"),
+    ("PUT", "/api/admin/templates/<int:template_id>/signing"),
 ]
 
 
@@ -202,3 +203,27 @@ def test_sign_nonexistent_job_404(client):
     # admin passes the signer gate; the missing job then 404s (not 500)
     r = client.post("/api/jobs/" + "a" * 32 + "/sign", headers=WRITE)
     assert r.status_code == 404
+
+
+def test_template_signing_policy(client):
+    import json
+    # a built-in template exists after first-run seeding
+    tpls = client.get("/api/templates", headers=CAC).get_json()["templates"]
+    assert tpls, "expected seeded built-in templates"
+    tid = tpls[0]["id"]
+    # bad backend rejected
+    bad = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                     data=json.dumps({"signer_backend": "nope"}))
+    assert bad.status_code == 400
+    # valid policy accepted + round-trips through the templates list
+    ok = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                    data=json.dumps({"signer_backend": "openbao",
+                                     "openbao_role": "csr-dashboard",
+                                     "max_ttl": 3600, "auto_sign": True}))
+    assert ok.status_code == 200, ok.get_data(as_text=True)
+    again = client.get("/api/templates", headers=CAC).get_json()["templates"]
+    row = next(t for t in again if t["id"] == tid)
+    assert row["signer_backend"] == "openbao" and row["auto_sign"] == 1
+    # nonexistent template -> 404
+    assert client.put("/api/admin/templates/999999/signing", headers=WRITE,
+                      data=json.dumps({"signer_backend": "manual"})).status_code == 404

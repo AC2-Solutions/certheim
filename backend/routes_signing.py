@@ -17,28 +17,13 @@ import capabilities
 import sign
 from app import (  # noqa: E402
     db, get_setting, set_setting, require_auth, require_admin, require_csrf,
-    log_event, _is_signer, _attach_signed_cert, CompletionError, JOB_ID_RE)
+    log_event, _is_signer, _attach_signed_cert, CompletionError, JOB_ID_RE,
+    resolve_signing_policy)
 
 bp = Blueprint("signing", __name__)
 
 # Capability key gating the OpenBao backend (env_supports openbao + entitled).
 CAP_OPENBAO = "ca.signing.openbao"
-
-
-def _signing_template():
-    """Build the signer 'template' dict from global signing-config settings.
-    (P2 will resolve a per-template dict here instead.)"""
-    backend = (get_setting("signing_default_backend") or "manual").strip()
-    ttl = get_setting("signing_max_ttl")
-    try:
-        ttl = int(ttl) if ttl else None
-    except (TypeError, ValueError):
-        ttl = None
-    return {
-        "signer_backend": backend,
-        "openbao_role": (get_setting("openbao_default_role") or "").strip() or None,
-        "max_ttl": ttl,
-    }
 
 
 def _config_view():
@@ -74,13 +59,15 @@ def sign_job(job_id):
 
     with db() as conn:
         row = conn.execute(
-            "SELECT status, csr_pem FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            "SELECT status, csr_pem, template_id FROM jobs WHERE id = ?",
+            (job_id,)).fetchone()
     if not row:
         return jsonify(error="job not found"), 404
     if row["status"] != "pending":
         return jsonify(error=f"job in status '{row['status']}', cannot sign"), 409
 
-    template = _signing_template()
+    # Resolve THIS job's template policy (falls back to the global default).
+    template = resolve_signing_policy(row["template_id"])
     backend = template["signer_backend"]
     if backend == "manual":
         return jsonify(error="no automated signing backend is configured; "
