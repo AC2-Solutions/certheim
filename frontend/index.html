@@ -870,7 +870,7 @@
       <button type="button" data-panel="authentication">Authentication</button>
       <button type="button" data-panel="groups">Groups</button>
       <button type="button" data-panel="templates">Templates</button>
-      <button type="button" data-panel="webhooks">Webhooks</button>
+      <button type="button" data-panel="webhooks">Integrations</button>
       <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
@@ -1063,13 +1063,13 @@
 
     <section class="card admin-panel" data-panel="webhooks">
       <div class="card-header">
-        <h2>Webhooks <span class="hint">(integrations)</span></h2>
+        <h2>Integrations <span class="hint">(chat & webhooks)</span></h2>
         <div class="row" style="gap:6px">
           <button id="admin-webhook-create-btn" type="button">+ Add webhook</button>
           <button id="admin-webhooks-refresh" class="secondary" type="button">Refresh</button>
         </div>
       </div>
-      <p class="hint">Fire outbound HTTP POST to ServiceNow, GitLab, Slack, or any HTTPS endpoint when events happen. Sent asynchronously &mdash; webhook failures never block user actions.</p>
+      <p class="hint">Notify Slack, Microsoft Teams, Discord, or any HTTPS endpoint when events happen (job created / issued / cancelled / failed, feedback). Sent asynchronously &mdash; webhook failures never block user actions.</p>
       <table>
         <thead>
           <tr>
@@ -1100,6 +1100,9 @@
 
       <label for="email-cfg-method" class="textarea-label">Delivery method</label>
       <select id="email-cfg-method" class="form-input" style="max-width:320px"></select>
+      <p id="email-none-note" class="hint" hidden>Email notifications are
+         disabled. No mail is sent (you can still configure chat integrations
+         under the Webhooks tab).</p>
 
       <!-- SMG: plain SMTP relay -->
       <div class="email-method" data-emethod="smg" hidden>
@@ -1539,17 +1542,26 @@
     </div>
     <div id="feedback-detail-status-msg" class="status" style="margin-top:8px"></div>
   </div>  <div class="modal modal-wide" id="webhook-edit-modal" hidden>
-    <h2 id="webhook-edit-title">Webhook</h2>
+    <h2 id="webhook-edit-title">Integration</h2>
     <label for="webhook-edit-name" class="textarea-label">Name</label>
-    <input type="text" id="webhook-edit-name" class="form-input" placeholder="ServiceNow PROD">
+    <input type="text" id="webhook-edit-name" class="form-input" placeholder="Platform Slack">
 
-    <label for="webhook-edit-url" class="textarea-label">URL</label>
-    <input type="text" id="webhook-edit-url" class="form-input" placeholder="https://your-instance.service-now.com/api/x_/csr_webhook">
+    <label for="webhook-edit-type" class="textarea-label">Type</label>
+    <select id="webhook-edit-type" class="form-input" style="max-width:280px">
+      <option value="slack">Slack</option>
+      <option value="teams">Microsoft Teams</option>
+      <option value="discord">Discord</option>
+      <option value="generic">Generic webhook (raw JSON)</option>
+    </select>
+    <p class="hint" id="webhook-edit-type-hint"></p>
+
+    <label for="webhook-edit-url" class="textarea-label">Webhook URL</label>
+    <input type="text" id="webhook-edit-url" class="form-input" placeholder="https://hooks.slack.com/services/T000/B000/XXXX">
 
     <label class="textarea-label">Events</label>
     <div id="webhook-edit-events" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:6px; font-size:13px"></div>
 
-    <div style="margin-top:14px">
+    <div style="margin-top:14px" id="webhook-edit-headers-wrap">
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px">
         <label class="textarea-label" style="margin:0">Custom headers <span class="hint">(secrets like API tokens go here)</span></label>
         <button id="webhook-edit-add-header-btn" class="secondary" type="button" style="padding:4px 8px; font-size:12px">+ Add header</button>

@@ -207,13 +207,62 @@ _webhook_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
 DASHBOARD_URL_FALLBACK = "https://nipat-pl-rcdn01.eucom.mil/csr/"
 
 
+WEBHOOK_TYPES = ("generic", "slack", "teams", "discord")
+
+
 def _webhook_payload(event, data):
-    """Build the canonical JSON payload posted to webhooks."""
+    """Build the canonical JSON payload posted to generic webhooks."""
     return {
         "event": event,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "dashboard_url": DASHBOARD_URL_FALLBACK,
         "data": data,
+    }
+
+
+def _webhook_summary(event, data):
+    """A human title + one-line detail for chat integrations."""
+    titles = {
+        "job.created": "New CSR request",
+        "job.issued": "Certificate issued",
+        "job.cancelled": "CSR request cancelled",
+        "job.failed": "CSR request failed",
+        "job.expired": "Certificate expiring soon",
+        "feedback.submitted": "Feedback submitted",
+        "test": "Test notification from CSR Dashboard",
+    }
+    title = titles.get(event, event)
+    bits = []
+    if data.get("target_host"):
+        bits.append(f"host: {data['target_host']}")
+    if data.get("cert_type"):
+        bits.append(f"type: {data['cert_type']}")
+    if data.get("job_id"):
+        bits.append(f"job: {data['job_id']}")
+    who = (data.get("requester_email") or data.get("submitter_email")
+           or data.get("completed_by_dn") or data.get("cancelled_by_dn"))
+    if who:
+        bits.append("by: " + (_cn_from_dn(who) if "CN=" in str(who) else str(who)))
+    return title, "  •  ".join(bits)
+
+
+def _format_webhook(wtype, event, data):
+    """POST body for a webhook, formatted for its integration type."""
+    if wtype not in ("slack", "teams", "discord"):
+        return _webhook_payload(event, data)
+    title, detail = _webhook_summary(event, data)
+    if wtype == "slack":
+        return {"text": f":bell: *{title}*" + (f"\n{detail}" if detail else "")}
+    if wtype == "discord":
+        return {"content": f"**{title}**" + (f"\n{detail}" if detail else "")}
+    # teams (Office 365 connector MessageCard)
+    return {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": title,
+        "themeColor": "0076D7",
+        "title": title,
+        "text": detail or title,
     }
 
 
@@ -254,10 +303,11 @@ def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
     return status_code, error_msg
 
 
-def _dispatch_webhook_worker(webhook_id, name, url, event, data, headers):
+def _dispatch_webhook_worker(webhook_id, name, url, event, data, headers,
+                             wtype="generic"):
     """Worker function for a single webhook delivery. Logs result and
     updates the webhook row's last_* counters. Runs in webhook thread pool."""
-    payload = _webhook_payload(event, data)
+    payload = _format_webhook(wtype, event, data)
     status_code, error_msg = _send_webhook_sync(url, payload, headers)
 
     try:
@@ -291,7 +341,7 @@ def fire_webhooks(event, data):
     try:
         with db() as conn:
             rows = conn.execute(
-                "SELECT id, name, url, events, headers FROM webhooks WHERE enabled = 1"
+                "SELECT id, name, url, events, headers, type FROM webhooks WHERE enabled = 1"
             ).fetchall()
     except Exception as e:
         sys.stderr.write(f"webhook list failed: {e}\n")
@@ -313,6 +363,7 @@ def fire_webhooks(event, data):
             _webhook_pool.submit(
                 _dispatch_webhook_worker,
                 r["id"], r["name"], r["url"], event, data, headers,
+                r["type"] if "type" in r.keys() else "generic",
             )
         except RuntimeError:
             # Pool shutdown during interpreter exit, etc. Best-effort.
@@ -515,6 +566,11 @@ def init_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled)")
+    # Idempotent migration: integration type controls the payload format
+    # (generic JSON, or Slack/Teams/Discord chat message).
+    wh_cols = {row[1] for row in conn.execute("PRAGMA table_info(webhooks)").fetchall()}
+    if "type" not in wh_cols:
+        conn.execute("ALTER TABLE webhooks ADD COLUMN type TEXT NOT NULL DEFAULT 'generic'")
 
     # Groups for team-shared key access
     conn.execute("""
@@ -4273,7 +4329,7 @@ def admin_put_email_config():
     payload = request.get_json(silent=True) or {}
 
     method = (payload.get("method") or "smg").strip().lower()
-    if method not in notify.EMAIL_METHODS:
+    if method != "none" and method not in notify.EMAIL_METHODS:
         return jsonify(error="unknown email method"), 400
     fields = payload.get("fields") or {}
     if not isinstance(fields, dict):
@@ -4281,6 +4337,17 @@ def admin_put_email_config():
     from_address = (payload.get("from_address") or "").strip()
     dashboard_url = (payload.get("dashboard_url") or "").strip()
     cc = (payload.get("cc") or "").strip()
+
+    # "none" disables email entirely - skip the delivery-field validation.
+    if method == "none":
+        ok, reason = notify.save_settings({
+            "method": "none", "fields": {},
+            "from_address": from_address, "cc": cc, "dashboard_url": dashboard_url,
+        })
+        if not ok:
+            return jsonify(error=reason), 500
+        log_event("admin_email_config", "ok", method="none")
+        return jsonify(ok=True, reason=reason, **notify.get_settings())
 
     # Common validation.
     if from_address:
@@ -4607,7 +4674,7 @@ def _validate_webhook_headers(headers):
 def admin_list_webhooks():
     with db() as conn:
         rows = conn.execute("""
-            SELECT id, name, url, events, headers, enabled,
+            SELECT id, name, url, events, headers, enabled, type,
                    created_at, created_by_dn,
                    last_called_at, last_status_code, last_error, call_count
               FROM webhooks
@@ -4625,8 +4692,10 @@ def admin_list_webhooks():
             d["headers"] = json.loads(d["headers"] or "{}") if d["headers"] else {}
         except (ValueError, TypeError):
             d["headers"] = {}
+        d["type"] = d.get("type") or "generic"
         out.append(d)
-    return jsonify(webhooks=out, available_events=list(WEBHOOK_EVENTS))
+    return jsonify(webhooks=out, available_events=list(WEBHOOK_EVENTS),
+                   available_types=list(WEBHOOK_TYPES))
 
 
 @app.post("/api/admin/webhooks")
@@ -4650,16 +4719,20 @@ def admin_create_webhook():
     if not ok:
         return jsonify(error=err), 400
 
+    wtype = (payload.get("type") or "generic").strip().lower()
+    if wtype not in WEBHOOK_TYPES:
+        return jsonify(error="invalid integration type"), 400
+
     enabled = bool(payload.get("enabled", True))
 
     with db() as conn:
         cur = conn.execute("""
             INSERT INTO webhooks (name, url, events, headers, enabled,
-                                  created_at, created_by_dn)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                                  created_at, created_by_dn, type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             name, url, json.dumps(events), json.dumps(headers) if headers else None,
-            1 if enabled else 0, time.time(), g.identity["dn"],
+            1 if enabled else 0, time.time(), g.identity["dn"], wtype,
         ))
         wid = cur.lastrowid
 
@@ -4700,6 +4773,12 @@ def admin_update_webhook(webhook_id):
         fields.append("headers = ?")
         params.append(json.dumps(headers) if headers else None)
 
+    if "type" in payload:
+        wtype = (payload["type"] or "generic").strip().lower()
+        if wtype not in WEBHOOK_TYPES:
+            return jsonify(error="invalid integration type"), 400
+        fields.append("type = ?"); params.append(wtype)
+
     if "enabled" in payload:
         fields.append("enabled = ?")
         params.append(1 if bool(payload["enabled"]) else 0)
@@ -4738,7 +4817,7 @@ def admin_test_webhook(webhook_id):
     """Send a synchronous test payload and return the result inline."""
     with db() as conn:
         row = conn.execute(
-            "SELECT name, url, headers FROM webhooks WHERE id = ?", (webhook_id,)
+            "SELECT name, url, headers, type FROM webhooks WHERE id = ?", (webhook_id,)
         ).fetchone()
     if not row:
         return jsonify(error="webhook not found"), 404
@@ -4748,9 +4827,11 @@ def admin_test_webhook(webhook_id):
     except (ValueError, TypeError):
         headers = {}
 
-    payload = _webhook_payload("test", {
+    wtype = (row["type"] if "type" in row.keys() else "generic") or "generic"
+    payload = _format_webhook(wtype, "test", {
         "message": "This is a test from the CSR Dashboard admin panel.",
         "triggered_by": _cn_from_dn(g.identity["dn"]),
+        "target_host": "example.test",
     })
     status_code, error_msg = _send_webhook_sync(row["url"], payload, headers)
 

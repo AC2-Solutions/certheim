@@ -78,6 +78,12 @@ def _load_config():
         _disabled_reason = f"missing required section: {e}"
         return
 
+    # "none" = email intentionally disabled by the admin (not an error).
+    if method == "none":
+        _enabled = False
+        _disabled_reason = "email delivery disabled"
+        return
+
     # The connection requirements differ per method.
     if method == "mailgun":
         ok_conn = bool(cfg.get("mailgun", "api_key", fallback="").strip()) and \
@@ -550,7 +556,7 @@ def get_settings():
         except configparser.Error:
             pass
     method = (cfg.get("email", "method", fallback="smg") or "smg").strip().lower()
-    if method not in EMAIL_METHODS:
+    if method != "none" and method not in EMAIL_METHODS:
         method = "smg"
 
     _FIELD_DEFAULTS = {"port": "25", "timeout": "10",
@@ -582,6 +588,7 @@ def get_settings():
         "method": method,
         "methods": methods,
         "available_methods": [
+            {"key": "none", "label": "None (email disabled)"},
             {"key": "smg", "label": "SMG relay (plain SMTP)"},
             {"key": "smtp", "label": "SMTP (authenticated / TLS)"},
             {"key": "mailgun", "label": "Mailgun (HTTP API)"},
@@ -609,26 +616,28 @@ def save_settings(d):
             pass
 
     method = (d.get("method") or "smg").strip().lower()
-    if method not in EMAIL_METHODS:
+    if method != "none" and method not in EMAIL_METHODS:
         return False, f"unknown email method: {method}"
 
     if not cfg.has_section("email"):
         cfg.add_section("email")
     cfg.set("email", "method", method)
 
-    sec = _METHOD_SECTION[method]
-    if not cfg.has_section(sec):
-        cfg.add_section(sec)
-    incoming = d.get("fields") or {}
-    for f in EMAIL_METHODS[method]:
-        val = incoming.get(f, None)
-        if f in _SECRET_FIELDS:
-            # blank or the mask placeholder => keep the stored secret
-            s = "" if val is None else str(val).strip()
-            if s and s != "********":
-                cfg.set(sec, f, s)
-        else:
-            cfg.set(sec, f, "" if val is None else str(val).strip())
+    # "none" disables email; no per-method section to write.
+    if method != "none":
+        sec = _METHOD_SECTION[method]
+        if not cfg.has_section(sec):
+            cfg.add_section(sec)
+        incoming = d.get("fields") or {}
+        for f in EMAIL_METHODS[method]:
+            val = incoming.get(f, None)
+            if f in _SECRET_FIELDS:
+                # blank or the mask placeholder => keep the stored secret
+                s = "" if val is None else str(val).strip()
+                if s and s != "********":
+                    cfg.set(sec, f, s)
+            else:
+                cfg.set(sec, f, "" if val is None else str(val).strip())
 
     for section, key, dkey in (("from", "address", "from_address"),
                                ("recipients", "cc", "cc"),

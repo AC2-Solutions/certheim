@@ -1653,6 +1653,14 @@ function _emailToggleMethod() {
   document.querySelectorAll(".email-method").forEach(d => {
     d.hidden = (d.dataset.emethod !== m);
   });
+  const none = (m === "none");
+  document.getElementById("email-none-note").hidden = !none;
+  // hide the shared from/cc/url + their labels when email is off
+  ["email-cfg-from", "email-cfg-cc", "email-cfg-url"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.hidden = none; const lbl = el.previousElementSibling;
+              if (lbl && lbl.classList.contains("textarea-label")) lbl.hidden = none; }
+  });
 }
 document.getElementById("email-cfg-method")?.addEventListener("change", _emailToggleMethod);
 
@@ -2794,8 +2802,8 @@ async function refreshAdminWebhooks() {
     const lastTitle = wh.last_error || `HTTP ${wh.last_status_code || '?'}`;
     return `
       <tr>
-        <td><code>${escapeHtml(wh.name)}</code></td>
-        <td><code style="font-size:11px">${escapeHtml(wh.url.length > 60 ? wh.url.substring(0, 60) + '…' : wh.url)}</code></td>
+        <td><code>${escapeHtml(wh.name)}</code> <span class="pill pill-blue">${escapeHtml(wh.type || 'generic')}</span></td>
+        <td><code style="font-size:11px">${escapeHtml(wh.url.length > 50 ? wh.url.substring(0, 50) + '…' : wh.url)}</code></td>
         <td>${(wh.events || []).map(e => `<span class="pill pill-blue">${escapeHtml(e)}</span>`).join(' ')}</td>
         <td>${wh.enabled ? '<span class="pill" style="background:#10b981;color:white">on</span>' : '<span class="pill" style="background:#6b7280;color:white">off</span>'}</td>
         <td title="${escapeHtml(lastTitle)}">${lastCall} <span class="status">(${wh.call_count} total)</span></td>
@@ -2829,12 +2837,14 @@ document.getElementById("admin-webhook-create-btn")?.addEventListener("click", (
 function openWebhookEdit(wh) {
   const modal = document.getElementById("webhook-edit-modal");
   document.getElementById("webhook-edit-title").textContent =
-    wh ? `Edit webhook: ${wh.name}` : "Add webhook";
+    wh ? `Edit integration: ${wh.name}` : "Add integration";
   document.getElementById("webhook-edit-name").value = wh ? wh.name : "";
+  document.getElementById("webhook-edit-type").value = (wh && wh.type) || "slack";
   document.getElementById("webhook-edit-url").value = wh ? wh.url : "";
   document.getElementById("webhook-edit-enabled").checked = wh ? wh.enabled : true;
   modal.dataset.webhookId = wh ? wh.id : "";
   setStatus(document.getElementById("webhook-edit-status"), "");
+  _webhookTypeChanged();
 
   // Events checkboxes
   const events = (wh && wh.events) || [];
@@ -2883,6 +2893,20 @@ function addWebhookHeaderRow(k, v) {
 
 document.getElementById("webhook-edit-add-header-btn")?.addEventListener("click", () => addWebhookHeaderRow("", ""));
 
+const WEBHOOK_TYPE_HINTS = {
+  slack: "Slack incoming-webhook URL (Apps → Incoming Webhooks). Posts a chat message on the selected events.",
+  teams: "Microsoft Teams incoming-webhook / connector URL. Posts a message card.",
+  discord: "Discord channel webhook URL (Channel → Integrations → Webhooks).",
+  generic: "Any HTTPS endpoint — receives the raw JSON payload. Use custom headers for auth tokens.",
+};
+function _webhookTypeChanged() {
+  const t = document.getElementById("webhook-edit-type").value;
+  document.getElementById("webhook-edit-type-hint").textContent = WEBHOOK_TYPE_HINTS[t] || "";
+  // Custom headers only apply to the generic (raw JSON) type.
+  document.getElementById("webhook-edit-headers-wrap").hidden = (t !== "generic");
+}
+document.getElementById("webhook-edit-type")?.addEventListener("change", _webhookTypeChanged);
+
 function collectWebhookFormState() {
   const events = Array.from(document.querySelectorAll(".webhook-event-cb"))
     .filter(cb => cb.checked).map(cb => cb.value);
@@ -2896,6 +2920,7 @@ function collectWebhookFormState() {
 
   return {
     name: document.getElementById("webhook-edit-name").value.trim(),
+    type: document.getElementById("webhook-edit-type").value,
     url: document.getElementById("webhook-edit-url").value.trim(),
     events,
     headers,
