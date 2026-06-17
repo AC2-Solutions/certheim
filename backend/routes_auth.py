@@ -1,0 +1,304 @@
+"""routes_auth blueprint - extracted from app.py (paths unchanged)."""
+from flask import Blueprint, g, jsonify, request, session
+import re, string, time
+from app import (  # noqa: E402
+    APP_VERSION, BOOTSTRAP_FIRST_ADMIN, EMAIL_RE, LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL, LOCKOUT_SECONDS, LOCKOUT_THRESHOLD, LOGIN_BANNERS, NAME_RE, _get_or_create_session, _normalize_name_part, _sessions, _sessions_lock, _set_session_cookie, _upsert_user, auth_mode, banner_options, create_local_session, current_banner, db, derive_username, destroy_local_session, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, set_setting, verify_password)
+bp = Blueprint("auth", __name__)
+
+# ============================================================
+# Misc
+# ============================================================
+@bp.get("/api/health")
+def health():
+    return jsonify(ok=True, version=APP_VERSION)
+
+# ---------------------------------------------------------------------------
+# Local authentication endpoints (only meaningful when auth_mode == "local";
+# they remain available as a CAC fallback even after mtls is enabled).
+# ---------------------------------------------------------------------------
+@bp.get("/api/auth/info")
+def auth_info():
+    """Unauthenticated: tells the UI which auth mode is active and whether
+    self-registration is open, so it can show the right login/register UI."""
+    mode = auth_mode()
+    domain = get_setting("trusted_email_domain") or ""
+    banner = current_banner()
+    return jsonify(
+        auth_mode=mode,
+        local_enabled=(mode == "local"),
+        # Self-registration is its own toggle now, independent of the (optional)
+        # email-domain filter - a domain is "not always going to be a thing".
+        registration_open=(mode == "local"
+                           and get_setting("allow_registration") == "1"),
+        trusted_email_domain=domain,
+        require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        banner=banner,
+        require_agreement=bool(banner),
+    )
+
+@bp.post("/api/auth/login")
+def auth_login():
+    """Local username/password login. Always available as a fallback, but the
+    UI only surfaces it in local mode. Applies failed-attempt lockout."""
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if auth_mode() == "mtls":
+        return jsonify(error="this host uses CAC authentication"), 403
+    if not username or not password:
+        return jsonify(error="username and password required"), 400
+
+    now = time.time()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    # Uniform failure response (don't reveal whether the username exists).
+    generic = (jsonify(error="invalid credentials"), 401)
+    if not row or not row["password_hash"]:
+        log_event("login", "deny_unknown_user", username=username[:64])
+        return generic
+
+    user = dict(row)
+    if user.get("locked_until", 0) > now:
+        log_event("login", "deny_locked", username=username[:64])
+        return jsonify(error="account temporarily locked - try again later"), 429
+    if user.get("auth_status") == "pending":
+        return jsonify(error="account awaiting administrator approval"), 403
+    if not user.get("is_active"):
+        return jsonify(error="account disabled"), 403
+
+    if not verify_password(password, user["password_hash"]):
+        attempts = int(user.get("failed_attempts", 0)) + 1
+        lock_until = now + LOCKOUT_SECONDS if attempts >= LOCKOUT_THRESHOLD else 0
+        with db() as conn:
+            conn.execute(
+                "UPDATE users SET failed_attempts = ?, locked_until = ? WHERE dn = ?",
+                (attempts, lock_until, user["dn"]))
+        log_event("login", "deny_badpass", username=username[:64],
+                  attempts=attempts, locked=int(bool(lock_until)))
+        return generic
+
+    # success - reset counters, issue session
+    with db() as conn:
+        conn.execute(
+            "UPDATE users SET failed_attempts = 0, locked_until = 0, last_seen_at = ? "
+            "WHERE dn = ?", (now, user["dn"]))
+    token = create_local_session(user["dn"])
+    log_event("login", "ok", username=username[:64])
+    resp = jsonify(ok=True)
+    resp.set_cookie(LOCAL_SESSION_COOKIE, token, httponly=True, secure=True,
+                    samesite="Strict", max_age=LOCAL_SESSION_TTL)
+    return resp
+
+@bp.post("/api/auth/logout")
+def auth_logout():
+    token = request.cookies.get(LOCAL_SESSION_COOKIE, "")
+    destroy_local_session(token)
+    resp = jsonify(ok=True)
+    resp.delete_cookie(LOCAL_SESSION_COOKIE)
+    return resp
+
+@bp.post("/api/auth/register")
+def auth_register():
+    """Self-registration in local mode, gated by trusted email domain and
+    (optionally) admin approval. Disabled entirely in mtls mode.
+
+    Usernames are NOT user-chosen: they are derived as first.last and
+    auto-suffixed on collision (john.smith, john.smith2, ...). The assigned
+    username is returned to the caller for display."""
+    if auth_mode() != "local":
+        return jsonify(error="registration not available"), 403
+    if get_setting("allow_registration") != "1":
+        return jsonify(error="self-registration is disabled"), 403
+    # Optional email-domain filter (empty = any valid email may register).
+    domain = (get_setting("trusted_email_domain") or "").strip().lower()
+
+    payload = request.get_json(silent=True) or {}
+    first = (payload.get("first_name") or "").strip()
+    last = (payload.get("last_name") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    if not NAME_RE.match(first) or not NAME_RE.match(last):
+        return jsonify(error="enter a valid first and last name"), 400
+    # must reduce to something usable
+    if not _normalize_name_part(first) or not _normalize_name_part(last):
+        return jsonify(error="name must contain letters"), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="valid email required"), 400
+    # Trusted-domain enforcement (case-insensitive, exact domain match) - only
+    # when an admin configured a domain; otherwise any valid email is allowed.
+    if domain and email.rsplit("@", 1)[-1] != domain:
+        log_event("register", "deny_domain", email=email[:128])
+        return jsonify(error=f"email must be @{domain}"), 403
+    pol = password_policy_errors(password)
+    if pol:
+        return jsonify(error="password needs " + ", ".join(pol)), 400
+
+    now = time.time()
+    approval = get_setting("require_admin_approval") == "1"
+    display = f"{first} {last}".strip()[:128]
+
+    # Derive username + insert atomically, retrying on the (rare) race where
+    # two registrations pick the same suffix between derive and insert. The
+    # UNIQUE index on username is the hard guard; we retry a few times.
+    pwhash = hash_password(password)
+    last_err = None
+    for _ in range(5):
+        with db() as conn:
+            # First-admin bootstrap (local mode): when enabled and this is the
+            # very first account on an empty database, the registrant becomes an
+            # active admin - so a fresh password-only box has an administrator
+            # without a manual csr-bootstrap-admin step. Self-disabling (fires
+            # only while users is empty); mirrors the CAC path in _upsert_user.
+            if BOOTSTRAP_FIRST_ADMIN and conn.execute(
+                    "SELECT COUNT(*) AS n FROM users").fetchone()["n"] == 0:
+                is_admin, active, status = 1, 1, "active"
+            else:
+                is_admin = 0
+                active = 0 if approval else 1
+                status = "pending" if approval else "active"
+            username = derive_username(first, last, conn)
+            dn = f"local:{username}"
+            try:
+                # Persist first/last (Model A): the username is derived from
+                # them, and the admin edit modal shows/edits them - so store
+                # them, not just the combined display cn.
+                conn.execute("""
+                    INSERT INTO users (dn, cn, email, username, password_hash,
+                                       first_name, last_name,
+                                       is_admin, is_active, auth_status,
+                                       created_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (dn, display, email, username, pwhash,
+                      first or None, last or None,
+                      is_admin, active, status, now, now))
+                break
+            except sqlite3.IntegrityError as e:
+                last_err = e
+                continue  # collision between derive and insert; retry
+    else:
+        log_event("register", "error_collision", email=email[:128])
+        return jsonify(error="could not assign a username, please retry"), 503
+
+    log_event("register", "ok", username=username[:64], status=status)
+    if status == "pending":
+        return jsonify(ok=True, status="pending", username=username,
+                       message=f"Account created as '{username}' - "
+                               f"awaiting administrator approval.")
+    token = create_local_session(dn)
+    resp = jsonify(ok=True, status="active", username=username,
+                   message=f"Your username is '{username}'.")
+    resp.set_cookie(LOCAL_SESSION_COOKIE, token, httponly=True, secure=True,
+                    samesite="Strict", max_age=LOCAL_SESSION_TTL)
+    return resp
+
+# --- admin: auth settings ---------------------------------------------------
+@bp.get("/api/admin/auth-settings")
+@require_admin
+def admin_get_auth_settings():
+    return jsonify(
+        auth_mode=auth_mode(),
+        trusted_email_domain=get_setting("trusted_email_domain") or "",
+        require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        allow_registration=(get_setting("allow_registration") == "1"),
+        login_banner=get_setting("login_banner") or "dod",
+        login_banner_custom_title=get_setting("login_banner_custom_title") or "",
+        login_banner_custom_text=get_setting("login_banner_custom_text") or "",
+        banner_options=banner_options(),
+    )
+
+@bp.put("/api/admin/auth-settings")
+@require_admin
+@require_csrf
+def admin_set_auth_settings():
+    payload = request.get_json(silent=True) or {}
+    changed = {}
+    if "auth_mode" in payload:
+        mode = payload["auth_mode"]
+        if mode not in ("mtls", "local"):
+            return jsonify(error="auth_mode must be 'mtls' or 'local'"), 400
+        # Guard: don't switch to mtls unless at least one CAC-capable admin
+        # exists, or the operator could lock everyone out. We can't verify a
+        # cert here, so require explicit confirm flag for the mtls switch.
+        if mode == "mtls" and not payload.get("confirm_mtls"):
+            return jsonify(error="enabling mTLS requires confirm_mtls=true; "
+                                 "ensure CAC access works first"), 400
+        set_setting("auth_mode", mode); changed["auth_mode"] = mode
+    if "trusted_email_domain" in payload:
+        dom = (payload["trusted_email_domain"] or "").strip().lower()
+        if dom and not re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", dom):
+            return jsonify(error="invalid domain"), 400
+        set_setting("trusted_email_domain", dom)
+        changed["trusted_email_domain"] = dom
+    if "require_admin_approval" in payload:
+        val = "1" if payload["require_admin_approval"] else "0"
+        set_setting("require_admin_approval", val)
+        changed["require_admin_approval"] = val
+    if "allow_registration" in payload:
+        val = "1" if payload["allow_registration"] else "0"
+        set_setting("allow_registration", val)
+        changed["allow_registration"] = val
+    if "login_banner" in payload:
+        b = (payload["login_banner"] or "none").strip().lower()
+        if b not in ("none", "custom") and b not in LOGIN_BANNERS:
+            return jsonify(error="invalid login_banner"), 400
+        set_setting("login_banner", b)
+        changed["login_banner"] = b
+    if "login_banner_custom_title" in payload:
+        t = (payload["login_banner_custom_title"] or "").strip()[:120]
+        set_setting("login_banner_custom_title", t)
+        changed["login_banner_custom_title"] = t
+    if "login_banner_custom_text" in payload:
+        txt = payload["login_banner_custom_text"]
+        if txt is not None and not isinstance(txt, str):
+            return jsonify(error="login_banner_custom_text must be string"), 400
+        txt = (txt or "")[:8000]
+        set_setting("login_banner_custom_text", txt)
+        changed["login_banner_custom_text"] = "set" if txt else "(empty)"
+    log_event("admin_auth_settings", "ok", **{k: str(v)[:64] for k, v in changed.items()})
+    return jsonify(ok=True, **changed)
+
+@bp.post("/api/admin/users/<path:user_dn>/approve")
+@require_admin
+@require_csrf
+def admin_approve_user(user_dn):
+    """Approve a pending local registration."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT auth_status FROM users WHERE dn = ?", (user_dn,)).fetchone()
+        if not row:
+            return jsonify(error="user not found"), 404
+        conn.execute(
+            "UPDATE users SET auth_status = 'active', is_active = 1 WHERE dn = ?",
+            (user_dn,))
+    log_event("admin_user_approve", "ok", target_dn=user_dn[:128])
+    return jsonify(ok=True)
+
+@bp.get("/api/whoami")
+@require_auth
+def whoami():
+    log_event("whoami", "ok")
+    return jsonify(dn=g.identity["dn"])
+
+@bp.get("/api/session")
+@require_auth
+def session_info():
+    sid, is_new = _get_or_create_session()
+    log_event("session", "created" if is_new else "renewed")
+    return _set_session_cookie(jsonify(ok=True), sid)
+
+@bp.post("/api/session/end")
+@require_auth
+@require_csrf
+def session_end():
+    sid = request.cookies.get("csr_sid")
+    if sid:
+        with _sessions_lock:
+            _sessions.pop(sid, None)
+        log_event("session", "ended")
+    resp = jsonify(ok=True)
+    resp.delete_cookie("csr_sid", path="/csr/")
+    return resp
+
