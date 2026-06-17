@@ -515,11 +515,12 @@
       Use Smartcard (CAC) authentication
     </label>
 
-    <!-- Agreement checkbox - gates the action buttons -->
-    <label class="checkbox-row" id="login-agree-row">
+    <!-- Agreement checkbox - gates the action buttons. Default hidden; the
+         gate JS reveals it only when a login banner is configured. -->
+    <label class="checkbox-row" id="login-agree-row" hidden>
       <input type="checkbox" id="login-agree-check">
       I agree to the
-      <button class="link-btn" id="login-show-banner" type="button">DoD System User Access Agreement</button>
+      <button class="link-btn" id="login-show-banner" type="button">User Access Agreement</button>
     </label>
 
     <!-- Action buttons: disabled until the agreement is checked -->
