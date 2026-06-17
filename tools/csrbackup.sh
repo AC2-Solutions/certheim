@@ -18,7 +18,16 @@ case "${1:-}" in
         exit 0
         ;;
     -h|--help)
-        sed -n 's/^# \{0,1\}//;3,11p' "$0"
+        cat <<'EOF'
+csrbackup - snapshot the CSR Dashboard deployment files and database.
+
+Output goes to /root/csr-backup-YYYYMMDD-HHMMSS/
+
+Usage:
+  csrbackup            # take a backup now
+  csrbackup --list     # show existing backups
+  csrbackup --help     # this message
+EOF
         exit 0
         ;;
 esac

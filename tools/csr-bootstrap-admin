@@ -1,56 +1,93 @@
-#!/bin/bash
-# csr-bootstrap-admin - promote a DN to admin in the CSR Dashboard database.
-#
-# Works regardless of the CSR_BOOTSTRAP_FIRST_ADMIN flag and needs no prior
-# login: it inserts the user row if absent, or flips is_admin on an existing
-# one. Use it to grant yourself (or a colleague) admin on a fresh install.
-#
-#   sudo csr-bootstrap-admin "CN=LAST.FIRST.M.1234567890,OU=...,O=U.S. Government,C=US"
-#   sudo csr-bootstrap-admin --list           # show current admins
-#
-# Run as root (or any user that can write the SQLite DB). Restart csr-api
-# afterwards is not required - is_admin is read per request.
-set -euo pipefail
+#!/usr/bin/env python3
+"""csr-bootstrap-admin - create or promote the first admin by CAC DN.
 
-DB="${CSR_DB_PATH:-/var/lib/csr-dashboard/jobs.db}"
-SVC_USER="csrapi"
+On a fresh database there are no admins and the app only ever inserts users
+with is_admin=0, so there is no in-app way to make the first one. Run this
+once as root on the dashboard host:
 
-command -v sqlite3 >/dev/null || { echo "ERROR: sqlite3 not found" >&2; exit 1; }
-[[ -f "$DB" ]] || { echo "ERROR: database not found: $DB (set CSR_DB_PATH?)" >&2; exit 1; }
+    csr-bootstrap-admin "CN=COLLISON.ADAM.JOSEPH.1402015051,OU=CONTRACTOR,OU=PKI,OU=DoD,O=U.S. Government,C=US"
 
-# sqlite single-quote escaping: double any embedded single quotes.
-esc() { printf "%s" "$1" | sed "s/'/''/g"; }
+It inserts the DN if absent (or promotes it if present), is_admin=1,
+is_active=1. Idempotent. Reads the DB path from the same env the app uses
+(CSR_DB_PATH / the csr-dashboard.env), falling back to the default.
+"""
+import os
+import sqlite3
+import sys
+import time
 
-if [[ "${1:-}" == "--list" ]]; then
-    echo "Current admins:"
-    sqlite3 "$DB" "SELECT dn FROM users WHERE is_admin=1;" | sed 's/^/  /'
-    exit 0
-fi
 
-DN="${1:-}"
-if [[ -z "$DN" || "$DN" == "-h" || "$DN" == "--help" ]]; then
-    echo "Usage: $0 \"<full CAC DN>\"   |   $0 --list" >&2
-    exit 2
-fi
-if (( ${#DN} > 512 )); then
-    echo "ERROR: DN too long" >&2; exit 2
-fi
+def _load_db_path():
+    # honour the same env file the app reads, then CSR_DB_PATH, then default
+    env_path = os.environ.get("CSR_DASHBOARD_ENV",
+                              "/etc/csr-dashboard/csr-dashboard.env")
+    val = os.environ.get("CSR_DB_PATH")
+    if not val:
+        try:
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("CSR_DB_PATH="):
+                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except OSError:
+            pass
+    return val or "/var/lib/csr-dashboard/jobs.db"
 
-DN_E="$(esc "$DN")"
-CN="$(printf "%s" "$DN" | sed -n 's/.*CN=\([^,]*\).*/\1/p')"
-CN_E="$(esc "${CN:-$DN}")"
-NOW="$(date +%s)"
 
-sqlite3 "$DB" <<SQL
-INSERT INTO users (dn, cn, email, is_admin, is_active, created_at, last_seen_at)
-VALUES ('${DN_E}', '${CN_E}', NULL, 1, 1, ${NOW}, ${NOW})
-ON CONFLICT(dn) DO UPDATE SET is_admin=1, is_active=1;
-SQL
+def _cn_from_dn(dn):
+    for part in dn.split(","):
+        part = part.strip()
+        if part.upper().startswith("CN="):
+            return part[3:]
+    return dn[:64]
 
-# Keep the DB owned by the service account if we ran as root.
-if [[ $EUID -eq 0 ]] && id "$SVC_USER" >/dev/null 2>&1; then
-    chown "$SVC_USER:$SVC_USER" "$DB" 2>/dev/null || true
-fi
 
-echo "OK: '${DN}' is now an active admin."
-echo "Verify: $0 --list"
+def main():
+    if len(sys.argv) != 2 or not sys.argv[1].strip():
+        print('usage: csr-bootstrap-admin "<full CAC DN>"', file=sys.stderr)
+        print('example: csr-bootstrap-admin "CN=DOE.JANE.A.1234567890,OU=...,C=US"',
+              file=sys.stderr)
+        return 2
+
+    dn = sys.argv[1].strip()
+    db_path = _load_db_path()
+    if not os.path.exists(db_path):
+        print(f"ERROR: database not found at {db_path}", file=sys.stderr)
+        print("Start csr-api once so the schema is created, then re-run.",
+              file=sys.stderr)
+        return 1
+
+    cn = _cn_from_dn(dn)
+    now = time.time()
+    conn = sqlite3.connect(db_path)
+    try:
+        existing = conn.execute(
+            "SELECT is_admin FROM users WHERE dn = ?", (dn,)
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO users (dn, cn, email, is_admin, is_active, "
+                "created_at, last_seen_at) VALUES (?, ?, NULL, 1, 1, ?, ?)",
+                (dn, cn, now, now),
+            )
+            action = "created as admin"
+        else:
+            conn.execute(
+                "UPDATE users SET is_admin = 1, is_active = 1 WHERE dn = ?",
+                (dn,),
+            )
+            action = "promoted to admin" if not existing[0] else "already admin"
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"OK: {cn} {action}")
+    print(f"  dn: {dn}")
+    print(f"  db: {db_path}")
+    print("Restart is not required; the change takes effect on next request.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

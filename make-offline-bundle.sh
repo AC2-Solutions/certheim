@@ -43,7 +43,7 @@ mkdir -p "$OUT"
 
 # --- 1. the application code (everything deploy.sh manages, plus tooling) ---
 echo "[1/4] copying application code..."
-for item in VERSION deploy.sh gather.sh verify.sh README.md .gitlab-ci.yml \
+for item in VERSION deploy.sh gather.sh verify.sh README.md .gitignore .gitlab-ci.yml \
             backend frontend helper systemd nginx tools config docs; do
     [[ -e "$item" ]] && cp -r "$item" "$OUT/" || echo "  (skip missing: $item)"
 done
@@ -123,20 +123,20 @@ SMG_TIMEOUT="10"
 # Optional comma-separated Cc applied to every notification. Blank = none.
 GLOBAL_CC=""
 
-# CAC mTLS. "yes" => the generated nginx server block ENFORCES client certs
-# (ssl_verify_client on) against the DoD CA bundle below. "no" => those lines
-# are written COMMENTED and optional_no_ca is used so the box still serves
-# (the app then sees ip:<addr> identities). WARNING: do NOT pair mTLS "no"
-# with BOOTSTRAP_FIRST_ADMIN=1 (the "first user" could be an ip= identity).
-ENABLE_MTLS="no"
-DOD_CA_BUNDLE="/etc/pki/dod/dod-cas.pem"
-
 # First-admin bootstrap: set to 1 to make the FIRST user to log in on the new
 # (empty) database an admin automatically - convenient for initial stand-up.
 # Self-disables once any user exists. Only enable if mTLS is verifying real
 # CACs on this box (so "first user" is genuinely you). Otherwise leave 0 and
 # use csr-bootstrap-admin after first login.
 BOOTSTRAP_FIRST_ADMIN="0"
+
+# Authentication mode: "mtls" (CAC, default) or "local" (username/password,
+# for environments without CAC tokens). If local, set the trusted email
+# domain for self-registration (blank = self-reg disabled) and whether new
+# accounts need admin approval.
+AUTH_MODE="mtls"
+TRUSTED_EMAIL_DOMAIN=""
+REQUIRE_APPROVAL="0"
 
 # --- DATA MIGRATION (optional) ---------------------------------------------
 
@@ -189,8 +189,8 @@ CSR Dashboard offline installer
 Usage:
   sudo ./offline-install.sh              Guided first-time setup (prompts for
                                          domain, hostname, optional email,
-                                         CAC mTLS, first-admin, data restore),
-                                         then installs.
+                                         first-admin, data restore), then
+                                         installs.
   sudo ./offline-install.sh --unattended Read install/START_HERE instead of
                                          prompting (for scripted/repeatable
                                          deploys).
@@ -200,14 +200,13 @@ What it does (both modes):
   Creates the csrapi service account, all directories and the sudoers
   drop-in, builds the Python venv from the bundled wheelhouse (no network),
   writes the config from your answers, optionally restores a database,
-  generates the nginx server block (CAC mTLS enforced or not per your
-  choice), refreshes fapolicyd trust, deploys the app, and starts the service.
+  refreshes fapolicyd trust, deploys the app, and starts the service.
 
   Email is OPTIONAL - leave the relay blank to run without notifications.
 
 Cannot be scripted (you do these): install the enclave OS packages, the
-PKI/CAC mTLS server certificate + DoD CA bundle, and - on a fresh database -
-the first admin (unless first-login-admin is enabled during setup).
+PKI/CAC mTLS certificates, and - on a fresh database - the first admin
+(unless first-login-admin is enabled during setup).
 USAGE
 }
 
@@ -245,8 +244,6 @@ ask_yn() {
     case "$__ans" in [Yy]*) printf -v "$__var" '1';; *) printf -v "$__var" '0';; esac
     echo
 }
-# normalize a yes/no-ish value to 1/0
-truthy() { [[ "${1:-}" =~ ^(1|[Yy]([Ee][Ss])?|[Tt][Rr][Uu][Ee]|[Oo][Nn])$ ]]; }
 
 # --- gather configuration --------------------------------------------------
 if $UNATTENDED; then
@@ -255,10 +252,13 @@ if $UNATTENDED; then
     source "$SCRIPT_DIR/START_HERE"
     # map START_HERE's bootstrap var name to the internal one
     BOOTSTRAP_FIRST_ADMIN="${BOOTSTRAP_FIRST_ADMIN:-0}"
-    ENABLE_MTLS="${ENABLE_MTLS:-no}"
-    DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
     SMG_HOST="${SMG_HOST:-}"
     [[ "$SMG_HOST" == "CHANGEME" ]] && SMG_HOST=""   # treat placeholder as unset
+    # auth mode from START_HERE (default mtls). AUTH_MODE=local enables
+    # username/password; TRUSTED_EMAIL_DOMAIN + REQUIRE_APPROVAL apply then.
+    AUTH_MODE="${AUTH_MODE:-mtls}"
+    TRUSTED_EMAIL_DOMAIN="${TRUSTED_EMAIL_DOMAIN:-}"
+    REQUIRE_APPROVAL="${REQUIRE_APPROVAL:-0}"
 else
     echo
     echo "=========================================================="
@@ -297,30 +297,32 @@ else
         echo
     fi
 
-    echo "  ---- CAC mTLS ----"
-    ask_yn ENABLE_MTLS "Enforce CAC mTLS now (require a client cert)?" "n" \
-        "Yes => the nginx server block REQUIRES a valid CAC (ssl_verify_client
-  on) against the DoD CA bundle. Choose Yes only if you have the DoD CA
-  bundle ready on this box. No => the box serves without requiring a client
-  cert (the enforcing lines are written commented for you to enable later),
-  and the app sees ip:<addr> identities."
-    if [[ "$ENABLE_MTLS" == 1 ]]; then
-        ask DOD_CA_BUNDLE "Path to the DoD CA bundle (PEM)" "/etc/pki/dod/dod-cas.pem" \
-            "Concatenated DoD root+intermediate certs (strip CRLF). nginx -t
-  will fail until this file is present."
+    echo "  ---- Authentication mode ----"
+    echo "  This host can authenticate users by CAC (client-certificate mTLS)"
+    echo "  or by username/password - for environments without CAC tokens."
+    echo
+    ask_yn USE_MTLS "Will this host use CAC mTLS for authentication?" "y" \
+        "Yes -> CAC/mTLS auth (standard DoD path; you configure the DoD CA
+          bundle + ssl_verify_client in nginx as a manual PKI step).
+  No  -> username/password auth. Users self-register with a trusted email
+          domain (asked next). CAC can still be enabled later from the admin UI."
+    if [[ "$USE_MTLS" == "0" ]]; then
+        AUTH_MODE="local"
+        ask TRUSTED_EMAIL_DOMAIN "Trusted email domain for self-registration" "" \
+            "Only emails at this exact domain may self-register (e.g. eucom.mil).
+  Leave blank to disable self-registration (admins create users instead)."
+        ask_yn REQUIRE_APPROVAL "Require admin approval for new accounts?" "n" \
+            "Yes -> new registrations are 'pending' until an admin approves.
+  No  -> new registrations are active immediately."
     else
-        DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
+        AUTH_MODE="mtls"; TRUSTED_EMAIL_DOMAIN=""; REQUIRE_APPROVAL="0"
     fi
 
     ask_yn BOOTSTRAP_FIRST_ADMIN "Make the first user to log in an admin?" "n" \
         "Convenient for initial setup: the FIRST login on the empty database
-  becomes admin (self-disables after). Only choose Yes if CAC mTLS is
-  verifying real identities on this box - otherwise use csr-bootstrap-admin
-  after logging in."
-    if [[ "$BOOTSTRAP_FIRST_ADMIN" == 1 && "$ENABLE_MTLS" != 1 ]]; then
-        warn "first-admin bootstrap WITHOUT mTLS: the first (possibly ip=) identity"
-        warn "becomes admin. Prefer csr-bootstrap-admin, or enable mTLS."
-    fi
+  becomes admin (self-disables after). For mTLS, only choose Yes once CAC is
+  verifying real identities; for username/password, the first registered user
+  becomes admin."
 
     ask RESTORE_DB "Path to a database to restore (blank = fresh/empty)" "" \
         "Migrating an existing instance? Give the path to a jobs.db you
@@ -335,6 +337,13 @@ else
     echo "    Domain (suffix)   : ${CSR_DOMAIN}"
     echo "    Hostname          : ${CSR_HOSTNAME}"
     echo "    Dashboard URL     : ${DASHBOARD_URL}"
+    if [[ "$AUTH_MODE" == "local" ]]; then
+        echo "    Auth mode         : username/password (local)"
+        echo "    Trusted domain    : ${TRUSTED_EMAIL_DOMAIN:-<self-reg disabled>}"
+        echo "    Admin approval    : $( [[ $REQUIRE_APPROVAL == 1 ]] && echo required || echo no)"
+    else
+        echo "    Auth mode         : CAC mTLS"
+    fi
     if [[ -n "$SMG_HOST" ]]; then
         echo "    Email relay       : ${SMG_HOST}:${SMG_PORT}"
         echo "    From address      : ${FROM_ADDRESS}"
@@ -342,7 +351,6 @@ else
     else
         echo "    Email             : DISABLED (no relay)"
     fi
-    echo "    CAC mTLS          : $( [[ $ENABLE_MTLS == 1 ]] && echo "ENFORCED (${DOD_CA_BUNDLE})" || echo "not enforced (optional_no_ca)")"
     echo "    First-login admin : $( [[ $BOOTSTRAP_FIRST_ADMIN == 1 ]] && echo yes || echo no)"
     echo "    Restore database  : ${RESTORE_DB:-<fresh empty DB>}"
     echo "=========================================================="
@@ -354,23 +362,21 @@ fi
 cd "$BUNDLE_ROOT"
 
 # ---------------------------------------------------------------------------
-log "0/9  Validating configuration"
+log "0/8  Validating configuration"
 # ---------------------------------------------------------------------------
 : "${CSR_DOMAIN:=eucom.mil}"
 : "${CSR_HOSTNAME:=nipat-pl-rcdn01}"
 [[ -n "${DASHBOARD_URL:-}" ]] || DASHBOARD_URL="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
 [[ "$DASHBOARD_URL" != *CHANGEME* ]] || die "DASHBOARD_URL not set"
-ENABLE_MTLS="${ENABLE_MTLS:-no}"
-DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
 # Email is OPTIONAL: empty SMG_HOST = email disabled (valid).
 if [[ -n "${SMG_HOST:-}" ]]; then
     [[ -n "${FROM_ADDRESS:-}" && "$FROM_ADDRESS" != *CHANGEME* ]] \
         || die "FROM_ADDRESS required when an SMG relay is set"
 fi
-echo "  domain=${CSR_DOMAIN} host=${CSR_HOSTNAME} email=$( [[ -n "${SMG_HOST:-}" ]] && echo "${SMG_HOST}" || echo disabled) mtls=$(truthy "$ENABLE_MTLS" && echo on || echo off)"
+echo "  domain=${CSR_DOMAIN} host=${CSR_HOSTNAME} email=$( [[ -n "${SMG_HOST:-}" ]] && echo "${SMG_HOST}" || echo disabled)"
 
 # ---------------------------------------------------------------------------
-log "1/9  Checking OS prerequisites (from this enclave's repo)"
+log "1/8  Checking OS prerequisites (from this enclave's repo)"
 # ---------------------------------------------------------------------------
 missing=()
 command -v "$PYBIN"      >/dev/null || missing+=("$PYBIN")
@@ -383,7 +389,7 @@ command -v fapolicyd-cli >/dev/null || warn "fapolicyd-cli absent - trust step s
 echo "  OK"
 
 # ---------------------------------------------------------------------------
-log "2/9  Service account: ${SVC_USER}"
+log "2/8  Service account: ${SVC_USER}"
 # ---------------------------------------------------------------------------
 if id "$SVC_USER" >/dev/null 2>&1; then
     echo "  exists - leaving as-is"
@@ -395,7 +401,7 @@ fi
 getent group nginx >/dev/null || warn "group 'nginx' missing - is nginx installed?"
 
 # ---------------------------------------------------------------------------
-log "3/9  Directories"
+log "3/8  Directories"
 # ---------------------------------------------------------------------------
 DIRS=(
   "/opt/csr-dashboard|root:${SVC_USER}|0750"
@@ -406,7 +412,7 @@ DIRS=(
   "/root/sslcerts/scripts/csr_dashboard_helper.d|root:root|0750"
   "/root/sslcerts/private|root:root|0700"
   "/home/ansible/new_request|root:root|0755"
-  "/home/ansible/issued|${SVC_USER}:${SVC_USER}|0750"
+  "/home/ansible/issued|root:${SVC_USER}|0750"
 )
 for entry in "${DIRS[@]}"; do
     IFS='|' read -r d og mode <<< "$entry"
@@ -418,7 +424,7 @@ done
 chmod o+x /home/ansible 2>/dev/null || warn "could not chmod /home/ansible - ensure csrapi can traverse it"
 
 # ---------------------------------------------------------------------------
-log "4/9  Sudoers drop-in"
+log "4/8  Sudoers drop-in"
 # ---------------------------------------------------------------------------
 SUDOERS=/etc/sudoers.d/csr-dashboard
 if [[ -f "$SUDOERS" ]]; then
@@ -432,7 +438,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-log "5/9  Python venv from bundled wheelhouse (offline)"
+log "5/8  Python venv from bundled wheelhouse (offline)"
 # ---------------------------------------------------------------------------
 VENV=/opt/csr-dashboard/venv
 [[ -x "$VENV/bin/python3" ]] || "$PYBIN" -m venv "$VENV"
@@ -464,7 +470,7 @@ if command -v fapolicyd-cli >/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-log "6/9  Config files"
+log "6/8  Config files"
 # ---------------------------------------------------------------------------
 # email.conf - written from your answers. Empty host = email disabled, which
 # the app honours (no notifications sent). Writing it either way keeps the
@@ -494,13 +500,6 @@ else
     echo "  wrote /etc/csr-dashboard/email.conf (email DISABLED - no relay)"
 fi
 
-# integrations.conf - present + csrapi-owned so the admin UI can rewrite it.
-if [[ ! -f /etc/csr-dashboard/integrations.conf ]]; then
-    printf '[gitlab]\nenabled = false\n' > /etc/csr-dashboard/integrations.conf
-    chown "${SVC_USER}:${SVC_USER}" /etc/csr-dashboard/integrations.conf
-    chmod 0640 /etc/csr-dashboard/integrations.conf
-fi
-
 # csr-dashboard.env - seed from example if absent (paths are defaults)
 if [[ ! -f /etc/csr-dashboard/csr-dashboard.env && -f config/csr-dashboard.env.example ]]; then
     install -o "$SVC_USER" -g "$SVC_USER" -m 0640 \
@@ -518,28 +517,10 @@ if [[ -f /etc/csr-dashboard/csr-dashboard.env ]]; then
         echo "CSR_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/csr-dashboard/csr-dashboard.env
     fi
     echo "  first-admin bootstrap: CSR_BOOTSTRAP_FIRST_ADMIN=${want}"
-
-    # Auth mode: mTLS on => CAC DN identity; mTLS off => local username/password
-    # accounts (users self-register a username+password on first login; the
-    # first account becomes admin).
-    if truthy "$ENABLE_MTLS"; then AUTH_MODE=cac; else AUTH_MODE=local; fi
-    if grep -q '^CSR_AUTH_MODE=' /etc/csr-dashboard/csr-dashboard.env; then
-        sed -i "s/^CSR_AUTH_MODE=.*/CSR_AUTH_MODE=${AUTH_MODE}/" /etc/csr-dashboard/csr-dashboard.env
-    else
-        echo "CSR_AUTH_MODE=${AUTH_MODE}" >> /etc/csr-dashboard/csr-dashboard.env
-    fi
-    echo "  auth mode: CSR_AUTH_MODE=${AUTH_MODE}"
-    # Local mode needs a persistent session signing key.
-    if [[ "$AUTH_MODE" == "local" && ! -s /etc/csr-dashboard/secret.key ]]; then
-        openssl rand -hex 32 > /etc/csr-dashboard/secret.key
-        chown "${SVC_USER}:${SVC_USER}" /etc/csr-dashboard/secret.key
-        chmod 0640 /etc/csr-dashboard/secret.key
-        echo "  generated /etc/csr-dashboard/secret.key (session signing)"
-    fi
 fi
 
 # ---------------------------------------------------------------------------
-log "6.5/9  Rewriting domain/hostname in bundle files"
+log "6.5/8  Rewriting domain/hostname in bundle files"
 # ---------------------------------------------------------------------------
 # Substitute the build-time defaults (eucom.mil / nipat-pl-rcdn01) with this
 # deployment's values across the DEPLOYABLE files, before deploy.sh copies
@@ -568,89 +549,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-log "6.8/9  nginx server block (standalone box) + CAC mTLS"
-# ---------------------------------------------------------------------------
-# nginx/30-csr.conf is a LOCATION FRAGMENT (deploy.sh installs it under
-# /etc/nginx/rcdn01.d). It must live inside a server{} block. On a site that
-# already has one doing `include rcdn01.d/*.conf` (e.g. rcdn01) we leave nginx
-# alone; on a fresh/air-gapped box we generate a standalone server block here.
-# TLS + CAC mTLS live HERE.
-NID=/etc/nginx/rcdn01.d
-CERTDIR=/etc/pki/csr-dashboard
-FQDN="${CSR_HOSTNAME}.${CSR_DOMAIN}"
-install -d -m 0755 "$NID"
-if [[ ! -f "$CERTDIR/server.crt" ]]; then
-    install -d -m 0750 "$CERTDIR"
-    if openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
-        -keyout "$CERTDIR/server.key" -out "$CERTDIR/server.crt" \
-        -subj "/CN=${FQDN}" -addext "subjectAltName=DNS:${FQDN}" >/dev/null 2>&1; then
-        chmod 0640 "$CERTDIR/server.key"; chmod 0644 "$CERTDIR/server.crt"
-        echo "  generated self-signed placeholder cert for ${FQDN} (replace with the site cert)"
-    else
-        warn "openssl cert generation failed - place a real cert at $CERTDIR/server.{crt,key}"
-    fi
-fi
-if truthy "$ENABLE_MTLS"; then
-    [[ -s "$DOD_CA_BUNDLE" ]] || warn "ENABLE_MTLS=yes but $DOD_CA_BUNDLE missing/empty - nginx -t will fail until it is placed there"
-    MTLS_STANZA="    # CAC mTLS ENFORCED. DoD chain: Root->Intermediate->CAC.
-    ssl_client_certificate ${DOD_CA_BUNDLE};
-    ssl_verify_client       on;
-    ssl_verify_depth        3;"
-    echo "  CAC mTLS: ENFORCED (CA bundle ${DOD_CA_BUNDLE})"
-else
-    MTLS_STANZA="    # CAC mTLS NOT enabled. To enforce later: place the DoD CA bundle at
-    # ${DOD_CA_BUNDLE}, uncomment the next two lines, remove optional_no_ca,
-    # then: nginx -t && systemctl reload nginx
-    #   ssl_client_certificate ${DOD_CA_BUNDLE};
-    #   ssl_verify_client       on;
-    ssl_verify_client optional_no_ca;
-    ssl_verify_depth  3;"
-    echo "  CAC mTLS: not enforced (optional_no_ca) - app uses ip:<addr> identity"
-fi
-SERVER_CONF=/etc/nginx/conf.d/csr-dashboard.conf
-if [[ -f "$SERVER_CONF" ]] || grep -rqs "$NID" /etc/nginx/conf.d; then
-    echo "  a server block already includes ${NID} - leaving nginx server config alone"
-else
-    cat > "$SERVER_CONF" <<NGINXCONF
-# Standalone CSR Dashboard server block (generated by offline-install for a
-# fresh/air-gapped box). TLS + CAC mTLS live HERE; request routing is the
-# location fragment in ${NID}/30-csr.conf. On rcdn01 an equivalent block
-# already exists and this file is NOT created.
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${FQDN};
-
-    ssl_certificate     ${CERTDIR}/server.crt;
-    ssl_certificate_key ${CERTDIR}/server.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-
-${MTLS_STANZA}
-
-    include ${NID}/*.conf;
-}
-NGINXCONF
-    echo "  generated standalone server block ${SERVER_CONF} (server_name ${FQDN})"
-fi
-# SELinux: without this nginx is denied connecting to the gunicorn backend and
-# every proxied request 502s.
-if command -v getsebool >/dev/null && [[ "$(getenforce 2>/dev/null)" != "Disabled" ]]; then
-    setsebool -P httpd_can_network_connect 1 2>/dev/null \
-        && echo "  setsebool httpd_can_network_connect=on (nginx -> backend)" \
-        || warn "could not set httpd_can_network_connect - nginx->backend may 502"
-fi
-systemctl enable nginx >/dev/null 2>&1 || true
-# Auto-publish the DoD CA bundle to the trust portal so clients can download
-# it to build trust (CA cert only; the app validates + serves it).
-if truthy "$ENABLE_MTLS" && [[ -s "$DOD_CA_BUNDLE" ]]; then
-    install -d -o "$SVC_USER" -g "$SVC_USER" -m 0750 /var/lib/csr-dashboard/trust
-    install -o "$SVC_USER" -g "$SVC_USER" -m 0644 "$DOD_CA_BUNDLE" \
-        /var/lib/csr-dashboard/trust/dod-ca-bundle.crt 2>/dev/null \
-        && echo "  published DoD CA bundle to the trust portal" || true
-fi
-
-# ---------------------------------------------------------------------------
-log "7/9  Deploy code + optional data restore"
+log "7/8  Deploy code + optional data restore"
 # ---------------------------------------------------------------------------
 if [[ -n "${RESTORE_DB:-}" ]]; then
     [[ -f "$RESTORE_DB" ]] || die "RESTORE_DB set but file not found: $RESTORE_DB"
@@ -665,28 +564,61 @@ fi
 bash ./deploy.sh
 
 # ---------------------------------------------------------------------------
-log "8/9  PKI / mTLS check"
+log "7.5/8  Authentication mode"
 # ---------------------------------------------------------------------------
-pki_ok=true
-nginx -t >/dev/null 2>&1 || { warn "nginx -t fails - server cert / DoD CA bundle not in place yet"; pki_ok=false; }
+# deploy.sh started csr-api, which created the schema (incl. app_settings).
+# Now write the auth settings into the DB via the helper. Default mtls needs
+# nothing (app default), but we set it explicitly so `csr-set-auth --show`
+# always reflects the install choice.
+if command -v csr-set-auth >/dev/null 2>&1; then
+    SETAUTH=csr-set-auth
+elif [[ -f tools/csr-set-auth ]]; then
+    SETAUTH="$PYBIN tools/csr-set-auth"
+else
+    SETAUTH=""
+fi
+if [[ -n "$SETAUTH" ]]; then
+    # brief wait so the app has created the schema on first start
+    for _ in 1 2 3 4 5; do
+        [[ -f /var/lib/csr-dashboard/jobs.db ]] && break; sleep 1
+    done
+    if [[ "$AUTH_MODE" == "local" ]]; then
+        $SETAUTH --mode local --domain "${TRUSTED_EMAIL_DOMAIN:-}" \
+            $( [[ "${REQUIRE_APPROVAL:-0}" == "1" ]] && echo --require-approval || echo --no-require-approval ) \
+            || warn "could not set auth mode (run csr-set-auth manually)"
+        echo "  auth mode: username/password (domain=${TRUSTED_EMAIL_DOMAIN:-<none>})"
+    else
+        $SETAUTH --mode mtls || warn "could not set auth mode"
+        echo "  auth mode: CAC mTLS"
+    fi
+else
+    warn "csr-set-auth not found - auth mode left at app default (mtls)."
+    [[ "$AUTH_MODE" == "local" ]] && \
+        warn "to enable password auth: csr-set-auth --mode local --domain <domain>"
+fi
 
 # ---------------------------------------------------------------------------
-log "9/9  Done"
+log "8/8  PKI / mTLS check (cannot be scripted)"
 # ---------------------------------------------------------------------------
+pki_ok=true
+nginx -t >/dev/null 2>&1 || { warn "nginx -t fails - server cert / CAC mTLS not configured for this site yet"; pki_ok=false; }
+
 echo ""
 echo "==================================================================="
 echo " Mechanical install COMPLETE for v$(cat VERSION 2>/dev/null || echo '?')."
 echo "==================================================================="
 if ! $pki_ok; then
 cat <<MAN
- [ ] PKI: place this server's cert+key at ${CERTDIR}/server.{crt,key}$(truthy "$ENABLE_MTLS" && echo " and the DoD CA bundle at ${DOD_CA_BUNDLE}"). Then:
+ [ ] PKI: install this enclave's DoD CA bundle (update-ca-trust), place this
+         server's cert+key, and set ssl_client_certificate / ssl_verify_client
+         for CAC mTLS in nginx (see nginx/30-csr.conf). Then:
             nginx -t && systemctl reload nginx
 MAN
 fi
-if [[ -z "${RESTORE_DB:-}" && "${BOOTSTRAP_FIRST_ADMIN:-0}" != "1" ]]; then
+if [[ -z "${RESTORE_DB:-}" ]]; then
 cat <<MAN
- [ ] ADMIN: fresh empty database - promote your CAC to admin:
-            csr-bootstrap-admin "<YOUR CAC DN>"
+ [ ] ADMIN: fresh empty database - bootstrap your CAC as the first admin
+         (csr-bootstrap-admin) or you will have no admin rights.
 MAN
 fi
 cat <<MAN
@@ -697,6 +629,16 @@ cat <<MAN
 MAN
 INSTALL
 chmod +x "$OUT/install/offline-install.sh"
+
+# uninstaller: ship it in install/ next to the installer. It's tracked in the
+# repo under tools/, so copy it in (fall back to a note if absent).
+if [[ -f tools/csr-uninstall.sh ]]; then
+    cp tools/csr-uninstall.sh "$OUT/install/csr-uninstall.sh"
+    chmod +x "$OUT/install/csr-uninstall.sh"
+    echo "  included install/csr-uninstall.sh"
+else
+    echo "  (tools/csr-uninstall.sh not found - uninstaller not bundled)"
+fi
 
 cat > "$OUT/OFFLINE-INSTALL.md" <<DOC
 # CSR Dashboard - Offline Install (v${VERSION})
@@ -710,52 +652,100 @@ Install these OS packages first (NOT included in this bundle unless your
 enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
 \`openssl\`, \`policycoreutils\` (restorecon), and \`sudo\`.
 
-## Install (guided)
-1. fapolicyd-safe launch (STIG hosts deny exec-by-path of untrusted files;
-   running via \`bash\` avoids needing to trust the bundle):
+## Environment prep (one time, as root)
+1. **Service account**
+   - Create \`csrapi\` (system account, no login shell).
+   - Install the sudoers drop-in granting csrapi NOPASSWD on the helper
+     dispatcher only. (See \`docs/runbook.md\`.)
+2. **Directories**
+   - \`/opt/csr-dashboard/\`            (app + venv)        root:csrapi
+   - \`/var/lib/csr-dashboard/\`        (SQLite DB)         csrapi:csrapi 0750
+   - \`/var/www/csr/\`                  (frontend)          root:nginx
+   - \`/etc/csr-dashboard/\`            (email.conf)        csrapi:csrapi
+   - \`/root/sslcerts/scripts/\` + \`...d/\`, \`new_request/\`, \`private/\`
+   - \`/home/ansible/issued/\`          (issued certs)      traversable by csrapi
+3. **PKI / mTLS**
+   - Install the enclave's DoD CA bundle into the system trust store.
+   - Place the dashboard's server cert + key for nginx.
+   - Configure nginx server-level \`ssl_client_certificate\` /
+     \`ssl_verify_client\` for CAC mTLS (see \`nginx/30-csr.conf\` and the
+     runbook).
+4. **email.conf**
+   - Copy \`config/email.conf.example\` to \`/etc/csr-dashboard/email.conf\`
+     and set the enclave's SMG relay host. Owner csrapi:csrapi, mode 0640.
+
+## Install (three steps)
+1. Edit the variables for THIS site:
+\`\`\`bash
+vi install/START_HERE          # set SMG_HOST, DASHBOARD_URL, FROM_ADDRESS
+\`\`\`
+2. **fapolicyd trust the bundle first (STIG hosts).** fapolicyd denies
+   execute-by-path of any untrusted file, so a freshly extracted script
+   cannot be run directly. Either trust the bundle, or launch via \`bash\`:
+\`\`\`bash
+# option A - trust the bundle scripts (then they exec by path):
+sudo fapolicyd-cli --file add "\$(pwd)/install/offline-install.sh"
+sudo fapolicyd-cli --file add "\$(pwd)/deploy.sh"
+sudo fapolicyd-cli --update
+# option B - just run via bash (the installer already calls its children
+# via bash, so this is sufficient and needs no trust changes):
+\`\`\`
+3. Run the installer (via bash - fapolicyd-safe regardless of step 2):
 \`\`\`bash
 cd install
 sudo bash ./offline-install.sh
 \`\`\`
-   The installer walks you through domain, hostname, optional email relay,
-   **CAC mTLS (yes/no)**, first-admin, and optional DB restore, shows a
-   summary, then installs. For scripted/repeatable deploys edit
-   \`install/START_HERE\` and run \`sudo bash ./offline-install.sh --unattended\`.
+It reads START_HERE, then creates the csrapi account, all directories,
+sudoers drop-in, the venv (from the bundled wheelhouse, no network),
+writes email.conf + csr-dashboard.env with YOUR values, optionally
+restores a migrated database, refreshes fapolicyd trust for the venv,
+deploys the code (\`bash ./deploy.sh\`), and starts the service.
+Idempotent. When done it prints the only items it cannot script -
+PKI/mTLS certs, and (fresh DB only) the first admin bootstrap.
 
-2. What it does: creates the csrapi account, all directories + sudoers,
-   builds the venv from the bundled wheelhouse (no network), writes
-   email.conf/integrations.conf/csr-dashboard.env from your answers,
-   **generates the nginx server block** (\`/etc/nginx/conf.d/csr-dashboard.conf\`)
-   with CAC mTLS enforced or not per your choice, refreshes fapolicyd trust,
-   deploys the code (\`bash ./deploy.sh\`), opens nothing on the firewall (see
-   below), and starts the service. Idempotent.
-
-## Remaining manual steps (the installer prints these)
-- **firewalld**: the installer does NOT touch it. Open 443:
+## First-time host prerequisites (fresh box, one-time)
+On a box that has never run this app, before/around install:
 \`\`\`bash
+# OS packages from the enclave repo (NOT in the bundle):
+#   ${PYBIN} nginx sqlite fapolicyd openssl policycoreutils sudo
+# nginx must include the rcdn01.d drop-in and be enabled (F9):
+grep -q 'rcdn01.d' /etc/nginx/nginx.conf || \\
+  sed -i '/http {/a\\    include /etc/nginx/rcdn01.d/*.conf;' /etc/nginx/nginx.conf
+systemctl enable --now nginx
+# open 443 (the installer does NOT touch firewalld) (F11):
 firewall-cmd --permanent --add-service=https && firewall-cmd --reload
-\`\`\`
-- **PKI**: place this server's cert+key at
-  \`/etc/pki/csr-dashboard/server.{crt,key}\`. If you chose CAC mTLS, put the
-  DoD CA bundle (root+intermediate PEM, no CRLF) at the path you gave
-  (default \`/etc/pki/dod/dod-cas.pem\`). Then \`nginx -t && systemctl reload nginx\`.
-- **First admin** (fresh DB, if you did NOT enable first-login-admin):
-\`\`\`bash
-csr-bootstrap-admin "<YOUR CAC DN>"      # promotes a DN; no prior login needed
 \`\`\`
 
 ## fapolicyd (STIG hosts)
-deploy.sh refreshes trust for existing files; the FIRST install trusts the
-venv (the installer does this). If you add NEW files under /opt/csr-dashboard
-later: \`fapolicyd-cli --file add <file> && fapolicyd-cli --update\`.
+deploy.sh refreshes trust for existing files, but the FIRST install needs
+the venv + app trusted:
+\`\`\`bash
+fapolicyd-cli --file add /opt/csr-dashboard/
+fapolicyd-cli --update
+\`\`\`
+Also add the rules.d allow for any Ansible/automation that runs as csrapi.
 
 ## Build box requirements (where you run make-offline-bundle.sh)
-This bundle must be BUILT on a connected box that has \`${PYBIN}\` + \`pip\` +
-internet to PyPI (the target needs none of these - it installs from the
-bundled wheelhouse), and is NOT fapolicyd-enforcing (or run the builder as
-root), because fapolicyd denies non-root reads of .py source (F4/F5). The
-build box must match the target's RHEL major / python / arch so the wheels
-are compatible.
+This bundle must be BUILT on a connected box that:
+- has \`${PYBIN}\` + \`pip\` + internet access to PyPI (the target needs none
+  of these - it installs from the bundled wheelhouse), and
+- is NOT fapolicyd-enforcing (or you run the builder as root), because
+  fapolicyd denies non-root reads of .py source (F4/F5).
+The build box must match the target's RHEL major / python / arch so the
+wheels are compatible.
+
+## First admin (fresh database)
+A fresh DB has no admins and the app has no built-in promotion. After you
+authenticate once over mTLS (so your DN row exists), promote yourself:
+\`\`\`bash
+sqlite3 /var/lib/csr-dashboard/jobs.db \\
+  "UPDATE users SET is_admin=1 WHERE dn='<YOUR CAC DN>';"
+systemctl restart csr-api
+\`\`\`
+Preferred: the bundled tool does this for you (no prior login needed):
+\`\`\`bash
+csr-bootstrap-admin "<YOUR CAC DN>"
+\`\`\`
 
 ## Verify
 \`\`\`bash
@@ -764,10 +754,11 @@ curl -sk https://localhost/csr/api/health        # {"ok":true,"version":"${VERSI
 \`\`\`
 The admin Overview tile should show v${VERSION}.
 
-## Data migration (moving an existing instance)
+## Data migration (if moving an existing instance, not a fresh stand-up)
 On the SOURCE box: \`csrbackup\` (or copy /var/lib/csr-dashboard/jobs.db).
-Carry it across; restore to /var/lib/csr-dashboard/jobs.db (owner
-csrapi:csrapi) BEFORE first start, or pass its path at the restore prompt.
+Carry the backup across; restore to /var/lib/csr-dashboard/jobs.db,
+owner csrapi:csrapi, BEFORE first start. WAL files (-wal/-shm) can be
+omitted if the source app was stopped cleanly.
 DOC
 
 # --- archive ---

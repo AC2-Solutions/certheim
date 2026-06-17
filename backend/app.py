@@ -4,6 +4,7 @@ import json
 import logging
 import logging.handlers
 import calendar
+import hashlib
 import os
 import re
 import secrets
@@ -17,17 +18,17 @@ import urllib.request
 import uuid
 import io
 import csv
+import base64
+import hmac
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, request, jsonify, Response, abort, g, session
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, request, jsonify, Response, abort, g
 
 import notify
-import gitlab_integration
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -44,13 +45,12 @@ _ENV_DEFAULTS = {
     "CSR_MAX_CERTLIST_BYTES": "65536",
     "CSR_MAX_CSR_BYTES": "32768",
     "CSR_MAX_CERT_BYTES": "65536",
-    # First-admin bootstrap: when "1", the FIRST user to log in on an EMPTY
-    # users table is created as admin (self-disables once any user exists).
-    # Only safe where mTLS verifies real CACs. Default off.
+    # When "1"/"true", the FIRST user to log in on a completely empty users
+    # table is made admin (initial-setup convenience). Self-disables once any
+    # user exists. Default off - on a box where mTLS isn't fully locked down,
+    # auto-promoting "whoever logs in first" is a risk; enable it deliberately
+    # for first-time setup, then turn it off (or it simply never fires again).
     "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
-    # Authentication mode: "cac" (CAC mTLS, default) or "local" (username +
-    # password with sessions, for non-mTLS boxes). Set by the installer.
-    "CSR_AUTH_MODE": "cac",
 }
 
 def _load_env_file():
@@ -82,17 +82,14 @@ def _env_int(key):
         return int(_ENV_DEFAULTS[key])
 
 def _env_bool(key):
-    v = str(_ENV.get(key, _ENV_DEFAULTS.get(key, "0"))).strip().lower()
-    return v in ("1", "true", "yes", "on")
+    return str(_ENV.get(key, _ENV_DEFAULTS.get(key, "0"))).strip().lower() \
+        in ("1", "true", "yes", "on")
+
+BOOTSTRAP_FIRST_ADMIN = _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN")
 
 HELPER = ["sudo", "-n", _ENV["CSR_HELPER_PATH"]]
 DB_PATH = _ENV["CSR_DB_PATH"]
 ISSUED_DIR = _ENV["CSR_ISSUED_DIR"]
-# Trust portal: admin-published CA certs (root/intermediate, never keys) that
-# clients download to trust this site / its CAC mTLS. Lives under the app's
-# writable data dir (csrapi-owned), served read-only + unauthenticated.
-TRUST_DIR = str(Path(DB_PATH).parent / "trust")
-TRUST_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(?:crt|pem)$")
 
 # Application version - read from the VERSION file deployed alongside app.py.
 # Single source of truth is the repo's VERSION file; bump it per release.
@@ -350,47 +347,6 @@ audit.addHandler(_h)
 
 app = Flask(__name__)
 
-# ---------- Authentication mode ----------
-# "cac"   : identity from CAC mTLS (X-Client-DN), the production default.
-# "local" : username/password accounts with server-side sessions, for boxes
-#           where mTLS is not configured (chosen at install when mTLS=no).
-AUTH_MODE = _ENV.get("CSR_AUTH_MODE", "cac").strip().lower()
-if AUTH_MODE not in ("cac", "local"):
-    AUTH_MODE = "cac"
-USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{2,32}$")
-MIN_PASSWORD_LEN = 8
-SECRET_KEY_PATH = Path("/etc/csr-dashboard/secret.key")
-
-
-def _load_secret_key():
-    """Session signing key. Prefer the env, then a persisted file; in local
-    mode generate + persist one if absent (so sessions survive restarts)."""
-    k = _ENV.get("CSR_SECRET_KEY", "").strip()
-    if k:
-        return k
-    try:
-        if SECRET_KEY_PATH.exists():
-            v = SECRET_KEY_PATH.read_text().strip()
-            if v:
-                return v
-        if AUTH_MODE == "local":
-            v = secrets.token_hex(32)
-            SECRET_KEY_PATH.write_text(v + "\n")
-            os.chmod(SECRET_KEY_PATH, 0o640)
-            return v
-    except OSError as e:
-        sys.stderr.write(f"secret key persistence failed: {e}\n")
-    return secrets.token_hex(32)  # ephemeral fallback (sessions reset on restart)
-
-
-app.secret_key = _load_secret_key()
-app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,   # served only over HTTPS
-    PERMANENT_SESSION_LIFETIME=_env_int("CSR_SESSION_TTL"),
-)
-
 # ---------- DB ----------
 def init_db():
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -420,11 +376,6 @@ def init_db():
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     if "requester_email" not in existing_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN requester_email TEXT")
-    # GitLab issue link (issue-driven signing loop)
-    if "gitlab_issue_iid" not in existing_cols:
-        conn.execute("ALTER TABLE jobs ADD COLUMN gitlab_issue_iid INTEGER")
-    if "gitlab_issue_url" not in existing_cols:
-        conn.execute("ALTER TABLE jobs ADD COLUMN gitlab_issue_url TEXT")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_requester_dn ON jobs(requester_dn)")
@@ -449,19 +400,52 @@ def init_db():
     user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "tutorial_dismissed" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN tutorial_dismissed INTEGER NOT NULL DEFAULT 0")
-    # Local-auth password hash (NULL for CAC/mTLS users)
+    # Local-auth (username/password) columns - added when password auth is an
+    # option (mTLS not available). CAC users leave these NULL.
+    if "username" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
     if "password_hash" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+    if "auth_status" not in user_cols:
+        # active | pending (awaiting admin approval) | locked
+        conn.execute("ALTER TABLE users ADD COLUMN auth_status TEXT NOT NULL DEFAULT 'active'")
+    if "failed_attempts" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+    if "locked_until" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN locked_until REAL NOT NULL DEFAULT 0")
+    # First/last name back the unified first.last username (Model A: username is
+    # the display identity for CAC and local users alike; DN stays the auth key
+    # for CAC). For CAC users these are auto-parsed from the DN and admin-editable.
+    if "first_name" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
+    if "last_name" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN last_name TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_users_admin ON users(is_admin)")
+    # Unique username (only enforced for rows that have one; NULLs are exempt
+    # in SQLite unique indexes, so CAC users with NULL username are fine).
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username "
+                 "ON users(username) WHERE username IS NOT NULL")
 
-    # Key/value app settings (e.g. local-auth registration open/closed)
+    # Instance settings (key/value) - auth mode, trusted email domain, etc.
     conn.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key   TEXT PRIMARY KEY,
             value TEXT
         )
     """)
+
+    # Local-auth sessions (only used in local/password mode; mTLS mode gets
+    # identity from the cert on every request and needs no session table).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS local_sessions (
+            token       TEXT PRIMARY KEY,
+            user_dn     TEXT NOT NULL,
+            created_at  REAL NOT NULL,
+            expires_at  REAL NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_localsess_exp ON local_sessions(expires_at)")
 
     # User feedback for the admin dashboard
     conn.execute("""
@@ -653,66 +637,216 @@ def db():
         conn.close()
 
 # ---------- Common helpers ----------
-def _client_ip():
-    """The real client IP for the no-mTLS fallback identity.
-
-    Behind nginx the socket peer (request.remote_addr) is always the proxy
-    (127.0.0.1), so using it makes every user collapse to 'ip:127.0.0.1'.
-    When the request actually arrived over loopback (i.e. from our nginx -
-    the gunicorn backend binds 127.0.0.1:5002 and is unreachable directly,
-    so these headers can't be spoofed by a remote client), trust the
-    proxy-set X-Real-IP / first X-Forwarded-For hop instead."""
-    peer = request.remote_addr or ""
-    if peer in ("127.0.0.1", "::1", ""):
-        xri = request.headers.get("X-Real-IP", "").strip()
-        if xri:
-            return xri
-        xff = request.headers.get("X-Forwarded-For", "").strip()
-        if xff:
-            return xff.split(",")[0].strip()
-    return peer or "unknown"
-
-
 def client_identity():
-    # Local username/password mode: identity comes from the signed session,
-    # established by /api/auth/login or /api/auth/register. No session =
-    # unauthenticated (the frontend shows the login screen).
-    if AUTH_MODE == "local":
-        uid = session.get("uid")
-        return {"dn": uid, "serial": "-"} if uid else None
-    # CAC mTLS mode: identity from the verified client cert DN.
     dn = request.headers.get("X-Client-DN", "").strip()
     verify = request.headers.get("X-Client-Verify", "").strip()
     serial = request.headers.get("X-Client-Serial", "").strip()
     if verify == "SUCCESS" and dn:
         return {"dn": dn, "serial": serial}
-    # Fallback (mTLS not yet enforced): the real client IP, NOT the proxy's
-    # 127.0.0.1, so distinct users aren't merged into one account.
-    return {"dn": f"ip:{_client_ip()}", "serial": "-"}
+    return {"dn": f"ip:{request.remote_addr}", "serial": "-"}
 
+# ---------------------------------------------------------------------------
+# Local (username/password) authentication
+#
+# Used when CAC mTLS is not available (auth_mode == "local"). CAC remains the
+# PRIMARY method: in mtls mode a verified cert always wins; password accounts
+# stay usable as a fallback. Passwords use PBKDF2-HMAC-SHA256 (stdlib, FIPS-
+# approved) - no third-party crypto deps, which matters for the offline
+# wheelhouse. STIG-aligned policy + failed-attempt lockout.
+# ---------------------------------------------------------------------------
+PBKDF2_ITERATIONS = 600_000
+LOCKOUT_THRESHOLD = 5          # failed attempts before lockout
+LOCKOUT_SECONDS = 900          # 15 minutes
+LOCAL_SESSION_TTL = SESSION_TTL  # reuse the configured session lifetime
+PWPOLICY_MIN_LEN = 15
 
-def _get_setting(key, default=None):
-    with db() as conn:
-        row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
-    return row["value"] if row else default
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
+# Name fields for derived usernames: letters plus common name punctuation
+# (space, hyphen, apostrophe, period). We strip the punctuation when building
+# the username but allow it in the typed name.
+NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'\-]{0,63}$")
 
+def _normalize_name_part(s):
+    """Lowercase a name part and reduce it to [a-z0-9] (drop spaces,
+    apostrophes, hyphens, accents-as-typed). 'O'Brien' -> 'obrien'."""
+    s = (s or "").strip().lower()
+    # keep ascii letters/digits only
+    return re.sub(r"[^a-z0-9]", "", s)
 
-def _set_setting(key, value):
+def derive_username(first, last, conn):
+    """Build a 'first.last' username, auto-suffixing on collision:
+    john.smith, john.smith2, john.smith3, ... Returns the assigned username.
+    Must be called inside an open db() transaction so the existence check and
+    the caller's INSERT are consistent; the UNIQUE index is the final guard."""
+    f = _normalize_name_part(first)
+    l = _normalize_name_part(last)
+    base = ".".join(p for p in (f, l) if p) or "user"
+    base = base[:60]  # leave room for a numeric suffix within 64
+    # find existing usernames that match base or base<N>
+    rows = conn.execute(
+        "SELECT username FROM users WHERE username = ? OR username LIKE ?",
+        (base, base + "%")
+    ).fetchall()
+    taken = {r["username"] for r in rows if r["username"]}
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}{n}" in taken:
+        n += 1
+    return f"{base}{n}"
+
+def parse_dod_cn(dn):
+    """Best-effort (first, last) from a DoD CAC DN. DoD CNs are typically
+    LAST.FIRST.MIDDLE.EDIPI (e.g. SMITH.JOHN.ANDREW.1234567890). Returns
+    title-cased (first, last); empty strings when it can't tell (admin can
+    then correct via the user edit form)."""
+    cn = _cn_from_dn(dn) if dn else ""
+    if not cn or cn == dn:  # _cn_from_dn returns the dn unchanged if no CN=
+        # only treat as CN if the dn actually had a CN= component
+        m = None
+        for part in (dn or "").split(","):
+            part = part.strip()
+            if part.upper().startswith("CN="):
+                m = part[3:]
+                break
+        cn = m or ""
+    if not cn:
+        return ("", "")
+    toks = [t for t in cn.split(".") if t]
+    if toks and toks[-1].isdigit():   # drop trailing EDIPI
+        toks = toks[:-1]
+    if len(toks) >= 2:
+        return (toks[1].title(), toks[0].title())   # FIRST, LAST
+    if len(toks) == 1:
+        return ("", toks[0].title())
+    return ("", "")
+
+def hash_password(password):
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                             salt, PBKDF2_ITERATIONS)
+    return "pbkdf2_sha256${}${}${}".format(
+        PBKDF2_ITERATIONS,
+        base64.b64encode(salt).decode(), base64.b64encode(dk).decode())
+
+def verify_password(password, stored):
+    try:
+        algo, iters, b64salt, b64dk = (stored or "").split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        salt = base64.b64decode(b64salt)
+        expected = base64.b64decode(b64dk)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                                 salt, int(iters))
+        return hmac.compare_digest(dk, expected)
+    except Exception:
+        return False
+
+def password_policy_errors(pw):
+    """Return a list of human-readable policy violations (empty = OK)."""
+    e = []
+    if len(pw or "") < PWPOLICY_MIN_LEN:
+        e.append(f"at least {PWPOLICY_MIN_LEN} characters")
+    if not re.search(r"[A-Z]", pw or ""): e.append("an uppercase letter")
+    if not re.search(r"[a-z]", pw or ""): e.append("a lowercase letter")
+    if not re.search(r"[0-9]", pw or ""): e.append("a digit")
+    if not re.search(r"[^A-Za-z0-9]", pw or ""): e.append("a special character")
+    return e
+
+# --- instance settings (key/value) -----------------------------------------
+_SETTINGS_DEFAULTS = {
+    # "mtls" = CAC required (current/default behavior). "local" = username/
+    # password auth (set by installer when mTLS isn't available).
+    "auth_mode": "mtls",
+    # Trusted email domain for local self-registration (e.g. "eucom.mil").
+    # Empty = self-registration disabled.
+    "trusted_email_domain": "",
+    # "1" = new local registrations require admin approval before active.
+    "require_admin_approval": "0",
+}
+
+def get_setting(key):
+    try:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+        if row is not None:
+            return row["value"]
+    except Exception:
+        pass
+    return _SETTINGS_DEFAULTS.get(key)
+
+def set_setting(key, value):
     with db() as conn:
         conn.execute(
             "INSERT INTO app_settings (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value))
 
+def auth_mode():
+    return get_setting("auth_mode") or "mtls"
 
-def _registration_open():
-    # Default open in local mode so first-time users can self-enroll; admins
-    # can close it once everyone's registered.
-    return _get_setting("registration_open", "1") == "1"
+# --- local sessions ---------------------------------------------------------
+LOCAL_SESSION_COOKIE = "csr_session"
 
-
-def _local_user_count():
+def create_local_session(user_dn):
+    token = secrets.token_urlsafe(32)
+    now = time.time()
     with db() as conn:
-        return conn.execute("SELECT COUNT(*) FROM users WHERE dn LIKE 'local:%'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO local_sessions (token, user_dn, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?)",
+            (token, user_dn, now, now + LOCAL_SESSION_TTL))
+    return token
+
+def session_user_dn(token):
+    if not token:
+        return None
+    now = time.time()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT user_dn, expires_at FROM local_sessions WHERE token = ?",
+            (token,)).fetchone()
+        if not row:
+            return None
+        if row["expires_at"] < now:
+            conn.execute("DELETE FROM local_sessions WHERE token = ?", (token,))
+            return None
+    return row["user_dn"]
+
+def destroy_local_session(token):
+    if not token:
+        return
+    with db() as conn:
+        conn.execute("DELETE FROM local_sessions WHERE token = ?", (token,))
+
+def local_identity():
+    """Resolve identity from a local session cookie, if any."""
+    token = request.cookies.get(LOCAL_SESSION_COOKIE, "")
+    dn = session_user_dn(token)
+    if dn:
+        return {"dn": dn, "serial": "-", "via": "local"}
+    return None
+
+def resolve_identity():
+    """Single-mode identity. A box is EITHER mtls (CAC only) or local
+    (username/password only), set at install. In mtls mode only a verified
+    client cert authenticates; in local mode only a local session cookie does.
+    No cross-mode fallback - that's what avoids the CAC-vs-password conflict."""
+    if auth_mode() == "mtls":
+        dn = request.headers.get("X-Client-DN", "").strip()
+        verify = request.headers.get("X-Client-Verify", "").strip()
+        if verify == "SUCCESS" and dn:
+            return {"dn": dn,
+                    "serial": request.headers.get("X-Client-Serial", "").strip(),
+                    "via": "cac"}
+        return {"dn": f"ip:{request.remote_addr}", "serial": "-", "via": "none"}
+    # local mode
+    loc = local_identity()
+    if loc:
+        return loc
+    return {"dn": f"ip:{request.remote_addr}", "serial": "-", "via": "none"}
 
 def log_event(action, result, **extra):
     parts = [
@@ -758,6 +892,14 @@ def require_auth(fn):
         if not g.identity:
             log_event(fn.__name__, "deny_unauth")
             abort(403)
+        # Strict per-mode auth: in local mode ONLY a valid local session
+        # (via="local") authenticates. The ip: fallback (via="none") is NOT a
+        # logged-in user - rejecting it here enforces the password gate
+        # server-side and makes sign-out final (no auto-let-back-in as an
+        # auto-created, active ip: user). mtls mode keeps its ip: fallback.
+        if auth_mode() == "local" and g.identity.get("via") != "local":
+            log_event(fn.__name__, "deny_unauth")
+            abort(403)
         if not g.user:
             g.user = _upsert_user(g.identity["dn"])
         if not g.user or not g.user.get("is_active"):
@@ -772,6 +914,11 @@ def require_admin(fn):
     @wraps(fn)
     def w(*a, **kw):
         if not g.identity:
+            log_event(fn.__name__, "deny_unauth")
+            abort(403)
+        # Strict per-mode auth (see require_auth): in local mode the ip:
+        # fallback is unauthenticated and must never reach an admin endpoint.
+        if auth_mode() == "local" and g.identity.get("via") != "local":
             log_event(fn.__name__, "deny_unauth")
             abort(403)
         if not g.user:
@@ -799,13 +946,8 @@ def require_csrf(fn):
 
 # ---------- User account helpers ----------
 def _cn_from_dn(dn):
-    """Extract CN from a subject DN for display. Local-auth identities are
-    'local:<username>' and display as the bare username."""
-    if not dn:
-        return dn
-    if dn.startswith("local:"):
-        return dn[len("local:"):]
-    if "CN=" not in dn:
+    """Extract CN from a subject DN for display."""
+    if not dn or "CN=" not in dn:
         return dn
     try:
         return dn.split("CN=", 1)[1].split(",", 1)[0].strip()
@@ -821,18 +963,9 @@ def _load_user(dn):
     return dict(row) if row else None
 
 def _upsert_user(dn):
-    """Create user row if missing, update last_seen_at. Returns user dict.
-    Local-auth users (local:<username>) are created ONLY via registration -
-    never auto-created here - so a stale session for a deleted account does
-    not silently resurrect it."""
+    """Create user row if missing, update last_seen_at. Returns user dict."""
     if not dn:
         return None
-    if dn.startswith("local:"):
-        u = _load_user(dn)
-        if u:
-            with db() as conn:
-                conn.execute("UPDATE users SET last_seen_at=? WHERE dn=?", (time.time(), dn))
-        return u
     cn = _cn_from_dn(dn)
     now = time.time()
     with db() as conn:
@@ -840,22 +973,40 @@ def _upsert_user(dn):
             "SELECT dn FROM users WHERE dn = ?", (dn,)
         ).fetchone()
         if not existing:
-            # First-admin bootstrap: when CSR_BOOTSTRAP_FIRST_ADMIN is on AND
-            # the users table is empty, the very first user to log in is made
-            # admin. Self-disabling: only fires while the table is empty.
-            first_admin = 0
-            if _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN"):
-                n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-                if n == 0:
-                    first_admin = 1
+            # First-admin bootstrap: if enabled AND the users table is
+            # completely empty, this very first user becomes admin. The
+            # emptiness check is what makes it safe(ish) and self-disabling -
+            # it can only ever fire for the literal first account, never again.
+            make_admin = 0
+            if BOOTSTRAP_FIRST_ADMIN:
+                total = conn.execute(
+                    "SELECT COUNT(*) AS n FROM users"
+                ).fetchone()["n"]
+                if total == 0:
+                    make_admin = 1
+            # Auto-parse first.last from the CAC DN and assign a unified
+            # username (Model A). Admin can correct names later; the username
+            # then regenerates. Skip for non-CAC synthetic identities (ip:/local:).
+            first, last = ("", "")
+            username = None
+            if not dn.startswith("ip:") and not dn.startswith("local:"):
+                first, last = parse_dod_cn(dn)
+                if first or last:
+                    username = derive_username(first, last, conn)
             conn.execute("""
                 INSERT INTO users (dn, cn, email, is_admin, is_active,
+                                   first_name, last_name, username,
                                    created_at, last_seen_at)
-                VALUES (?, ?, NULL, ?, 1, ?, ?)
-            """, (dn, cn, first_admin, now, now))
-            log_event("user_created", "ok", dn=dn[:128])
-            if first_admin:
+                VALUES (?, ?, NULL, ?, 1, ?, ?, ?, ?, ?)
+            """, (dn, cn, make_admin, first or None, last or None,
+                  username, now, now))
+            if make_admin:
+                log_event("user_created", "ok", dn=dn[:128],
+                          bootstrap_admin=1, username=username or "")
                 log_event("admin_bootstrap", "ok", dn=dn[:128])
+            else:
+                log_event("user_created", "ok", dn=dn[:128],
+                          username=username or "")
         else:
             conn.execute(
                 "UPDATE users SET last_seen_at = ?, cn = ? WHERE dn = ?",
@@ -982,7 +1133,7 @@ def _signer_recipients():
 @app.before_request
 def _setup():
     g.req_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex
-    g.identity = client_identity()
+    g.identity = resolve_identity()
     g.user = None
     if g.identity and g.identity["dn"]:
         # Cheap lookup; auto-creates happen in require_auth on first hit
@@ -1214,126 +1365,235 @@ def _verify_cert_matches_csr(csr_pem, cert_pem):
 def health():
     return jsonify(ok=True, version=APP_VERSION)
 
-
-# ============================================================
-# Local username/password authentication (AUTH_MODE == "local")
-# ============================================================
-@app.get("/api/auth/status")
-def auth_status():
-    """PUBLIC: tells the frontend whether to render a login/register screen."""
-    authed = bool(g.identity and g.identity.get("dn"))
-    out = {"mode": AUTH_MODE, "authenticated": authed, "version": APP_VERSION}
-    if AUTH_MODE == "local":
-        # First local user is always allowed (becomes admin); otherwise honor
-        # the registration_open toggle.
-        out["can_register"] = (_local_user_count() == 0) or _registration_open()
-        out["username"] = _cn_from_dn(g.identity["dn"]) if authed else None
-    return jsonify(out)
-
-
-def _validate_credentials(username, password):
-    if not USERNAME_RE.match(username or ""):
-        return "username must be 2-32 chars: letters, digits, . _ -"
-    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LEN:
-        return f"password must be at least {MIN_PASSWORD_LEN} characters"
-    if len(password) > 256:
-        return "password too long"
-    return None
-
-
-@app.post("/api/auth/register")
-@require_csrf
-def auth_register():
-    """Self-service first-login registration (local mode only). The FIRST
-    local account becomes admin; the rest are active regular users while
-    registration is open."""
-    if AUTH_MODE != "local":
-        return jsonify(error="local registration is disabled (CAC mode)"), 400
-    payload = request.get_json(silent=True) or {}
-    username = (payload.get("username") or "").strip()
-    password = payload.get("password") or ""
-    err = _validate_credentials(username, password)
-    if err:
-        return jsonify(error=err), 400
-
-    dn = f"local:{username}"
-    now = time.time()
-    with db() as conn:
-        if conn.execute("SELECT 1 FROM users WHERE dn=?", (dn,)).fetchone():
-            return jsonify(error="username already taken"), 409
-        n_local = conn.execute("SELECT COUNT(*) FROM users WHERE dn LIKE 'local:%'").fetchone()[0]
-        first = (n_local == 0)
-        if not first and not _registration_open():
-            return jsonify(error="registration is closed - ask an admin to create your account"), 403
-        conn.execute("""
-            INSERT INTO users (dn, cn, email, is_admin, is_active, password_hash,
-                               created_at, last_seen_at)
-            VALUES (?, ?, NULL, ?, 1, ?, ?, ?)
-        """, (dn, username, 1 if first else 0, generate_password_hash(password), now, now))
-    session.clear()
-    session["uid"] = dn
-    session.permanent = True
-    log_event("auth_register", "ok", dn=dn[:128], first_admin=int(first))
-    if first:
-        log_event("admin_bootstrap", "ok", dn=dn[:128])
-    return jsonify(ok=True, username=username, is_admin=bool(first))
-
+# ---------------------------------------------------------------------------
+# Local authentication endpoints (only meaningful when auth_mode == "local";
+# they remain available as a CAC fallback even after mtls is enabled).
+# ---------------------------------------------------------------------------
+@app.get("/api/auth/info")
+def auth_info():
+    """Unauthenticated: tells the UI which auth mode is active and whether
+    self-registration is open, so it can show the right login/register UI."""
+    mode = auth_mode()
+    domain = get_setting("trusted_email_domain") or ""
+    return jsonify(
+        auth_mode=mode,
+        local_enabled=(mode == "local"),
+        registration_open=bool(domain) if mode == "local" else False,
+        trusted_email_domain=domain,
+        require_admin_approval=(get_setting("require_admin_approval") == "1"),
+    )
 
 @app.post("/api/auth/login")
-@require_csrf
 def auth_login():
-    if AUTH_MODE != "local":
-        return jsonify(error="local login is disabled (CAC mode)"), 400
+    """Local username/password login. Always available as a fallback, but the
+    UI only surfaces it in local mode. Applies failed-attempt lockout."""
     payload = request.get_json(silent=True) or {}
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
-    dn = f"local:{username}"
+    if auth_mode() == "mtls":
+        return jsonify(error="this host uses CAC authentication"), 403
+    if not username or not password:
+        return jsonify(error="username and password required"), 400
+
+    now = time.time()
     with db() as conn:
         row = conn.execute(
-            "SELECT dn, password_hash, is_active FROM users WHERE dn=?", (dn,)
+            "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
-    # Always run a hash check to blunt user-enumeration timing.
-    stored = row["password_hash"] if row else None
-    ok = check_password_hash(stored, password) if stored else (generate_password_hash("x") and False)
-    if not row or not ok:
-        log_event("auth_login", "deny_bad_credentials", dn=dn[:128])
-        return jsonify(error="invalid username or password"), 401
-    if not row["is_active"]:
-        log_event("auth_login", "deny_inactive", dn=dn[:128])
-        return jsonify(error="account is deactivated"), 403
-    session.clear()
-    session["uid"] = dn
-    session.permanent = True
-    with db() as conn:
-        conn.execute("UPDATE users SET last_seen_at=? WHERE dn=?", (time.time(), dn))
-    log_event("auth_login", "ok", dn=dn[:128])
-    return jsonify(ok=True, username=username)
+    # Uniform failure response (don't reveal whether the username exists).
+    generic = (jsonify(error="invalid credentials"), 401)
+    if not row or not row["password_hash"]:
+        log_event("login", "deny_unknown_user", username=username[:64])
+        return generic
 
+    user = dict(row)
+    if user.get("locked_until", 0) > now:
+        log_event("login", "deny_locked", username=username[:64])
+        return jsonify(error="account temporarily locked - try again later"), 429
+    if user.get("auth_status") == "pending":
+        return jsonify(error="account awaiting administrator approval"), 403
+    if not user.get("is_active"):
+        return jsonify(error="account disabled"), 403
+
+    if not verify_password(password, user["password_hash"]):
+        attempts = int(user.get("failed_attempts", 0)) + 1
+        lock_until = now + LOCKOUT_SECONDS if attempts >= LOCKOUT_THRESHOLD else 0
+        with db() as conn:
+            conn.execute(
+                "UPDATE users SET failed_attempts = ?, locked_until = ? WHERE dn = ?",
+                (attempts, lock_until, user["dn"]))
+        log_event("login", "deny_badpass", username=username[:64],
+                  attempts=attempts, locked=int(bool(lock_until)))
+        return generic
+
+    # success - reset counters, issue session
+    with db() as conn:
+        conn.execute(
+            "UPDATE users SET failed_attempts = 0, locked_until = 0, last_seen_at = ? "
+            "WHERE dn = ?", (now, user["dn"]))
+    token = create_local_session(user["dn"])
+    log_event("login", "ok", username=username[:64])
+    resp = jsonify(ok=True)
+    resp.set_cookie(LOCAL_SESSION_COOKIE, token, httponly=True, secure=True,
+                    samesite="Strict", max_age=LOCAL_SESSION_TTL)
+    return resp
 
 @app.post("/api/auth/logout")
-@require_csrf
 def auth_logout():
-    session.clear()
-    return jsonify(ok=True)
+    token = request.cookies.get(LOCAL_SESSION_COOKIE, "")
+    destroy_local_session(token)
+    resp = jsonify(ok=True)
+    resp.delete_cookie(LOCAL_SESSION_COOKIE)
+    return resp
 
+@app.post("/api/auth/register")
+def auth_register():
+    """Self-registration in local mode, gated by trusted email domain and
+    (optionally) admin approval. Disabled entirely in mtls mode.
 
-@app.get("/api/admin/registration")
+    Usernames are NOT user-chosen: they are derived as first.last and
+    auto-suffixed on collision (john.smith, john.smith2, ...). The assigned
+    username is returned to the caller for display."""
+    if auth_mode() != "local":
+        return jsonify(error="registration not available"), 403
+    domain = (get_setting("trusted_email_domain") or "").strip().lower()
+    if not domain:
+        return jsonify(error="self-registration is disabled"), 403
+
+    payload = request.get_json(silent=True) or {}
+    first = (payload.get("first_name") or "").strip()
+    last = (payload.get("last_name") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    if not NAME_RE.match(first) or not NAME_RE.match(last):
+        return jsonify(error="enter a valid first and last name"), 400
+    # must reduce to something usable
+    if not _normalize_name_part(first) or not _normalize_name_part(last):
+        return jsonify(error="name must contain letters"), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="valid email required"), 400
+    # Trusted-domain enforcement (case-insensitive, exact domain match).
+    if email.rsplit("@", 1)[-1] != domain:
+        log_event("register", "deny_domain", email=email[:128])
+        return jsonify(error=f"email must be @{domain}"), 403
+    pol = password_policy_errors(password)
+    if pol:
+        return jsonify(error="password needs " + ", ".join(pol)), 400
+
+    now = time.time()
+    approval = get_setting("require_admin_approval") == "1"
+    display = f"{first} {last}".strip()[:128]
+
+    # Derive username + insert atomically, retrying on the (rare) race where
+    # two registrations pick the same suffix between derive and insert. The
+    # UNIQUE index on username is the hard guard; we retry a few times.
+    pwhash = hash_password(password)
+    last_err = None
+    for _ in range(5):
+        with db() as conn:
+            # First-admin bootstrap (local mode): when enabled and this is the
+            # very first account on an empty database, the registrant becomes an
+            # active admin - so a fresh password-only box has an administrator
+            # without a manual csr-bootstrap-admin step. Self-disabling (fires
+            # only while users is empty); mirrors the CAC path in _upsert_user.
+            if BOOTSTRAP_FIRST_ADMIN and conn.execute(
+                    "SELECT COUNT(*) AS n FROM users").fetchone()["n"] == 0:
+                is_admin, active, status = 1, 1, "active"
+            else:
+                is_admin = 0
+                active = 0 if approval else 1
+                status = "pending" if approval else "active"
+            username = derive_username(first, last, conn)
+            dn = f"local:{username}"
+            try:
+                # Persist first/last (Model A): the username is derived from
+                # them, and the admin edit modal shows/edits them - so store
+                # them, not just the combined display cn.
+                conn.execute("""
+                    INSERT INTO users (dn, cn, email, username, password_hash,
+                                       first_name, last_name,
+                                       is_admin, is_active, auth_status,
+                                       created_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (dn, display, email, username, pwhash,
+                      first or None, last or None,
+                      is_admin, active, status, now, now))
+                break
+            except sqlite3.IntegrityError as e:
+                last_err = e
+                continue  # collision between derive and insert; retry
+    else:
+        log_event("register", "error_collision", email=email[:128])
+        return jsonify(error="could not assign a username, please retry"), 503
+
+    log_event("register", "ok", username=username[:64], status=status)
+    if status == "pending":
+        return jsonify(ok=True, status="pending", username=username,
+                       message=f"Account created as '{username}' - "
+                               f"awaiting administrator approval.")
+    token = create_local_session(dn)
+    resp = jsonify(ok=True, status="active", username=username,
+                   message=f"Your username is '{username}'.")
+    resp.set_cookie(LOCAL_SESSION_COOKIE, token, httponly=True, secure=True,
+                    samesite="Strict", max_age=LOCAL_SESSION_TTL)
+    return resp
+
+# --- admin: auth settings ---------------------------------------------------
+@app.get("/api/admin/auth-settings")
 @require_admin
-def admin_get_registration():
-    return jsonify(mode=AUTH_MODE, open=_registration_open(),
-                   local_users=_local_user_count())
+def admin_get_auth_settings():
+    return jsonify(
+        auth_mode=auth_mode(),
+        trusted_email_domain=get_setting("trusted_email_domain") or "",
+        require_admin_approval=(get_setting("require_admin_approval") == "1"),
+    )
 
-
-@app.put("/api/admin/registration")
+@app.put("/api/admin/auth-settings")
 @require_admin
 @require_csrf
-def admin_set_registration():
-    """Open/close local self-registration (local mode only)."""
+def admin_set_auth_settings():
     payload = request.get_json(silent=True) or {}
-    is_open = bool(payload.get("open"))
-    _set_setting("registration_open", "1" if is_open else "0")
-    log_event("admin_registration", "ok", open=int(is_open))
-    return jsonify(ok=True, open=is_open)
+    changed = {}
+    if "auth_mode" in payload:
+        mode = payload["auth_mode"]
+        if mode not in ("mtls", "local"):
+            return jsonify(error="auth_mode must be 'mtls' or 'local'"), 400
+        # Guard: don't switch to mtls unless at least one CAC-capable admin
+        # exists, or the operator could lock everyone out. We can't verify a
+        # cert here, so require explicit confirm flag for the mtls switch.
+        if mode == "mtls" and not payload.get("confirm_mtls"):
+            return jsonify(error="enabling mTLS requires confirm_mtls=true; "
+                                 "ensure CAC access works first"), 400
+        set_setting("auth_mode", mode); changed["auth_mode"] = mode
+    if "trusted_email_domain" in payload:
+        dom = (payload["trusted_email_domain"] or "").strip().lower()
+        if dom and not re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", dom):
+            return jsonify(error="invalid domain"), 400
+        set_setting("trusted_email_domain", dom)
+        changed["trusted_email_domain"] = dom
+    if "require_admin_approval" in payload:
+        val = "1" if payload["require_admin_approval"] else "0"
+        set_setting("require_admin_approval", val)
+        changed["require_admin_approval"] = val
+    log_event("admin_auth_settings", "ok", **{k: str(v)[:64] for k, v in changed.items()})
+    return jsonify(ok=True, **changed)
+
+@app.post("/api/admin/users/<path:user_dn>/approve")
+@require_admin
+@require_csrf
+def admin_approve_user(user_dn):
+    """Approve a pending local registration."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT auth_status FROM users WHERE dn = ?", (user_dn,)).fetchone()
+        if not row:
+            return jsonify(error="user not found"), 404
+        conn.execute(
+            "UPDATE users SET auth_status = 'active', is_active = 1 WHERE dn = ?",
+            (user_dn,))
+    log_event("admin_user_approve", "ok", target_dn=user_dn[:128])
+    return jsonify(ok=True)
 
 @app.get("/api/whoami")
 @require_auth
@@ -1511,7 +1771,6 @@ def generate_rhel():
             "group_id": group_id, "cert_type": cert_type,
             "has_local_key": bool(has_key),
         })
-        _open_signing_issue(job_id)
 
     log_event("generate_rhel", "ok", jobs=len(job_ids), keys=len(new_keys),
               cert_type=cert_type)
@@ -1628,7 +1887,6 @@ def submit_external():
         "group_id": group_id, "cert_type": cert_type_in,
         "has_local_key": False, "cn": cn,
     })
-    _open_signing_issue(job_id)
 
     # Notify signer groups about the new external CSR. Best-effort.
     try:
@@ -1990,23 +2248,28 @@ def get_job_key(job_id):
 # ============================================================
 # Cert upload (manual return path)
 # ============================================================
-def _attach_signed_cert(job_id, cert_pem, completed_by_dn, source="upload"):
-    """Validate a signed cert and attach it to a PENDING job (status->issued),
-    drop it to the issued dir, fire the job.issued webhook + email. Returns
-    (ok, http_code, result_dict). Shared by the manual upload-cert endpoint
-    and the GitLab inbound webhook so both paths behave identically."""
+@app.post("/api/jobs/<job_id>/upload-cert")
+@require_auth
+@require_csrf
+def upload_cert(job_id):
+    if not JOB_ID_RE.match(job_id):
+        abort(400)
+    payload = request.get_json(silent=True) or {}
+    cert_pem = payload.get("cert_pem", "")
+
     if not cert_pem or not isinstance(cert_pem, str) or not (50 < len(cert_pem) <= MAX_CERT_BYTES):
-        return False, 400, {"error": "invalid cert_pem"}
+        return jsonify(error="invalid cert_pem"), 400
+
     try:
         proc = subprocess.run(
             ["openssl", "x509", "-noout", "-subject"],
             input=cert_pem, capture_output=True, text=True, timeout=10,
         )
         if proc.returncode != 0:
-            log_event("attach_cert", "deny_invalid_cert", job_id=job_id, src=source)
-            return False, 400, {"error": "not a valid X.509 certificate"}
+            log_event("upload_cert", "deny_invalid_cert", job_id=job_id)
+            return jsonify(error="not a valid X.509 certificate"), 400
     except Exception:
-        return False, 400, {"error": "cert validation error"}
+        return jsonify(error="cert validation error"), 400
 
     with db() as conn:
         row = conn.execute(
@@ -2014,19 +2277,23 @@ def _attach_signed_cert(job_id, cert_pem, completed_by_dn, source="upload"):
             "FROM jobs WHERE id = ?", (job_id,)
         ).fetchone()
         if not row:
-            return False, 404, {"error": "job not found"}
+            abort(404)
         if row["status"] != "pending":
-            return False, 409, {"error": f"job in status '{row['status']}', cannot accept cert"}
+            return jsonify(error=f"job in status '{row['status']}', cannot accept cert"), 409
+
         if not _verify_cert_matches_csr(row["csr_pem"], cert_pem):
-            log_event("attach_cert", "deny_pubkey_mismatch", job_id=job_id,
-                      target=row["target_host"], src=source)
-            return False, 400, {"error": "cert public key does not match this job's CSR. "
-                                          "Verify you uploaded the cert for the correct job."}
+            log_event("upload_cert", "deny_pubkey_mismatch", job_id=job_id,
+                      target=row["target_host"])
+            return jsonify(
+                error="cert public key does not match this job's CSR. "
+                      "Verify you uploaded the cert for the correct job."
+            ), 400
+
         expires_at = _cert_expiry(cert_pem)
         conn.execute(
             "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
             "completed_by_dn=?, expires_at=?, error=NULL WHERE id=?",
-            (cert_pem, time.time(), completed_by_dn, expires_at, job_id),
+            (cert_pem, time.time(), g.identity["dn"], expires_at, job_id),
         )
 
     try:
@@ -2040,163 +2307,40 @@ def _attach_signed_cert(job_id, cert_pem, completed_by_dn, source="upload"):
         log_event("filesystem_drop", "error", job_id=job_id, error=str(e)[:128])
 
     upload_warnings = _cert_upload_warnings(cert_pem)
-    group_id = row["group_id"] if "group_id" in row.keys() else None
-    log_event("attach_cert", "ok", job_id=job_id, target=row["target_host"],
-              uploader=completed_by_dn, src=source, warnings=len(upload_warnings))
+    log_event("upload_cert", "ok", job_id=job_id, target=row["target_host"],
+              uploader=g.identity["dn"], warnings=len(upload_warnings))
     fire_webhooks("job.issued", {
         "job_id": job_id, "target_host": row["target_host"],
         "requester_email": row["requester_email"],
-        "completed_by_dn": completed_by_dn,
-        "completed_by_cn": _cn_from_dn(completed_by_dn),
-        "group_id": group_id,
+        "completed_by_dn": g.identity["dn"],
+        "completed_by_cn": _cn_from_dn(g.identity["dn"]),
+        "group_id": row["group_id"] if "group_id" in row.keys() else None,
         "expires_at": expires_at,
     })
+
+    # Best-effort email notification. Never let this fail the upload.
     try:
-        group_email_addr = _group_email(group_id) if group_id else None
-        ok_n, reason = notify.send_cert_issued(
-            {"id": job_id, "target_host": row["target_host"],
-             "requester_email": row["requester_email"]},
-            completed_by_dn, group_email=group_email_addr,
+        group_email_addr = _group_email(row["group_id"]) if "group_id" in row.keys() else None
+        ok, reason = notify.send_cert_issued(
+            {
+                "id": job_id,
+                "target_host": row["target_host"],
+                "requester_email": row["requester_email"],
+            },
+            g.identity["dn"],
+            group_email=group_email_addr,
         )
-        log_event("email_notify", "ok" if ok_n else "skip", job_id=job_id,
-                  event="cert_issued",
+        log_event("email_notify", "ok" if ok else "skip",
+                  job_id=job_id, event="cert_issued",
                   recipient=(row["requester_email"] or group_email_addr or "-"),
+                  group_cc=(group_email_addr if (row["requester_email"] and group_email_addr) else "-"),
                   reason=reason[:96])
     except Exception as e:
-        log_event("email_notify", "exception", job_id=job_id, error=str(e)[:128])
+        log_event("email_notify", "exception", job_id=job_id,
+                  error=str(e)[:128])
 
-    return True, 200, {"ok": True, "status": "issued",
-                       "target_host": row["target_host"],
-                       "expires_at": expires_at, "warnings": upload_warnings}
-
-
-def _open_signing_issue(job_id):
-    """Best-effort: open a GitLab signing issue for a freshly-created job and
-    store the issue iid/url back on it. No-op when the integration is off;
-    never raises into the request path."""
-    if not gitlab_integration.is_enabled():
-        return
-    try:
-        with db() as conn:
-            row = conn.execute(
-                "SELECT id, target_host, sans_json, csr_pem, requester_dn, "
-                "requester_email, group_id FROM jobs WHERE id=?", (job_id,)
-            ).fetchone()
-            if not row:
-                return
-            group_name = None
-            if row["group_id"]:
-                grp = conn.execute(
-                    "SELECT name FROM groups WHERE id=?", (row["group_id"],)
-                ).fetchone()
-                group_name = grp["name"] if grp else None
-        try:
-            sans = json.loads(row["sans_json"] or "[]")
-        except (ValueError, TypeError):
-            sans = []
-        ok, iid, url, reason = gitlab_integration.create_issue({
-            "id": row["id"], "target_host": row["target_host"], "sans": sans,
-            "csr_pem": row["csr_pem"],
-            "requester_cn": _cn_from_dn(row["requester_dn"]),
-            "requester_email": row["requester_email"],
-            "group_name": group_name,
-        })
-        if ok and iid:
-            with db() as conn:
-                conn.execute(
-                    "UPDATE jobs SET gitlab_issue_iid=?, gitlab_issue_url=? WHERE id=?",
-                    (iid, url, job_id),
-                )
-        log_event("gitlab_issue", "ok" if ok else "fail", job_id=job_id,
-                  iid=(iid or "-"), reason=str(reason)[:120])
-    except Exception as e:  # noqa: BLE001
-        log_event("gitlab_issue", "exception", job_id=job_id, error=str(e)[:128])
-
-
-@app.post("/api/jobs/<job_id>/upload-cert")
-@require_auth
-@require_csrf
-def upload_cert(job_id):
-    if not JOB_ID_RE.match(job_id):
-        abort(400)
-    payload = request.get_json(silent=True) or {}
-    cert_pem = payload.get("cert_pem", "")
-    ok, code, result = _attach_signed_cert(job_id, cert_pem, g.identity["dn"], source="upload")
-    return jsonify(**result), code
-
-
-# ============================================================
-# GitLab inbound webhook (issue-driven signing loop)
-# ============================================================
-@app.post("/api/webhooks/gitlab")
-def gitlab_inbound():
-    """Inbound GitLab webhook receiver. Validated by the X-Gitlab-Token
-    secret (NOT a dashboard session). Handles:
-      - Note Hook: a signer pastes/attaches the signed cert in the linked
-        issue -> attach it to the matching CSR job (status -> issued).
-      - Issue Hook (close): logged as completion confirmation.
-    Always returns 200 for handled-but-ignored events so GitLab doesn't retry."""
-    if not gitlab_integration.verify_webhook_token(request.headers.get("X-Gitlab-Token", "")):
-        log_event("gitlab_webhook", "deny_bad_token", src=request.remote_addr)
-        abort(401)
-    payload = request.get_json(silent=True) or {}
-    kind = payload.get("object_kind") or ""
-
-    if kind == "note":
-        obj = payload.get("object_attributes") or {}
-        if (obj.get("noteable_type") or "").lower() != "issue":
-            return jsonify(ok=True, ignored="note not on an issue")
-        iid = (payload.get("issue") or {}).get("iid")
-        note_body = obj.get("note") or ""
-        author = (payload.get("user") or {}).get("username") or "gitlab"
-        project_web = (payload.get("project") or {}).get("web_url") or ""
-        if not iid:
-            return jsonify(ok=True, ignored="no issue iid")
-        with db() as conn:
-            row = conn.execute(
-                "SELECT id FROM jobs WHERE gitlab_issue_iid=?", (iid,)
-            ).fetchone()
-        if not row:
-            log_event("gitlab_webhook", "no_job_for_issue", iid=iid)
-            return jsonify(ok=True, ignored=f"no job linked to issue {iid}")
-        job_id = row["id"]
-        cert_pem, why = gitlab_integration.extract_cert_from_note(note_body, project_web)
-        if not cert_pem:
-            log_event("gitlab_webhook", "note_no_cert", job_id=job_id, iid=iid, reason=why)
-            return jsonify(ok=True, ignored=why)
-        ok, code, result = _attach_signed_cert(
-            job_id, cert_pem, f"gitlab:{author}", source="gitlab")
-        log_event("gitlab_webhook", "attach_ok" if ok else "attach_fail",
-                  job_id=job_id, iid=iid, code=code)
-        if ok:
-            gitlab_integration.comment_issue(
-                iid, f"✅ Signed certificate attached to CSR job `{job_id}` "
-                     "by the CSR Dashboard. You may close this issue.")
-        else:
-            gitlab_integration.comment_issue(
-                iid, f"⚠️ Could not attach the certificate: "
-                     f"{result.get('error', 'error')}")
-        resp = dict(result)
-        resp["job_id"] = job_id
-        resp.setdefault("ok", ok)
-        return jsonify(resp)
-
-    if kind == "issue":
-        obj = payload.get("object_attributes") or {}
-        iid = obj.get("iid")
-        action = obj.get("action")
-        if iid and action:
-            with db() as conn:
-                row = conn.execute(
-                    "SELECT id, status FROM jobs WHERE gitlab_issue_iid=?", (iid,)
-                ).fetchone()
-            if row:
-                log_event("gitlab_webhook", f"issue_{action}",
-                          job_id=row["id"], iid=iid, job_status=row["status"])
-        return jsonify(ok=True)
-
-    return jsonify(ok=True, ignored=f"unhandled object_kind '{kind}'")
-
+    return jsonify(ok=True, status="issued", target_host=row["target_host"],
+                   expires_at=expires_at, warnings=upload_warnings)
 
 # ============================================================
 # Cancel / mark failed
@@ -2374,7 +2518,6 @@ def renew_job(job_id):
         "group_id": old["group_id"], "cert_type": cert_type,
         "renewed_from": job_id, "has_local_key": bool(has_key),
     })
-    _open_signing_issue(new_id)
     try:
         recipients = _signer_recipients()
         if recipients:
@@ -2581,30 +2724,100 @@ def group_owner_add_member(group_id):
 @require_auth
 @require_csrf
 def group_owner_remove_member(group_id):
-    """Group owners (or admins) remove a member. Owners cannot remove other
-    owners (admin only), and cannot remove themselves (ask an admin, so a
-    group is never accidentally left ownerless)."""
+    """Removal rules:
+      - Anyone can remove THEMSELVES (leave the group) - except the last owner,
+        who must hand off ownership first so the group isn't left ownerless.
+      - Owners (and admins) can remove OTHER members, but not other owners
+        (an admin demotes/removes an owner).
+      - Plain members cannot remove anyone but themselves."""
     me = g.identity["dn"]
-    if not _is_group_owner_or_admin(me, group_id):
-        return jsonify(error="only the group owner or an admin can remove members"), 403
+    if not _group_by_id(group_id):
+        return jsonify(error="group not found"), 404
     payload = request.get_json(silent=True) or {}
     dn = (payload.get("dn") or "").strip()
     if not dn:
         return jsonify(error="dn required"), 400
+
     is_admin = bool(g.user and g.user.get("is_admin"))
+    is_self = (dn == me)
+    my_role = _group_role(me, group_id)
     target_role = _group_role(dn, group_id)
     if target_role is None:
         return jsonify(error="not a member"), 404
-    if not is_admin:
-        if dn == me:
-            return jsonify(error="owners cannot remove themselves - ask an admin"), 403
-        if target_role == "owner":
+
+    if is_self:
+        # Leaving the group yourself. The last owner can't leave (would orphan
+        # the group) - promote someone else to owner first.
+        if target_role == "owner" and not is_admin:
+            with db() as conn:
+                owner_count = conn.execute(
+                    "SELECT COUNT(*) AS n FROM user_groups "
+                    "WHERE group_id = ? AND role = 'owner'", (group_id,)
+                ).fetchone()["n"]
+            if owner_count <= 1:
+                return jsonify(error="you are the only owner - make another "
+                                     "member an owner before leaving"), 400
+    else:
+        # Removing someone else requires owner or admin.
+        if not (is_admin or my_role == "owner"):
+            return jsonify(error="only the group owner or an admin can remove "
+                                 "other members"), 403
+        # Owners can't remove other owners; that's an admin action.
+        if target_role == "owner" and not is_admin:
             return jsonify(error="only an admin can remove a group owner"), 403
+
     with db() as conn:
         conn.execute("DELETE FROM user_groups WHERE user_dn = ? AND group_id = ?",
                      (dn, group_id))
     log_event("group_remove_member", "ok", group_id=group_id,
-              member=_cn_from_dn(dn) or dn)
+              member=_cn_from_dn(dn) or dn, self=int(is_self))
+    return jsonify(ok=True)
+
+
+@app.put("/api/groups/<int:group_id>/members/role")
+@require_auth
+@require_csrf
+def group_owner_set_member_role(group_id):
+    """Group owners (or admins) promote a member to owner, or demote an owner
+    back to member - so a group can be self-managed without an admin. Safeguard:
+    a group must always keep at least one owner, so the last owner cannot be
+    demoted (by an owner; an admin still goes through the admin endpoint)."""
+    me = g.identity["dn"]
+    if not _group_by_id(group_id):
+        return jsonify(error="group not found"), 404
+    if not _is_group_owner_or_admin(me, group_id):
+        log_event("group_set_role", "deny_not_owner", group_id=group_id)
+        return jsonify(error="only the group owner or an admin can change roles"), 403
+    payload = request.get_json(silent=True) or {}
+    dn = (payload.get("dn") or "").strip()
+    role = (payload.get("role") or "").strip()
+    if role not in ("member", "owner"):
+        return jsonify(error="role must be 'member' or 'owner'"), 400
+    if not dn:
+        return jsonify(error="dn required"), 400
+
+    target_role = _group_role(dn, group_id)
+    if target_role is None:
+        return jsonify(error="not a member of that group"), 404
+    if target_role == role:
+        return jsonify(ok=True)  # no change
+
+    # Don't allow demoting the last owner - the group would be left ownerless.
+    if target_role == "owner" and role == "member":
+        with db() as conn:
+            owner_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM user_groups "
+                "WHERE group_id = ? AND role = 'owner'", (group_id,)
+            ).fetchone()["n"]
+        if owner_count <= 1:
+            return jsonify(error="a group must have at least one owner"), 400
+
+    with db() as conn:
+        conn.execute(
+            "UPDATE user_groups SET role = ? WHERE group_id = ? AND user_dn = ?",
+            (role, group_id, dn))
+    log_event("group_set_role", "ok", group_id=group_id,
+              member=_cn_from_dn(dn) or dn, role=role, by="owner")
     return jsonify(ok=True)
 
 
@@ -2844,6 +3057,7 @@ def get_me():
     return jsonify({
         "dn":           g.user["dn"],
         "cn":           g.user["cn"],
+        "username":     g.user["username"] if "username" in g.user.keys() else None,
         "email":        g.user["email"],
         "is_admin":     bool(g.user["is_admin"]),
         "is_active":    bool(g.user["is_active"]),
@@ -2851,6 +3065,8 @@ def get_me():
         "tutorial_dismissed": bool(g.user["tutorial_dismissed"]),
         "created_at":   g.user["created_at"],
         "last_seen_at": g.user["last_seen_at"],
+        # how this request authenticated: "cac" | "local" | "none"
+        "via":          (g.identity or {}).get("via", "none"),
         "version": APP_VERSION,
     })
 
@@ -2899,7 +3115,8 @@ def put_me_prefs():
 def admin_list_users():
     with db() as conn:
         rows = conn.execute("""
-            SELECT dn, cn, email, is_admin, is_active,
+            SELECT dn, cn, email, is_admin, is_active, username, auth_status,
+                   first_name, last_name,
                    created_at, last_seen_at, notes
               FROM users
              ORDER BY last_seen_at DESC
@@ -2908,6 +3125,8 @@ def admin_list_users():
     return jsonify(users=[{
         "dn": r["dn"], "cn": r["cn"], "email": r["email"],
         "is_admin": bool(r["is_admin"]), "is_active": bool(r["is_active"]),
+        "username": r["username"], "auth_status": r["auth_status"],
+        "first_name": r["first_name"], "last_name": r["last_name"],
         "created_at": r["created_at"], "last_seen_at": r["last_seen_at"],
         "notes": r["notes"],
     } for r in rows])
@@ -2947,13 +3166,49 @@ def admin_update_user():
             return jsonify(error="notes too long (max 4KB)"), 400
         fields["notes"] = notes
 
+    # First/last name edits regenerate the unified username (first.last). This
+    # is the admin correction path - e.g. fixing an auto-parsed CAC name, or
+    # backfilling names for an existing user so they get a proper username.
+    regen_username = False
+    new_first = new_last = None
+    if "first_name" in payload:
+        new_first = (payload["first_name"] or "").strip()[:64]
+        fields["first_name"] = new_first or None
+        regen_username = True
+    if "last_name" in payload:
+        new_last = (payload["last_name"] or "").strip()[:64]
+        fields["last_name"] = new_last or None
+        regen_username = True
+
     if not fields:
         return jsonify(error="no fields to update"), 400
 
-    set_clause = ", ".join(f"{k} = ?" for k in fields)
-    values = list(fields.values()) + [target_dn]
-
     with db() as conn:
+        # If names changed, compute the new username inside this transaction so
+        # the collision check + update are atomic.
+        if regen_username:
+            row = conn.execute(
+                "SELECT first_name, last_name, username FROM users WHERE dn = ?",
+                (target_dn,)).fetchone()
+            if not row:
+                return jsonify(error="user not found"), 404
+            eff_first = new_first if new_first is not None else (row["first_name"] or "")
+            eff_last = new_last if new_last is not None else (row["last_name"] or "")
+            if _normalize_name_part(eff_first) or _normalize_name_part(eff_last):
+                cur_username = row["username"]
+                # If the names still reduce to the user's existing base, keep
+                # their current username (don't bump the suffix on re-save).
+                base = ".".join(p for p in (_normalize_name_part(eff_first),
+                                            _normalize_name_part(eff_last)) if p)
+                if cur_username and (cur_username == base or
+                        re.match(r"^" + re.escape(base) + r"\d*$", cur_username or "")):
+                    pass  # already a valid first.last[N] for these names; keep it
+                else:
+                    candidate = derive_username(eff_first, eff_last, conn)
+                    fields["username"] = candidate
+
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [target_dn]
         cur = conn.execute(
             f"UPDATE users SET {set_clause} WHERE dn = ?", values
         )
@@ -2963,6 +3218,37 @@ def admin_update_user():
     log_event("admin_user_update", "ok",
               target_dn=target_dn[:128],
               fields=",".join(fields.keys()))
+    return jsonify(ok=True, username=fields.get("username"))
+
+@app.post("/api/admin/users/set-password")
+@require_admin
+@require_csrf
+def admin_set_password():
+    """Admin sets or resets a user's password. Works for any user (CAC or
+    local); giving a CAC user a password enables the password fallback for
+    them. The user needs a username - if they don't have one yet, the admin
+    should set first/last names first so a username is generated."""
+    payload = request.get_json(silent=True) or {}
+    target_dn = (payload.get("dn") or "").strip()
+    password = payload.get("password") or ""
+    if not target_dn:
+        return jsonify(error="dn required"), 400
+    pol = password_policy_errors(password)
+    if pol:
+        return jsonify(error="password needs " + ", ".join(pol)), 400
+    with db() as conn:
+        row = conn.execute(
+            "SELECT username FROM users WHERE dn = ?", (target_dn,)).fetchone()
+        if not row:
+            return jsonify(error="user not found"), 404
+        if not row["username"]:
+            return jsonify(error="set the user's first/last name first so a "
+                                 "username exists"), 400
+        conn.execute(
+            "UPDATE users SET password_hash = ?, failed_attempts = 0, "
+            "locked_until = 0 WHERE dn = ?",
+            (hash_password(password), target_dn))
+    log_event("admin_set_password", "ok", target_dn=target_dn[:128])
     return jsonify(ok=True)
 
 @app.post("/api/admin/users")
@@ -3003,45 +3289,64 @@ def admin_create_user():
 @require_admin
 @require_csrf
 def admin_delete_user():
-    """Delete a user account. DN in the JSON body. Guards: cannot delete
-    yourself; cannot delete the last remaining admin. The user's jobs are
-    RETAINED (historical record); their group memberships are removed.
-    ?purge=1 also detaches any cert templates they own (owner_dn -> NULL)."""
+    """Delete a user. DN is in the request body (it contains URL-awkward
+    characters). Removes the user's group memberships too. Their jobs and
+    templates are historical records and are left intact (the requester_dn /
+    owner_dn columns remain as an audit trail), unless ?purge=1 is given to
+    also detach owned templates back to no-owner. Jobs are never deleted here -
+    use job cleanup for that."""
     payload = request.get_json(silent=True) or {}
     target_dn = (payload.get("dn") or "").strip()
-    if not target_dn:
-        return jsonify(error="dn is required"), 400
-    if target_dn == g.identity["dn"]:
-        return jsonify(error="you cannot delete your own account"), 400
+    if not target_dn or len(target_dn) > 512:
+        return jsonify(error="invalid dn"), 400
 
-    purge = request.args.get("purge") in ("1", "true", "yes")
+    # You cannot delete yourself - prevents an admin locking themselves out
+    # mid-session and orphaning the instance if they're the only admin.
+    if target_dn == g.user["dn"]:
+        return jsonify(error="cannot delete your own account"), 400
 
     with db() as conn:
-        row = conn.execute(
+        existing = conn.execute(
             "SELECT dn, is_admin FROM users WHERE dn = ?", (target_dn,)
         ).fetchone()
-        if not row:
+        if not existing:
             return jsonify(error="user not found"), 404
-        if row["is_admin"]:
-            n_admins = conn.execute(
-                "SELECT COUNT(*) FROM users WHERE is_admin=1 AND is_active=1"
-            ).fetchone()[0]
-            if n_admins <= 1:
-                return jsonify(error="cannot delete the last remaining admin"), 409
 
-        jobs_retained = conn.execute(
-            "SELECT COUNT(*) FROM jobs WHERE requester_dn = ?", (target_dn,)
-        ).fetchone()[0]
+        # Don't allow deleting the last remaining admin - that would leave the
+        # instance with no one who can administer it.
+        if existing["is_admin"]:
+            admin_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE is_admin = 1"
+            ).fetchone()["n"]
+            if admin_count <= 1:
+                return jsonify(error="cannot delete the last admin"), 400
+
+        # Count what references this user, for the response summary.
+        job_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM jobs WHERE requester_dn = ?", (target_dn,)
+        ).fetchone()["n"]
+        tmpl_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM cert_templates WHERE owner_dn = ?", (target_dn,)
+        ).fetchone()["n"]
+
+        # Remove group memberships (these are the user's own associations and
+        # are safe to drop).
         conn.execute("DELETE FROM user_groups WHERE user_dn = ?", (target_dn,))
-        if purge:
+
+        # Optionally detach owned templates so they survive as instance/global
+        # rather than pointing at a deleted owner.
+        if payload.get("purge"):
             conn.execute(
-                "UPDATE cert_templates SET owner_dn=NULL WHERE owner_dn = ?",
-                (target_dn,))
+                "UPDATE cert_templates SET owner_dn = NULL WHERE owner_dn = ?",
+                (target_dn,),
+            )
+
         conn.execute("DELETE FROM users WHERE dn = ?", (target_dn,))
 
-    log_event("admin_user_delete", "ok", target_dn=target_dn[:128],
-              jobs_retained=jobs_retained, purge=int(purge))
-    return jsonify(ok=True, jobs_retained=jobs_retained)
+    log_event("admin_user_delete", "ok",
+              target_dn=target_dn[:128],
+              jobs_retained=job_count, templates=tmpl_count)
+    return jsonify(ok=True, jobs_retained=job_count, templates=tmpl_count)
 
 # ============================================================
 # Admin: job cleanup
@@ -3215,11 +3520,20 @@ def admin_delete_orphan_key(name):
 @app.get("/api/admin/orphans/certs")
 @require_admin
 def admin_list_orphan_certs():
-    # Read the issued dir through the root helper (list-issued) rather than
-    # directly: on a STIG box /home/ansible/issued is root-owned and csrapi
-    # cannot read it, which used to 500 this endpoint.
-    rc, out, _ = run_helper(["list-issued"])
-    all_certs = _parse_helper_listing(out) if rc == 0 else []
+    issued_dir = Path(ISSUED_DIR)
+    all_certs = []
+    if issued_dir.exists():
+        for f in issued_dir.iterdir():
+            if not (f.is_file() and f.name.endswith(".cer")):
+                continue
+            st = f.stat()
+            all_certs.append({
+                "name": f.name,
+                "size": st.st_size,
+                "mtime": time.strftime("%Y-%m-%d %H:%M",
+                                       time.localtime(st.st_mtime)),
+                "mtime_epoch": st.st_mtime,
+            })
 
     with db() as conn:
         rows = conn.execute(
@@ -3788,21 +4102,13 @@ def admin_get_email_config():
 def admin_put_email_config():
     payload = request.get_json(silent=True) or {}
 
-    provider = (payload.get("provider") or "smg").strip().lower()
-    if provider not in notify.VALID_PROVIDERS:
-        return jsonify(error=f"provider must be one of {', '.join(notify.VALID_PROVIDERS)}"), 400
-
     host = (payload.get("host") or "").strip()
     from_address = (payload.get("from_address") or "").strip()
     dashboard_url = (payload.get("dashboard_url") or "").strip()
     cc = (payload.get("cc") or "").strip()
-    security = (payload.get("security") or "none").strip().lower()
-    username = (payload.get("username") or "").strip()
-    mailgun_domain = (payload.get("mailgun_domain") or "").strip()
-    mailgun_base_url = (payload.get("mailgun_base_url") or "https://api.mailgun.net").strip()
 
     try:
-        port = int(payload.get("port") or (587 if provider == "smtp" else 25))
+        port = int(payload.get("port", 25))
         timeout = int(payload.get("timeout", 10))
     except (TypeError, ValueError):
         return jsonify(error="port and timeout must be integers"), 400
@@ -3810,29 +4116,14 @@ def admin_put_email_config():
         return jsonify(error="port out of range"), 400
     if not (1 <= timeout <= 120):
         return jsonify(error="timeout out of range (1-120s)"), 400
-
+    if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
+        return jsonify(error="smtp host is required (hostname or IP)"), 400
     if from_address:
         ok_e, from_address, err_e = _validate_email(from_address)
         if not ok_e or not from_address:
             return jsonify(error=f"invalid from address: {err_e or 'required'}"), 400
     else:
         return jsonify(error="from address is required"), 400
-
-    # Per-provider required fields (only the selected provider is checked).
-    if provider in ("smg", "smtp"):
-        if not host or not re.match(r"^[A-Za-z0-9._-]+$", host):
-            return jsonify(error="smtp host is required (hostname or IP)"), 400
-        if provider == "smtp" and security not in ("none", "starttls", "ssl"):
-            return jsonify(error="security must be none, starttls, or ssl"), 400
-    elif provider == "mailgun":
-        if not re.match(r"^[A-Za-z0-9._-]+$", mailgun_domain):
-            return jsonify(error="mailgun domain is required"), 400
-        if not mailgun_base_url.startswith("https://"):
-            return jsonify(error="mailgun base_url must start with https://"), 400
-        if not (payload.get("mailgun_api_key") or "").strip() \
-                and not notify.get_settings().get("mailgun_api_key_set"):
-            return jsonify(error="mailgun api_key is required"), 400
-
     if cc:
         for addr in [a.strip() for a in cc.split(",") if a.strip()]:
             if not EMAIL_RE.match(addr):
@@ -3841,12 +4132,7 @@ def admin_put_email_config():
         return jsonify(error="dashboard_url must start with https://"), 400
 
     ok, reason = notify.save_settings({
-        "provider": provider,
         "host": host, "port": port, "timeout": timeout,
-        "security": security, "username": username,
-        "password": payload.get("password"),
-        "mailgun_domain": mailgun_domain, "mailgun_base_url": mailgun_base_url,
-        "mailgun_api_key": payload.get("mailgun_api_key"),
         "from_address": from_address, "cc": cc,
         "dashboard_url": dashboard_url,
     })
@@ -3854,178 +4140,8 @@ def admin_put_email_config():
         log_event("admin_email_config", "error", reason=reason[:128])
         return jsonify(error=reason), 500
 
-    log_event("admin_email_config", "ok", provider=provider, host=host, port=port)
+    log_event("admin_email_config", "ok", host=host, port=port)
     return jsonify(ok=True, reason=reason, **notify.get_settings())
-
-
-# ============================================================
-# Admin: GitLab integration config
-# ============================================================
-@app.get("/api/admin/gitlab-config")
-@require_admin
-def admin_get_gitlab_config():
-    return jsonify(gitlab_integration.get_settings())
-
-
-@app.put("/api/admin/gitlab-config")
-@require_admin
-@require_csrf
-def admin_put_gitlab_config():
-    p = request.get_json(silent=True) or {}
-    base_url = (p.get("base_url") or "").strip().rstrip("/")
-    project = (p.get("project") or "").strip()
-    enabled = bool(p.get("enabled"))
-    assignee_ids = (p.get("assignee_ids") or "").strip()
-    labels = (p.get("labels") or "").strip()
-
-    if enabled:
-        if not base_url.startswith("https://"):
-            return jsonify(error="base_url must start with https://"), 400
-        if not project:
-            return jsonify(error="project (numeric id or group/name path) is required"), 400
-        if not (p.get("api_token") or "").strip() \
-                and not gitlab_integration.get_settings().get("api_token_set"):
-            return jsonify(error="api_token is required to enable the integration"), 400
-    if assignee_ids and not re.match(r"^[0-9,\s]+$", assignee_ids):
-        return jsonify(error="assignee_ids must be comma-separated numeric GitLab user IDs"), 400
-
-    ok, reason = gitlab_integration.save_settings({
-        "enabled": enabled, "base_url": base_url, "project": project,
-        "assignee_ids": ",".join(a.strip() for a in assignee_ids.split(",") if a.strip()),
-        "labels": labels,
-        "api_token": p.get("api_token"),
-        "webhook_secret": p.get("webhook_secret"),
-    })
-    if not ok:
-        log_event("admin_gitlab_config", "error", reason=reason[:128])
-        return jsonify(error=reason), 500
-    log_event("admin_gitlab_config", "ok", enabled=enabled, project=project)
-    return jsonify(ok=True, reason=reason, **gitlab_integration.get_settings())
-
-
-@app.post("/api/admin/gitlab-test")
-@require_admin
-@require_csrf
-def admin_gitlab_test():
-    ok, reason = gitlab_integration.test_connection()
-    log_event("admin_gitlab_test", "ok" if ok else "fail", reason=reason[:128])
-    if ok:
-        return jsonify(ok=True, reason=reason)
-    return jsonify(error=reason), 502
-
-
-# ============================================================
-# Trust portal — publish CA certs so clients can build trust
-# (CA certificates are public; private keys are rejected on upload)
-# ============================================================
-def _trust_cert_info(path):
-    """Summarize a published CA file: subject + SHA-256 fingerprint of its
-    first certificate. Best-effort; returns minimal info on parse failure."""
-    info = {"name": path.name, "size": path.stat().st_size,
-            "subject": "", "sha256": ""}
-    try:
-        pem = path.read_text()
-        sub = subprocess.run(["openssl", "x509", "-noout", "-subject"],
-                             input=pem, capture_output=True, text=True, timeout=10)
-        if sub.returncode == 0:
-            info["subject"] = sub.stdout.strip().split("=", 1)[-1].strip()
-        fp = subprocess.run(["openssl", "x509", "-noout", "-fingerprint", "-sha256"],
-                            input=pem, capture_output=True, text=True, timeout=10)
-        if fp.returncode == 0:
-            info["sha256"] = fp.stdout.strip().split("=", 1)[-1].strip()
-    except Exception:
-        pass
-    return info
-
-
-def _list_trust():
-    d = Path(TRUST_DIR)
-    if not d.is_dir():
-        return []
-    return sorted((_trust_cert_info(f) for f in d.iterdir()
-                   if f.is_file() and TRUST_NAME_RE.match(f.name)),
-                  key=lambda c: c["name"])
-
-
-@app.get("/api/trust")
-def trust_list():
-    """PUBLIC: list published CA certs. Unauthenticated by design so a device
-    with no trust/CAC yet can discover what to install."""
-    return jsonify(certs=_list_trust())
-
-
-@app.get("/api/trust/<name>")
-def trust_download(name):
-    """PUBLIC: download a published CA cert (PEM)."""
-    if not TRUST_NAME_RE.match(name):
-        abort(400)
-    path = Path(TRUST_DIR) / name
-    if not path.is_file():
-        abort(404)
-    return Response(
-        path.read_bytes(), mimetype="application/x-pem-file",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
-    )
-
-
-@app.get("/api/admin/trust")
-@require_admin
-def admin_trust_list():
-    return jsonify(certs=_list_trust(), trust_dir=TRUST_DIR)
-
-
-@app.post("/api/admin/trust")
-@require_admin
-@require_csrf
-def admin_trust_upload():
-    payload = request.get_json(silent=True) or {}
-    name = (payload.get("name") or "").strip()
-    pem = payload.get("pem") or ""
-    if not name.endswith((".crt", ".pem")):
-        name = f"{name}.crt"
-    if not TRUST_NAME_RE.match(name):
-        return jsonify(error="invalid name (letters/digits/._- , .crt/.pem)"), 400
-    if not isinstance(pem, str) or not (50 < len(pem) <= 1_000_000):
-        return jsonify(error="invalid pem"), 400
-    if "PRIVATE KEY" in pem:
-        return jsonify(error="refusing to publish a private key - CA certificates only"), 400
-    # Must be a parseable X.509 cert, and a CA cert (basicConstraints CA:TRUE).
-    try:
-        proc = subprocess.run(["openssl", "x509", "-noout", "-text"],
-                              input=pem, capture_output=True, text=True, timeout=10)
-    except Exception:
-        return jsonify(error="cert validation error"), 400
-    if proc.returncode != 0:
-        return jsonify(error="not a valid X.509 certificate"), 400
-    if "CA:TRUE" not in proc.stdout:
-        return jsonify(error="not a CA certificate (basicConstraints CA:TRUE) - publish roots/intermediates only"), 400
-
-    try:
-        d = Path(TRUST_DIR)
-        d.mkdir(parents=True, exist_ok=True)
-        (d / name).write_text(pem if pem.endswith("\n") else pem + "\n")
-        os.chmod(d / name, 0o644)
-    except OSError as e:
-        return jsonify(error=f"could not write trust file: {e}"), 500
-    log_event("admin_trust_upload", "ok", name=name)
-    return jsonify(ok=True, certs=_list_trust())
-
-
-@app.delete("/api/admin/trust/<name>")
-@require_admin
-@require_csrf
-def admin_trust_delete(name):
-    if not TRUST_NAME_RE.match(name):
-        abort(400)
-    path = Path(TRUST_DIR) / name
-    if not path.is_file():
-        abort(404)
-    try:
-        path.unlink()
-    except OSError as e:
-        return jsonify(error=f"could not delete: {e}"), 500
-    log_event("admin_trust_delete", "ok", name=name)
-    return jsonify(ok=True, certs=_list_trust())
 
 
 # ============================================================

@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""csr-set-auth - set authentication settings in the CSR Dashboard database.
+
+Sets rows in the app_settings table (the same store the app reads via
+get_setting). Used by the installer to configure password-auth mode on a box
+without CAC mTLS, and usable by an admin from the CLI.
+
+Usage:
+  csr-set-auth --mode local --domain eucom.mil [--require-approval]
+  csr-set-auth --mode mtls
+  csr-set-auth --show
+
+The DB must already exist (start csr-api once so the schema is created).
+"""
+import argparse
+import os
+import sqlite3
+import sys
+
+
+def _db_path():
+    val = os.environ.get("CSR_DB_PATH")
+    if not val:
+        env = os.environ.get("CSR_DASHBOARD_ENV",
+                             "/etc/csr-dashboard/csr-dashboard.env")
+        try:
+            with open(env) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("CSR_DB_PATH="):
+                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except OSError:
+            pass
+    return val or "/var/lib/csr-dashboard/jobs.db"
+
+
+def _set(conn, key, value):
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--mode", choices=["mtls", "local"])
+    ap.add_argument("--domain", help="trusted email domain (local mode)")
+    ap.add_argument("--require-approval", action="store_true",
+                    help="new local registrations need admin approval")
+    ap.add_argument("--no-require-approval", action="store_true",
+                    help="new local registrations are active immediately")
+    ap.add_argument("--show", action="store_true", help="print current settings")
+    args = ap.parse_args()
+
+    db = _db_path()
+    if not os.path.exists(db):
+        print(f"ERROR: database not found at {db}", file=sys.stderr)
+        print("Start csr-api once so the schema is created, then re-run.",
+              file=sys.stderr)
+        return 1
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        # ensure the table exists (app creates it, but be defensive)
+        conn.execute("CREATE TABLE IF NOT EXISTS app_settings "
+                     "(key TEXT PRIMARY KEY, value TEXT)")
+        if args.show:
+            rows = conn.execute(
+                "SELECT key, value FROM app_settings ORDER BY key").fetchall()
+            if not rows:
+                print("(no settings stored; app defaults apply: mode=mtls)")
+            for r in rows:
+                print(f"{r['key']} = {r['value']}")
+            return 0
+
+        changed = []
+        if args.mode:
+            _set(conn, "auth_mode", args.mode)
+            changed.append(f"auth_mode={args.mode}")
+        if args.domain is not None:
+            _set(conn, "trusted_email_domain", args.domain.strip().lower())
+            changed.append(f"trusted_email_domain={args.domain.strip().lower()}")
+        if args.require_approval:
+            _set(conn, "require_admin_approval", "1")
+            changed.append("require_admin_approval=1")
+        if args.no_require_approval:
+            _set(conn, "require_admin_approval", "0")
+            changed.append("require_admin_approval=0")
+        conn.commit()
+
+        if not changed:
+            print("nothing to do (use --show to view, or pass settings)")
+            return 0
+        print("OK set: " + ", ".join(changed))
+        print(f"  db: {db}")
+        print("Takes effect on the next request (no restart needed).")
+        return 0
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
