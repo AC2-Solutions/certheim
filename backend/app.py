@@ -1695,5 +1695,11 @@ from routes_auth import bp as auth_bp  # noqa: E402
 app.register_blueprint(auth_bp)
 from routes_jobs import bp as jobs_bp  # noqa: E402
 app.register_blueprint(jobs_bp)
+from routes_requests import bp as requests_bp  # noqa: E402
+app.register_blueprint(requests_bp)
+from routes_groups import bp as groups_bp  # noqa: E402
+app.register_blueprint(groups_bp)
+from routes_me import bp as me_bp  # noqa: E402
+app.register_blueprint(me_bp)
 from routes_admin import bp as admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
