@@ -682,12 +682,23 @@ def derive_username(first, last, conn):
     l = _normalize_name_part(last)
     base = ".".join(p for p in (f, l) if p) or "user"
     base = base[:60]  # leave room for a numeric suffix within 64
-    # find existing usernames that match base or base<N>
+    # A local user's PRIMARY KEY is its dn = "local:<username>", so treat BOTH
+    # the username column AND the local:<name> dn space as taken. A row can
+    # occupy "local:<base>" with a NULL username column (e.g. admin-created
+    # users, or older-schema rows); checking the username column alone misses
+    # that, derive returns the colliding base, and the INSERT then fails on the
+    # dn PK - which the retry loop can't escape (same base re-derived forever).
     rows = conn.execute(
-        "SELECT username FROM users WHERE username = ? OR username LIKE ?",
-        (base, base + "%")
+        "SELECT username, dn FROM users "
+        "WHERE username = ? OR username LIKE ? OR dn = ? OR dn LIKE ?",
+        (base, base + "%", "local:" + base, "local:" + base + "%")
     ).fetchall()
-    taken = {r["username"] for r in rows if r["username"]}
+    taken = set()
+    for r in rows:
+        if r["username"]:
+            taken.add(r["username"])
+        if r["dn"] and r["dn"].startswith("local:"):
+            taken.add(r["dn"][len("local:"):])
     if base not in taken:
         return base
     n = 2
