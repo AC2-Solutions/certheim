@@ -3,7 +3,7 @@ const API = "/csr/api";
 const CSRF = { "X-Requested-With": "csr-dashboard", "Content-Type": "application/json" };
 const PAGE_SIZE = 50;
 
-// ===== DoD banner (now a modal opened from a link on the login page) =====
+// ===== Login banner (configurable; a modal opened from a link on the gate) =====
 const banner = document.getElementById("dod-banner");
 document.getElementById("dod-close").addEventListener("click", () => {
   banner.hidden = true;
@@ -14,6 +14,32 @@ document.getElementById("login-show-banner").addEventListener("click", () => {
 document.getElementById("login-show-banner-2")?.addEventListener("click", () => {
   banner.hidden = false;
 });
+
+// Populate the banner modal + the agreement link text from /auth/info's banner
+// object ({title, link, paragraphs[], items[]}). Built with textContent so any
+// custom admin text is inert (no HTML injection).
+function renderBanner(b) {
+  const title = document.getElementById("dod-title");
+  const body = document.getElementById("dod-body");
+  if (!b) { body.replaceChildren(); return; }
+  title.textContent = b.title || "Notice and Consent";
+  const frag = document.createDocumentFragment();
+  (b.paragraphs || []).forEach(p => {
+    const el = document.createElement("p"); el.textContent = p; frag.appendChild(el);
+  });
+  if ((b.items || []).length) {
+    const ul = document.createElement("ul");
+    b.items.forEach(it => {
+      const li = document.createElement("li"); li.textContent = it; ul.appendChild(li);
+    });
+    frag.appendChild(ul);
+  }
+  body.replaceChildren(frag);
+  const link = b.link || "User Access Agreement";
+  ["login-show-banner", "login-show-banner-2"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = link;
+  });
+}
 
 // ===== Login gate =====
 // The app always shows a login gate first. What it offers depends on the
@@ -80,13 +106,16 @@ async function bootstrapAuth() {
     document.getElementById("login-cac-row").hidden = true;
     document.getElementById("login-cac").hidden = true;
     document.getElementById("login-register-link-wrap").hidden = !authInfo.registration_open;
-    if (authInfo.trusted_email_domain) {
-      document.getElementById("reg-domain-hint").textContent =
-        "(must be @" + authInfo.trusted_email_domain + ")";
-    }
     document.getElementById("login-sub").textContent =
       "Sign in with your username and password";
   }
+
+  // Login banner + agreement gate. Configurable per install; when the banner
+  // is "none" there is nothing to agree to, so the gate is skipped entirely.
+  _agreementRequired = !!authInfo.require_agreement;
+  renderBanner(authInfo.banner || null);
+  document.getElementById("login-agree-row").hidden = !_agreementRequired;
+  if (!_agreementRequired) banner.hidden = true;
 
   _agreeInteracted = false;  // reset so the warning is silent on (re)render
   _applyAgreementGate();
@@ -96,7 +125,16 @@ async function bootstrapAuth() {
 // Agreement checkbox gates the action buttons. The warning box stays hidden
 // on load (silent) and appears only AFTER the user actively unchecks the box.
 let _agreeInteracted = false;
+let _agreementRequired = true;   // set from /auth/info (false when banner=none)
 function _applyAgreementGate() {
+  // No banner configured -> nothing to agree to: enable the buttons, no warning.
+  if (!_agreementRequired) {
+    ["login-submit", "login-cac-btn"].forEach(id => {
+      const b = document.getElementById(id); if (b) b.disabled = false;
+    });
+    document.getElementById("login-agree-warn").hidden = true;
+    return;
+  }
   const agreed = document.getElementById("login-agree-check").checked;
   ["login-submit", "login-cac-btn"].forEach(id => {
     const b = document.getElementById(id);
@@ -128,7 +166,7 @@ document.getElementById("login-cac-check")?.addEventListener("change", _applyCac
 // CAC: the cert is presented at TLS handshake; "Continue" just proceeds.
 document.getElementById("login-cac-btn").addEventListener("click", async () => {
   const status = document.getElementById("login-status");
-  if (!document.getElementById("login-agree-check").checked) {
+  if (_agreementRequired && !document.getElementById("login-agree-check").checked) {
     _agreeInteracted = true; _applyAgreementGate();
     setStatus(status, "You must agree to the User Access Agreement first.", "err");
     return;
@@ -150,7 +188,7 @@ document.getElementById("login-password").addEventListener("keydown", (e) => {
 });
 async function doLogin() {
   const status = document.getElementById("login-status");
-  if (!document.getElementById("login-agree-check").checked) {
+  if (_agreementRequired && !document.getElementById("login-agree-check").checked) {
     _agreeInteracted = true; _applyAgreementGate();
     setStatus(status, "You must agree to the User Access Agreement first.", "err");
     return;
@@ -1800,9 +1838,27 @@ async function refreshAuthSettings() {
   document.getElementById("admin-auth-mode").value = s.auth_mode || "mtls";
   document.getElementById("admin-auth-domain").value = s.trusted_email_domain || "";
   document.getElementById("admin-auth-approval").checked = !!s.require_admin_approval;
+  document.getElementById("admin-auth-allow-reg").checked = !!s.allow_registration;
+  // Banner dropdown: built from the server's option list, then select current.
+  const sel = document.getElementById("admin-banner-select");
+  sel.replaceChildren(...(s.banner_options || []).map(o => {
+    const opt = document.createElement("option");
+    opt.value = o.key; opt.textContent = o.label; return opt;
+  }));
+  sel.value = s.login_banner || "dod";
+  document.getElementById("admin-banner-custom-title").value = s.login_banner_custom_title || "";
+  document.getElementById("admin-banner-custom-text").value = s.login_banner_custom_text || "";
+  _bannerToggleCustom();
   _authToggleLocalOpts();
   setStatus(status, "");
 }
+
+function _bannerToggleCustom() {
+  const isCustom = document.getElementById("admin-banner-select").value === "custom";
+  document.getElementById("admin-banner-custom").hidden = !isCustom;
+}
+document.getElementById("admin-banner-select")
+  .addEventListener("change", _bannerToggleCustom);
 
 function _authToggleLocalOpts() {
   const mode = document.getElementById("admin-auth-mode").value;
@@ -1823,11 +1879,18 @@ document.getElementById("admin-auth-save-btn").addEventListener("click", async (
   const mode = document.getElementById("admin-auth-mode").value;
   const domain = document.getElementById("admin-auth-domain").value.trim();
   const approval = document.getElementById("admin-auth-approval").checked;
+  const allowReg = document.getElementById("admin-auth-allow-reg").checked;
 
   const payload = {
     auth_mode: mode,
     trusted_email_domain: domain,
     require_admin_approval: approval,
+    allow_registration: allowReg,
+    login_banner: document.getElementById("admin-banner-select").value,
+    login_banner_custom_title:
+      document.getElementById("admin-banner-custom-title").value.trim(),
+    login_banner_custom_text:
+      document.getElementById("admin-banner-custom-text").value,
   };
   // Switching to mtls needs explicit confirmation (backend enforces this too).
   if (mode === "mtls") {
@@ -1837,12 +1900,6 @@ document.getElementById("admin-auth-save-btn").addEventListener("click", async (
       return;
     }
     payload.confirm_mtls = true;
-  }
-  if (mode === "local" && !domain) {
-    if (!confirm("No trusted email domain set — self-registration will be "
-               + "disabled (admins must create users). Continue?")) {
-      return;
-    }
   }
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/auth-settings", {

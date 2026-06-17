@@ -764,16 +764,109 @@ def password_policy_errors(pw):
     if not re.search(r"[^A-Za-z0-9]", pw or ""): e.append("a special character")
     return e
 
+# --- login banners ----------------------------------------------------------
+# The login page can show a consent/notice banner gated by an "I agree"
+# checkbox. The banner is chosen post-install from the admin UI (or "none").
+# Each preset: label (admin dropdown), link (the agreement link text), title
+# (modal heading), paragraphs[] and items[] (rendered as <p> then a <ul>).
+LOGIN_BANNERS = {
+    "dod": {
+        "label": "DoD / U.S. Government (USG)",
+        "link": "DoD System User Access Agreement",
+        "title": "U.S. Government (USG) Notice and Consent Banner",
+        "paragraphs": [
+            "You are accessing a U.S. Government (USG) Information System (IS) "
+            "that is provided for USG-authorized use only.",
+            "By using this IS (which includes any device attached to this IS), "
+            "you consent to the following conditions:",
+        ],
+        "items": [
+            "The USG routinely intercepts and monitors communications on this "
+            "IS for purposes including, but not limited to, penetration "
+            "testing, COMSEC monitoring, network operations and defense, "
+            "personnel misconduct (PM), law enforcement (LE), and "
+            "counterintelligence (CI) investigations.",
+            "At any time, the USG may inspect and seize data stored on this IS.",
+            "Communications using, or data stored on, this IS are not private, "
+            "are subject to routine monitoring, interception, and search, and "
+            "may be disclosed or used for any USG-authorized purpose.",
+            "This IS includes security measures (e.g., authentication and "
+            "access controls) to protect USG interests — not for your "
+            "personal benefit or privacy.",
+            "Notwithstanding the above, using this IS does not constitute "
+            "consent to PM, LE or CI investigative searching or monitoring of "
+            "the content of privileged communications, or work product, "
+            "related to personal representation or services by attorneys, "
+            "psychotherapists, or clergy, and their assistants. Such "
+            "communications and work product are private and confidential. "
+            "See User Agreement for details.",
+        ],
+    },
+    "hipaa": {
+        "label": "HIPAA Privacy Notice",
+        "link": "HIPAA Notice",
+        "title": "HIPAA Notice — Protected Health Information (PHI)",
+        "paragraphs": [
+            "This system may contain Protected Health Information (PHI) "
+            "subject to the Health Insurance Portability and Accountability "
+            "Act (HIPAA) and is restricted to authorized users only.",
+            "By accessing this system you acknowledge and agree that:",
+        ],
+        "items": [
+            "You will access, use, and disclose PHI only as permitted by HIPAA "
+            "and your organization's policies, limited to the minimum "
+            "necessary for your role.",
+            "All access to PHI is logged and subject to audit; unauthorized "
+            "access, use, or disclosure may result in disciplinary action and "
+            "civil or criminal penalties.",
+            "You will safeguard PHI from unauthorized viewing, sharing, or "
+            "storage, and report any suspected breach immediately.",
+            "This system is monitored to ensure compliance with the HIPAA "
+            "Privacy and Security Rules.",
+        ],
+    },
+    "nsa": {
+        "label": "NSA / National Security System",
+        "link": "U.S. Government User Agreement",
+        "title": "U.S. Government Information System — Notice and Consent",
+        "paragraphs": [
+            "You are accessing a U.S. Government (USG) Information System (IS), "
+            "which may be a National Security System, provided for "
+            "USG-authorized use only.",
+            "By using this IS, you consent to the following conditions:",
+        ],
+        "items": [
+            "The USG routinely intercepts and monitors communications on this "
+            "IS for authorized purposes, including security monitoring, "
+            "network operations and defense, and investigations.",
+            "At any time, the USG may inspect and seize data stored on this IS.",
+            "Communications using, or data stored on, this IS are not private "
+            "and may be disclosed or used for any USG-authorized purpose.",
+            "This IS includes security measures to protect USG interests — "
+            "not for your personal benefit or privacy.",
+            "Unauthorized use may subject you to administrative action and "
+            "civil or criminal penalties.",
+        ],
+    },
+}
+
 # --- instance settings (key/value) -----------------------------------------
 _SETTINGS_DEFAULTS = {
     # "mtls" = CAC required (current/default behavior). "local" = username/
     # password auth (set by installer when mTLS isn't available).
     "auth_mode": "mtls",
-    # Trusted email domain for local self-registration (e.g. "eucom.mil").
-    # Empty = self-registration disabled.
+    # Optional filter for self-registration: if set, only emails at this exact
+    # domain may register. Empty = no domain restriction (any valid email).
     "trusted_email_domain": "",
     # "1" = new local registrations require admin approval before active.
     "require_admin_approval": "0",
+    # "1" = self-registration is open (independent of the email domain filter).
+    "allow_registration": "0",
+    # Login consent banner: "none" or a key in LOGIN_BANNERS, or "custom".
+    "login_banner": "dod",
+    # Custom banner content (used only when login_banner == "custom").
+    "login_banner_custom_title": "Notice and Consent",
+    "login_banner_custom_text": "",
 }
 
 def get_setting(key):
@@ -797,6 +890,38 @@ def set_setting(key, value):
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
+
+def current_banner():
+    """Resolve the configured login banner to a render-ready dict, or None.
+    Public (the login page needs it pre-auth). Returns:
+      {key, label, link, title, paragraphs[], items[]}  or  None ("none"/empty).
+    """
+    key = (get_setting("login_banner") or "dod").strip().lower()
+    if key == "none":
+        return None
+    if key == "custom":
+        title = (get_setting("login_banner_custom_title") or "Notice and Consent").strip()
+        text = (get_setting("login_banner_custom_text") or "").strip()
+        if not text:
+            return None
+        # Blank-line-separated blocks become paragraphs; no items for custom.
+        paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        return {"key": "custom", "label": "Custom", "link": title or "Notice",
+                "title": title or "Notice and Consent",
+                "paragraphs": paras or [text], "items": []}
+    b = LOGIN_BANNERS.get(key)
+    if not b:
+        return None
+    return {"key": key, "label": b["label"], "link": b["link"],
+            "title": b["title"], "paragraphs": list(b["paragraphs"]),
+            "items": list(b["items"])}
+
+def banner_options():
+    """Admin dropdown choices: built-in presets + none + custom."""
+    opts = [{"key": "none", "label": "No banner"}]
+    opts += [{"key": k, "label": v["label"]} for k, v in LOGIN_BANNERS.items()]
+    opts.append({"key": "custom", "label": "Custom message…"})
+    return opts
 
 # --- local sessions ---------------------------------------------------------
 LOCAL_SESSION_COOKIE = "csr_session"
@@ -1386,12 +1511,18 @@ def auth_info():
     self-registration is open, so it can show the right login/register UI."""
     mode = auth_mode()
     domain = get_setting("trusted_email_domain") or ""
+    banner = current_banner()
     return jsonify(
         auth_mode=mode,
         local_enabled=(mode == "local"),
-        registration_open=bool(domain) if mode == "local" else False,
+        # Self-registration is its own toggle now, independent of the (optional)
+        # email-domain filter - a domain is "not always going to be a thing".
+        registration_open=(mode == "local"
+                           and get_setting("allow_registration") == "1"),
         trusted_email_domain=domain,
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        banner=banner,
+        require_agreement=bool(banner),
     )
 
 @app.post("/api/auth/login")
@@ -1467,9 +1598,10 @@ def auth_register():
     username is returned to the caller for display."""
     if auth_mode() != "local":
         return jsonify(error="registration not available"), 403
-    domain = (get_setting("trusted_email_domain") or "").strip().lower()
-    if not domain:
+    if get_setting("allow_registration") != "1":
         return jsonify(error="self-registration is disabled"), 403
+    # Optional email-domain filter (empty = any valid email may register).
+    domain = (get_setting("trusted_email_domain") or "").strip().lower()
 
     payload = request.get_json(silent=True) or {}
     first = (payload.get("first_name") or "").strip()
@@ -1484,8 +1616,9 @@ def auth_register():
         return jsonify(error="name must contain letters"), 400
     if not EMAIL_RE.match(email):
         return jsonify(error="valid email required"), 400
-    # Trusted-domain enforcement (case-insensitive, exact domain match).
-    if email.rsplit("@", 1)[-1] != domain:
+    # Trusted-domain enforcement (case-insensitive, exact domain match) - only
+    # when an admin configured a domain; otherwise any valid email is allowed.
+    if domain and email.rsplit("@", 1)[-1] != domain:
         log_event("register", "deny_domain", email=email[:128])
         return jsonify(error=f"email must be @{domain}"), 403
     pol = password_policy_errors(password)
@@ -1558,6 +1691,11 @@ def admin_get_auth_settings():
         auth_mode=auth_mode(),
         trusted_email_domain=get_setting("trusted_email_domain") or "",
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
+        allow_registration=(get_setting("allow_registration") == "1"),
+        login_banner=get_setting("login_banner") or "dod",
+        login_banner_custom_title=get_setting("login_banner_custom_title") or "",
+        login_banner_custom_text=get_setting("login_banner_custom_text") or "",
+        banner_options=banner_options(),
     )
 
 @app.put("/api/admin/auth-settings")
@@ -1587,6 +1725,27 @@ def admin_set_auth_settings():
         val = "1" if payload["require_admin_approval"] else "0"
         set_setting("require_admin_approval", val)
         changed["require_admin_approval"] = val
+    if "allow_registration" in payload:
+        val = "1" if payload["allow_registration"] else "0"
+        set_setting("allow_registration", val)
+        changed["allow_registration"] = val
+    if "login_banner" in payload:
+        b = (payload["login_banner"] or "none").strip().lower()
+        if b not in ("none", "custom") and b not in LOGIN_BANNERS:
+            return jsonify(error="invalid login_banner"), 400
+        set_setting("login_banner", b)
+        changed["login_banner"] = b
+    if "login_banner_custom_title" in payload:
+        t = (payload["login_banner_custom_title"] or "").strip()[:120]
+        set_setting("login_banner_custom_title", t)
+        changed["login_banner_custom_title"] = t
+    if "login_banner_custom_text" in payload:
+        txt = payload["login_banner_custom_text"]
+        if txt is not None and not isinstance(txt, str):
+            return jsonify(error="login_banner_custom_text must be string"), 400
+        txt = (txt or "")[:8000]
+        set_setting("login_banner_custom_text", txt)
+        changed["login_banner_custom_text"] = "set" if txt else "(empty)"
     log_event("admin_auth_settings", "ok", **{k: str(v)[:64] for k, v in changed.items()})
     return jsonify(ok=True, **changed)
 
