@@ -53,6 +53,8 @@ MANIFEST=(
   "helper/csr_dashboard_helper.d/20-generate.sh  /root/sslcerts/scripts/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
   "systemd/csr-expiry-warn.service /etc/systemd/system/csr-expiry-warn.service root:root 0644 systemd"
   "systemd/csr-expiry-warn.timer   /etc/systemd/system/csr-expiry-warn.timer   root:root 0644 systemd"
+  "systemd/csr-auto-renew.service  /etc/systemd/system/csr-auto-renew.service  root:root 0644 systemd"
+  "systemd/csr-auto-renew.timer    /etc/systemd/system/csr-auto-renew.timer    root:root 0644 systemd"
   "systemd/csr-api.service          /etc/systemd/system/csr-api.service          root:root 0644 systemd"
   "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
   "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
@@ -122,7 +124,9 @@ if [[ "$changed_tags" == *systemd* ]]; then
     # to restart). Same fail-loud gate as nginx -t below.
     for unit in /etc/systemd/system/csr-api.service \
                 /etc/systemd/system/csr-expiry-warn.service \
-                /etc/systemd/system/csr-expiry-warn.timer; do
+                /etc/systemd/system/csr-expiry-warn.timer \
+                /etc/systemd/system/csr-auto-renew.service \
+                /etc/systemd/system/csr-auto-renew.timer; do
         [[ -f "$unit" ]] || continue
         if ! systemd-analyze verify "$unit" 2>&1; then
             echo "systemd unit FAILED validation: $unit" >&2
@@ -132,6 +136,9 @@ if [[ "$changed_tags" == *systemd* ]]; then
         fi
     done
     systemctl daemon-reload
+    # Enable the periodic timers (idempotent). The .service units are oneshot,
+    # triggered by their timers; we enable the timers, not the services.
+    systemctl enable --now csr-expiry-warn.timer csr-auto-renew.timer 2>/dev/null || true
 fi
 if [[ "$changed_tags" == *nginx* ]]; then
     # Validate before (re)loading - a bad config must not take nginx down.

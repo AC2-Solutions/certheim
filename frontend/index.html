@@ -898,6 +898,20 @@
                style="max-width:200px" placeholder="(role default)">
       </div>
 
+      <div id="signing-renew-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">
+        <label class="status" style="display:block;margin-bottom:4px">
+          <input type="checkbox" id="signing-cfg-autorenew"> Enable automated certificate renewal
+        </label>
+        <p class="hint" style="margin:2px 0 6px">
+          When on, issued certs nearing expiry whose template opts into auto-renew are
+          re-signed automatically by the daily <code>csr-auto-renew</code> timer.
+          Templates control which certs participate.</p>
+        <label for="signing-cfg-renewdays" class="textarea-label">Default renewal window
+          <span class="hint">(days before expiry; templates may override)</span></label>
+        <input type="number" id="signing-cfg-renewdays" class="form-input" min="1" max="365"
+               style="max-width:200px" placeholder="30">
+      </div>
+
       <div class="bulk-row" style="margin-top:10px">
         <button id="signing-cfg-save-btn" type="button">Save</button>
         <span id="signing-cfg-status" class="status"></span>

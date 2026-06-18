@@ -114,7 +114,8 @@ function signingBadge(t) {
     return '<span class="pill pill-mute">inherit</span>';
   }
   return `<span class="pill pill-ok">${escapeHtml(t.signer_backend)}</span>`
-       + (t.auto_sign ? ' <span class="pill pill-purple">auto-sign</span>' : "");
+       + (t.auto_sign ? ' <span class="pill pill-purple">auto-sign</span>' : "")
+       + (t.auto_renew ? ' <span class="pill pill-purple">auto-renew</span>' : "");
 }
 
 function editTemplateSigning(td, t) {
@@ -130,6 +131,9 @@ function editTemplateSigning(td, t) {
       <input class="sig-ttl form-input" type="number" min="1" style="width:90px;display:inline-block"
              placeholder="TTL s" value="${t.max_ttl || ""}">
       <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-auto"${t.auto_sign ? " checked" : ""}> auto-sign</label>
+      <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-renew"${t.auto_renew ? " checked" : ""}> auto-renew</label>
+      <input class="sig-renew-days form-input" type="number" min="1" max="365" style="width:70px;display:inline-block"
+             placeholder="days" title="Days before expiry to renew (blank = global default)" value="${t.renew_before_days || ""}">
     </span>
     <button class="btn sig-save" style="padding:2px 10px">Save</button>
     <button class="link-btn sig-cancel">Cancel</button>
@@ -143,11 +147,14 @@ function editTemplateSigning(td, t) {
   });
   td.querySelector(".sig-save").addEventListener("click", async () => {
     const ttlRaw = td.querySelector(".sig-ttl").value.trim();
+    const renewRaw = td.querySelector(".sig-renew-days").value.trim();
     const body = {
       signer_backend: backSel.value,
       openbao_role: td.querySelector(".sig-role").value.trim(),
       max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
       auto_sign: td.querySelector(".sig-auto").checked,
+      auto_renew: td.querySelector(".sig-renew").checked,
+      renew_before_days: renewRaw === "" ? null : parseInt(renewRaw, 10),
     };
     setStatus(td.querySelector(".sig-status"), "Saving…");
     const r = await jsonReq(`/admin/templates/${t.id}/signing`, {
@@ -391,6 +398,8 @@ async function loadSigningConfig() {
     `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
   sel.value = c.default_backend || "manual";
   document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
+  document.getElementById("signing-cfg-autorenew").checked = !!c.auto_renew_enabled;
+  document.getElementById("signing-cfg-renewdays").value = c.auto_renew_before_days || 30;
   _signingRenderProvider();
 
   // CRL / OCSP distribution points (OpenBao; informational).
@@ -436,12 +445,15 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
   document.querySelectorAll("#signing-provider-fields [data-fkey]").forEach(el => {
     fields[el.dataset.fkey] = el.value.trim();
   });
+  const renewDaysRaw = document.getElementById("signing-cfg-renewdays").value.trim();
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/signing-config", {
     method: "PUT",
     body: JSON.stringify({
       default_backend: document.getElementById("signing-cfg-backend").value,
       max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
+      auto_renew_enabled: document.getElementById("signing-cfg-autorenew").checked,
+      auto_renew_before_days: renewDaysRaw === "" ? 30 : parseInt(renewDaysRaw, 10),
       fields,
     }),
   });

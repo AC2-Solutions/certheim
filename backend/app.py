@@ -200,6 +200,7 @@ WEBHOOK_EVENTS = (
     "job.failed",
     "job.expired",
     "job.expiring",
+    "job.renewed",
     "fleet_cert.expiring",
     "feedback.submitted",
 )
@@ -563,6 +564,9 @@ def init_db():
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     if "requester_email" not in existing_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN requester_email TEXT")
+    # Stamp set when the auto-renew pass has renewed this cert (idempotency guard).
+    if "auto_renewed_at" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN auto_renewed_at REAL")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_requester_dn ON jobs(requester_dn)")
@@ -680,6 +684,12 @@ def init_db():
         conn.execute("ALTER TABLE cert_templates ADD COLUMN max_ttl INTEGER")
     if "auto_sign" not in tmpl_cols:
         conn.execute("ALTER TABLE cert_templates ADD COLUMN auto_sign INTEGER NOT NULL DEFAULT 0")
+    # Automated renewal opt-in (per template) + optional override of the global
+    # renewal window (days before expiry to renew); NULL window = use global.
+    if "auto_renew" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN auto_renew INTEGER NOT NULL DEFAULT 0")
+    if "renew_before_days" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN renew_before_days INTEGER")
 
     # Seed the Windows-style built-in templates once (first run only, so
     # admin deletions stick across restarts).
@@ -1932,3 +1942,10 @@ from routes_admin import bp as admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 from routes_signing import bp as signing_bp  # noqa: E402
 app.register_blueprint(signing_bp)
+
+# Background-pass entrypoints for the systemd timers, re-exported onto the `app`
+# module so the units can call `app.run_expiry_warnings()` / `app.run_auto_renew()`.
+# (run_expiry_warnings moved into routes_admin during the blueprint split; the
+# timer still imports it from `app`, so this re-export keeps that unit working.)
+from routes_admin import run_expiry_warnings  # noqa: E402,F401
+from renew import run_auto_renew  # noqa: E402,F401

@@ -743,18 +743,31 @@ def admin_set_template_signing(template_id):
         except (TypeError, ValueError):
             return jsonify(error="max_ttl must be a positive integer (seconds)"), 400
     auto_sign = 1 if payload.get("auto_sign") else 0
+    # Automated renewal opt-in + optional per-template window (days before expiry).
+    auto_renew = 1 if payload.get("auto_renew") else 0
+    renew_days = payload.get("renew_before_days")
+    if renew_days in (None, ""):
+        renew_days = None
+    else:
+        try:
+            renew_days = max(1, min(int(renew_days), 365))
+        except (TypeError, ValueError):
+            return jsonify(error="renew_before_days must be 1-365"), 400
     with db() as conn:
         if not conn.execute("SELECT 1 FROM cert_templates WHERE id = ?",
                             (template_id,)).fetchone():
             return jsonify(error="template not found"), 404
         conn.execute(
             "UPDATE cert_templates SET signer_backend = ?, openbao_role = ?, "
-            "max_ttl = ?, auto_sign = ? WHERE id = ?",
-            (backend, role, ttl, auto_sign, template_id))
+            "max_ttl = ?, auto_sign = ?, auto_renew = ?, renew_before_days = ? "
+            "WHERE id = ?",
+            (backend, role, ttl, auto_sign, auto_renew, renew_days, template_id))
     log_event("template_signing", "update", template_id=template_id,
-              backend=backend, auto_sign=auto_sign, actor=g.identity["dn"][:128])
+              backend=backend, auto_sign=auto_sign, auto_renew=auto_renew,
+              actor=g.identity["dn"][:128])
     return jsonify(ok=True, template_id=template_id, signer_backend=backend,
-                   openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign))
+                   openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign),
+                   auto_renew=bool(auto_renew), renew_before_days=renew_days)
 
 
 # ----- CSR subject / organization identity (configurable, not hardcoded) -----
@@ -996,6 +1009,19 @@ def admin_run_expiry_warnings():
     sent, errors = run_expiry_warnings()
     log_event("expiry_warnings", "ok", sent=sent, errors=errors)
     return jsonify(ok=True, sent=sent, errors=errors)
+
+
+@bp.post("/api/admin/run-auto-renew")
+@require_admin
+@require_csrf
+def admin_run_auto_renew():
+    """Manually trigger the automated-renewal pass (also runs on the
+    csr-auto-renew timer). No-op unless the master switch is on and templates
+    opt in. Imported lazily to avoid an import cycle with app."""
+    from renew import run_auto_renew
+    renewed, skipped, errors = run_auto_renew()
+    log_event("auto_renew", "run", renewed=renewed, skipped=skipped, errors=errors)
+    return jsonify(ok=True, renewed=renewed, skipped=skipped, errors=errors)
 
 
 # ============================================================

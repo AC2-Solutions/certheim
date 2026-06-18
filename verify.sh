@@ -35,6 +35,8 @@ PAIRS=(
   "helper/csr_dashboard_helper.d/20-generate.sh|/root/sslcerts/scripts/csr_dashboard_helper.d/20-generate.sh"
   "systemd/csr-expiry-warn.service|/etc/systemd/system/csr-expiry-warn.service"
   "systemd/csr-expiry-warn.timer|/etc/systemd/system/csr-expiry-warn.timer"
+  "systemd/csr-auto-renew.service|/etc/systemd/system/csr-auto-renew.service"
+  "systemd/csr-auto-renew.timer|/etc/systemd/system/csr-auto-renew.timer"
   "systemd/csr-api.service|/etc/systemd/system/csr-api.service"
   "nginx/30-csr.conf|/etc/nginx/rcdn01.d/30-csr.conf"
   "tools/csrbackup.sh|/usr/local/sbin/csrbackup"

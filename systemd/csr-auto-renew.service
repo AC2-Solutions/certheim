@@ -1,0 +1,12 @@
+[Unit]
+Description=CSR Dashboard - automatically renew certificates nearing expiry
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=csrapi
+Group=csrapi
+WorkingDirectory=/opt/csr-dashboard
+EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
+ExecStart=/opt/csr-dashboard/venv/bin/python3 -c 'import app; r,s,e = app.run_auto_renew(); print(f"auto-renew: renewed={r} skipped={s} errors={e}")'
+Environment=PYTHONUNBUFFERED=1

@@ -58,6 +58,7 @@ CRITICAL_ROUTES = [
     ("POST", "/api/jobs/<job_id>/revoke"),
     ("GET", "/api/admin/csr-subject"),
     ("PUT", "/api/admin/csr-subject"),
+    ("POST", "/api/admin/run-auto-renew"),
 ]
 
 
@@ -191,6 +192,9 @@ def test_signing_config_shape(client):
     assert any(f["key"] == "config" for f in provs["windows_ca"]["fields"])
     assert provs["cyberark"]["stub"] is True and provs["windows_ca"]["stub"] is False
     assert "capability" in body
+    # automated-renewal controls are exposed (default off, 30-day window)
+    assert body.get("auto_renew_enabled") is False
+    assert body.get("auto_renew_before_days") == 30
 
 
 def test_signing_config_put_bad_backend(client):
@@ -226,18 +230,55 @@ def test_template_signing_policy(client):
     bad = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                      data=json.dumps({"signer_backend": "nope"}))
     assert bad.status_code == 400
-    # valid policy accepted + round-trips through the templates list
+    # valid policy accepted + round-trips through the templates list, including
+    # the auto-renew opt-in + per-template window
     ok = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                     data=json.dumps({"signer_backend": "openbao",
                                      "openbao_role": "csr-dashboard",
-                                     "max_ttl": 3600, "auto_sign": True}))
+                                     "max_ttl": 3600, "auto_sign": True,
+                                     "auto_renew": True, "renew_before_days": 21}))
     assert ok.status_code == 200, ok.get_data(as_text=True)
     again = client.get("/api/templates", headers=CAC).get_json()["templates"]
     row = next(t for t in again if t["id"] == tid)
     assert row["signer_backend"] == "openbao" and row["auto_sign"] == 1
+    assert row["auto_renew"] == 1 and row["renew_before_days"] == 21
+    # an out-of-range window is clamped to 1..365 (the UI input caps it too)
+    assert client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                      data=json.dumps({"signer_backend": "openbao",
+                                       "renew_before_days": 9999})).status_code == 200
+    clamped = client.get("/api/templates", headers=CAC).get_json()["templates"]
+    assert next(t for t in clamped if t["id"] == tid)["renew_before_days"] == 365
     # nonexistent template -> 404
     assert client.put("/api/admin/templates/999999/signing", headers=WRITE,
                       data=json.dumps({"signer_backend": "manual"})).status_code == 404
+
+
+def test_auto_renew_timer_entrypoints_exported(client):
+    """Regression guard for the blueprint-split breakage: the systemd timers
+    call app.run_expiry_warnings()/app.run_auto_renew(), so both MUST be
+    attributes of the app module."""
+    appmod = client._appmod
+    assert callable(getattr(appmod, "run_expiry_warnings", None))
+    assert callable(getattr(appmod, "run_auto_renew", None))
+
+
+def test_auto_renew_noop_when_disabled(client):
+    """With the master switch off (default), the pass renews nothing and never
+    raises — safe to run on every timer tick."""
+    appmod = client._appmod
+    renewed, skipped, errors = appmod.run_auto_renew()
+    assert (renewed, errors) == (0, 0)
+
+
+def test_run_auto_renew_endpoint(client):
+    """Admin trigger returns the (renewed, skipped, errors) shape and requires
+    auth + CSRF."""
+    assert client.post("/api/admin/run-auto-renew", headers=CSRF).status_code == 403  # no identity
+    assert client.post("/api/admin/run-auto-renew", headers=CAC).status_code == 403   # no CSRF
+    r = client.post("/api/admin/run-auto-renew", headers=WRITE)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert {"renewed", "skipped", "errors"} <= set(body)
 
 
 def test_duplicate_group_name_409_not_500(client):
