@@ -16,6 +16,8 @@ PAIRS=(
   "backend/acme_client.py|/opt/csr-dashboard/acme_client.py"
   "backend/acme_dns.py|/opt/csr-dashboard/acme_dns.py"
   "backend/ca_providers.py|/opt/csr-dashboard/ca_providers.py"
+  "backend/acme_server.py|/opt/csr-dashboard/acme_server.py"
+  "backend/routes_acme.py|/opt/csr-dashboard/routes_acme.py"
   "backend/csr_subject.py|/opt/csr-dashboard/csr_subject.py"
   "backend/routes_integrations.py|/opt/csr-dashboard/routes_integrations.py"
   "backend/routes_feedback.py|/opt/csr-dashboard/routes_feedback.py"

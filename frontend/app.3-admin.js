@@ -442,6 +442,13 @@ async function loadSigningConfig() {
   document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
   document.getElementById("signing-cfg-autorenew").checked = !!c.auto_renew_enabled;
   document.getElementById("signing-cfg-renewdays").value = c.auto_renew_before_days || 30;
+  document.getElementById("signing-cfg-acmesrv").checked = !!c.acme_server_enabled;
+  document.getElementById("signing-cfg-acmesrv-url").value = c.acme_server_base_url || "";
+  const asc = c.acme_server_capability || {};
+  document.getElementById("signing-acmesrv-cap").textContent =
+    asc.available === false ? "⚠ not entitled here" + (asc.reason ? " — " + asc.reason : "") : "";
+  document.getElementById("signing-acmesrv-dir").innerHTML = (c.acme_server_enabled && c.acme_server_base_url)
+    ? `Directory: <code>${escapeHtml(c.acme_server_base_url.replace(/\/$/, ""))}/directory</code>` : "";
   _signingRenderProvider();
 
   // CRL / OCSP distribution points (OpenBao; informational).
@@ -496,6 +503,8 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
       max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
       auto_renew_enabled: document.getElementById("signing-cfg-autorenew").checked,
       auto_renew_before_days: renewDaysRaw === "" ? 30 : parseInt(renewDaysRaw, 10),
+      acme_server_enabled: document.getElementById("signing-cfg-acmesrv").checked,
+      acme_server_base_url: document.getElementById("signing-cfg-acmesrv-url").value.trim(),
       fields,
     }),
   });
