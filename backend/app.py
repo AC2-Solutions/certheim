@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, request, jsonify, Response, abort, g
+from flask import Flask, request, jsonify, Response, abort, g, has_request_context
 
 import notify
 import capabilities
@@ -1219,11 +1219,21 @@ def resolve_identity():
     return {"dn": f"ip:{request.remote_addr}", "serial": "-", "via": "none"}
 
 def log_event(action, result, **extra):
+    # Resolve actor/request context if we're inside a request; background passes
+    # (the expiry + auto-renew systemd timers) call this with no request context,
+    # so fall back to a 'system' actor instead of raising "working outside of
+    # application context".
+    if has_request_context():
+        req_id = g.req_id
+        src = request.remote_addr
+        ident = g.identity or {}
+    else:
+        req_id, src, ident = "system", "-", {}
     parts = [
-        f"req={g.req_id}", f"action={action}", f"result={result}",
-        f"src={request.remote_addr}",
-        f"user=\"{(g.identity or {}).get('dn','-')}\"",
-        f"serial={(g.identity or {}).get('serial','-')}",
+        f"req={req_id}", f"action={action}", f"result={result}",
+        f"src={src}",
+        f"user=\"{ident.get('dn','-')}\"",
+        f"serial={ident.get('serial','-')}",
     ]
     for k, v in extra.items():
         parts.append(f"{k}={v}")
@@ -1231,7 +1241,7 @@ def log_event(action, result, **extra):
     # Mirror into the searchable audit table. Best-effort: never let audit
     # storage break the request path.
     try:
-        actor = (g.identity or {}).get("dn")
+        actor = ident.get("dn")
         with db() as conn:
             conn.execute(
                 "INSERT INTO audit_log (ts, actor, action, result, detail) "
