@@ -9,7 +9,7 @@
 variables:
   PYBIN: "python3.9"
 
-stages: [lint, test]
+stages: [lint, test, release]
 
 default:
   tags: [shell]
@@ -38,7 +38,7 @@ bash-syntax:
   script:
     - bash -n helper/csr_dashboard_helper.sh
     - for f in helper/csr_dashboard_helper.d/*.sh; do bash -n "$f"; done
-    - bash -n deploy.sh gather.sh tools/csrbackup.sh
+    - bash -n deploy.sh gather.sh tools/csrbackup.sh tools/release.sh
     - echo "bash OK"
 
 js-syntax:
@@ -62,3 +62,40 @@ smoke-tests:
 # NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
 # it lives in the /var/automation repo and is covered by that project's
 # pipeline. Tracking a copy in this repo would create two sources of truth.
+
+# Automated semantic-version releases. On a push to the default branch, compute
+# the next version from Conventional Commit prefixes since the last v* tag
+# (feat -> minor, fix/perf/refactor/build/revert -> patch, `!`/BREAKING ->
+# major), regenerate VERSION + CHANGELOG.md + RELEASE-NOTES-vX.Y.Z.md, then
+# commit + tag + push. Requires a CI/CD variable RELEASE_TOKEN = a project
+# access token with `write_repository` (and push rights to the protected
+# default branch). If unset, the job is a safe no-op. See RELEASING.md.
+release:
+  stage: release
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+  variables:
+    GIT_DEPTH: "0"          # full history + tags needed for `git describe`
+  script:
+    - |
+      set -e
+      if [ -z "${RELEASE_TOKEN:-}" ]; then
+        echo "RELEASE_TOKEN not set — skipping auto-release (set a write_repository token to enable)."
+        exit 0
+      fi
+      git fetch --tags --quiet || true
+      ver="$(bash tools/release.sh)"
+      if [ "$ver" = "none" ]; then
+        echo "No release-worthy commits since the last tag — nothing to cut."
+        exit 0
+      fi
+      echo "Cutting v$ver"
+      git config user.email "release-bot@csr-dashboard.local"
+      git config user.name  "release-bot"
+      git add VERSION CHANGELOG.md "RELEASE-NOTES-v$ver.md"
+      git commit -m "release: v$ver [skip ci]"
+      git tag -a "v$ver" -m "CSR Dashboard v$ver"
+      git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push origin "HEAD:${CI_DEFAULT_BRANCH}"
+      git push origin "v$ver"
+      echo "Released v$ver"

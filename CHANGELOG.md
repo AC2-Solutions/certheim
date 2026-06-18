@@ -3,6 +3,16 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.1.0 — 2026-06-18
+
+### Added / Changed
+- (fleet) auto-track issued certs in fleet monitoring
+- (signing) Windows CA (AD CS) provider — sign via certreq over SSH
+
+### Fixed
+- (groups) assign a user to multiple groups in one Save (user-edit modal)
+- (audit) missing sqlite3/Path imports (500s) + unregistered webhook events
+
 ## 2.0.0
 
 In-UI certificate **signing** (the cert is produced by a CA backend, not just
