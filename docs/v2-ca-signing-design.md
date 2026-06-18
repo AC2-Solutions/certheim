@@ -1,6 +1,9 @@
 # CSR Dashboard v2 — In-UI Certificate Signing (OpenBao PKI)
 
-Status: **proposed** (design + Phase 0 spike). Target: v2.0.
+Status: **delivered in v2.0.0.** (Original design + Phase 0 spike below, kept for
+context.) Shipped: `sign.py` provider seam (OpenBao live, CyberArk slot),
+approval-gated `POST /api/jobs/<id>/sign`, per-template policy + auto-sign,
+revoke + CRL/OCSP, and the admin Signing/CA UI. See `RELEASE-NOTES-v2.0.0.md`.
 
 ## 1. Goal
 

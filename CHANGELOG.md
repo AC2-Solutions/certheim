@@ -3,6 +3,54 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.0.0
+
+In-UI certificate **signing** (the cert is produced by a CA backend, not just
+an out-of-band upload), a configurable **organization identity**, and a large
+internal restructure. See `RELEASE-NOTES-v2.0.0.md` for the narrative.
+
+### Added
+- **In-UI CA signing (OpenBao PKI)** — approval-gated `POST /api/jobs/<id>/sign`:
+  a signer/admin approves and the cert is issued via the CA backend, feeding the
+  same verify → `issued` → filesystem-drop → webhook → email path as a manual
+  upload. New `backend/sign.py` provider seam; the CA key never touches the app
+  (scoped AppRole credential, env-only). Admin **Signing / CA** tab + per-job
+  **Approve & sign** with cert-chain download.
+- **Pluggable signing providers** — provider registry (manual / OpenBao /
+  CyberArk slot); admins pick the provider and set its connection in the UI.
+  OpenBao fully implemented; CyberArk is a configurable slot pending an instance.
+- **Per-template signing policy + auto-sign** — `jobs.template_id`;
+  `resolve_signing_policy()` lets a template override the global default
+  (backend/role/TTL) or inherit it; `auto_sign` issues on request. Admin
+  template editor gains a Signing column.
+- **Certificate revocation + CRL/OCSP** — `POST /api/jobs/<id>/revoke`
+  (signer/admin), a `revoked` job state, a Revoke button on issued jobs; CRL/OCSP
+  distribution points surfaced.
+- **Configurable CSR subject / organization identity** — the subject DN
+  (`C/ST/L/O/OUs/domain`) is no longer hardcoded; an admin **CSR Subject** tab
+  with org-profile presets (DoD + services, Federal Civilian, Commercial),
+  add/remove **OU tags**, a live DN preview, and a first-run (OOBE) prompt. The
+  helper parses (never sources) an admin-written `subject.conf`.
+- **Capability / feature-flag layer** (`backend/capabilities.py`) — features
+  resolve as entitled (offline, no phone-home) AND env-supported; the UI shows
+  on / off / not-licensed / unavailable-here.
+- **Endpoint smoke harness** (`tests/test_smoke.py`) gating every change, run as
+  a hard CI stage.
+
+### Changed
+- **`app.py` decomposed into Flask blueprints** —
+  `routes_{auth,jobs,requests,groups,me,admin,integrations,feedback,signing}.py`
+  (app.py 5,248 → ~1,700-line core). Behavior-preserving (url_map identical).
+- Multi-method email (SMG/SMTP/Mailgun/SendGrid/none), chat integrations
+  (Slack/Teams/Discord/webhook) with rich messages, Slack interactivity
+  (HTTP Request URL + Socket Mode), and a configurable login banner.
+- Frontend `app.js` split into ordered pieces + extracted `app.css`.
+
+### Schema (additive, auto-migrated)
+- `jobs`: `approved_by_dn`, `approved_at`, `signed_via`, `template_id`,
+  `revoked_at`, `revoked_by_dn`.
+- `cert_templates`: `signer_backend`, `openbao_role`, `max_ttl`, `auto_sign`.
+
 ## 1.2.0
 
 ### Added
