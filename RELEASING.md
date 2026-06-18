@@ -43,9 +43,11 @@ Scope (the `(...)`) is optional but nice — it shows up in the changelog.
 The job needs to push the release commit + tag back to the protected default
 branch, so it needs a token:
 
-1. **Project → Settings → Access Tokens** → create a token with the
-   **`write_repository`** scope and **Maintainer** role (e.g. name it
-   `release-bot`). Copy the value.
+1. **Project → Settings → Access Tokens** → create a token with the **`api`**
+   scope and **Maintainer** role (e.g. name it `release-bot`). Copy the value.
+   (`api`, not `write_repository`: the job both pushes the tag **and** creates
+   the GitLab Release object via the API. `write_repository` is Git-over-HTTP
+   only and can't call the API, so the release-object step would silently 403.)
 2. **Project → Settings → CI/CD → Variables** → add a **masked, protected**
    variable named **`RELEASE_TOKEN`** with that value.
 3. **Project → Settings → Repository → Protected branches** → ensure the token's
