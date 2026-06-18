@@ -9,6 +9,14 @@
 variables:
   PYBIN: "python3.9"
 
+# Run one pipeline per branch push (and per tag) — NOT merge-request pipelines.
+# Without this, adding the rules-based `release` job made GitLab create empty
+# merge_request_event pipelines and skip the branch pipeline (0 jobs ran).
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
 stages: [lint, test, release]
 
 default:
