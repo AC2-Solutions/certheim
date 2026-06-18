@@ -70,10 +70,11 @@ def sign_job(job_id):
     if backend == "manual":
         return jsonify(error="no automated signing backend is configured; "
                              "use the manual cert-upload path"), 409
-    # Capability gate for the connected backend (offline boxes shouldn't try).
-    if backend == "openbao" and not capabilities.available(CAP_OPENBAO):
-        return jsonify(error="OpenBao signing is not available in this "
-                             "deployment", capability=capabilities.status(CAP_OPENBAO)), 409
+    # Capability gate for the selected backend (offline boxes shouldn't try).
+    _cap = "ca.signing." + backend
+    if not capabilities.available(_cap):
+        return jsonify(error=f"{backend} signing is not available in this "
+                             "deployment", capability=capabilities.status(_cap)), 409
 
     try:
         result = sign.sign_csr(row["csr_pem"], template)
@@ -127,11 +128,11 @@ def revoke_job(job_id):
                              "certificates can be revoked"), 409
 
     backend = resolve_signing_policy(row["template_id"])["signer_backend"]
-    if backend != "openbao":
-        return jsonify(error="this certificate was not issued by an automated "
-                             "backend; revoke it at your CA"), 409
-    if not capabilities.available(CAP_OPENBAO):
-        return jsonify(error="OpenBao is not available in this deployment"), 409
+    if backend not in ("openbao", "windows_ca"):
+        return jsonify(error="this certificate's backend does not support in-UI "
+                             "revocation; revoke it at your CA"), 409
+    if not capabilities.available("ca.signing." + backend):
+        return jsonify(error=f"{backend} is not available in this deployment"), 409
 
     serial = _cert_serial_colons(row["cert_pem"] or "")
     if not serial:
