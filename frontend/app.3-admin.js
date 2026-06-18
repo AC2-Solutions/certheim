@@ -123,6 +123,7 @@ function signingBadge(t) {
 const SIGNING_BACKENDS = [
   ["openbao", "OpenBao"], ["windows_ca", "Windows CA"],
   ["cyberark", "CyberArk"], ["acme", "ACME"],
+  ["ejbca", "EJBCA"], ["venafi", "Venafi"], ["aws_pca", "AWS Private CA"],
 ];
 
 function editTemplateSigning(td, t) {

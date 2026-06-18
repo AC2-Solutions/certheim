@@ -52,6 +52,11 @@ def configure(get_setting=None, set_setting=None):
     global _get_setting, _set_setting
     if get_setting is not None:
         _get_setting = get_setting
+        try:                       # let ca_providers' test_* read non-secret config
+            import ca_providers
+            ca_providers.configure(get_setting=get_setting)
+        except Exception:
+            pass
     if set_setting is not None:
         _set_setting = set_setting
 
@@ -194,6 +199,9 @@ def _winca_cfg():
         "host": _cfg("winca_host", "CSR_WINCA_HOST", ""),
         "config": _cfg("winca_config", "CSR_WINCA_CONFIG", ""),
         "user": _cfg("winca_ssh_user", "CSR_WINCA_SSH_USER", "Administrator"),
+        # Enterprise (domain-joined) CA: a certificate template makes certreq
+        # issue against that template (auto-enroll policy). Blank = standalone CA.
+        "template": _cfg("winca_template", "CSR_WINCA_TEMPLATE", ""),
         "key": os.environ.get("CSR_WINCA_SSH_KEY", "").strip(),
         "known_hosts": os.environ.get("CSR_WINCA_KNOWN_HOSTS", "").strip(),
     }
@@ -247,13 +255,18 @@ def _sign_windows_ca(csr_pem, template):
     if not c["config"]:
         raise SignError("Windows CA config string not set (e.g. 'HOST\\CA Common Name')")
     csr_b64 = base64.b64encode(csr_pem.encode()).decode()
+    # Enterprise (domain-joined) CAs issue against a certificate template; pass
+    # it via -attrib. Standalone CAs leave it blank. The template name is
+    # whitelisted to a safe charset so it can't break out of the quoted attrib.
+    tmpl = "".join(ch for ch in (c.get("template") or "") if ch.isalnum() or ch in "-_ ")
+    attrib = (" -attrib 'CertificateTemplate:" + tmpl + "'") if tmpl else ""
     # Write the CSR to a temp dir, submit to the CA, emit the issued cert, clean up.
     ps = (
         "$ErrorActionPreference='Stop'\n"
         "$d=Join-Path $env:TEMP ('csrd_'+[guid]::NewGuid().ToString('N'))\n"
         "New-Item -ItemType Directory -Force -Path $d | Out-Null\n"
         "[IO.File]::WriteAllBytes(\"$d\\r.csr\",[Convert]::FromBase64String('" + csr_b64 + "'))\n"
-        "$o = certreq -submit -config '" + c["config"] + "' \"$d\\r.csr\" \"$d\\c.cer\" 2>&1 | Out-String\n"
+        "$o = certreq -submit -config '" + c["config"] + "'" + attrib + " \"$d\\r.csr\" \"$d\\c.cer\" 2>&1 | Out-String\n"
         "if(Test-Path \"$d\\c.cer\"){ Get-Content \"$d\\c.cer\" -Raw } else { 'WINCA_ERR: '+$o }\n"
         "Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue\n"
     )
@@ -432,6 +445,9 @@ PROVIDERS = {
              "placeholder": "HOSTNAME\\CA Common Name"},
             {"key": "ssh_user", "setting": "winca_ssh_user", "label": "SSH user (CA admin)",
              "placeholder": "Administrator"},
+            {"key": "template", "setting": "winca_template",
+             "label": "Certificate template (Enterprise CA; blank = standalone)",
+             "placeholder": "WebServer"},
         ],
     },
     "acme": {
@@ -480,6 +496,52 @@ PROVIDERS = {
              "label": "azure: tenant id", "placeholder": "tenant GUID",
              "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
                          {"field": "dns_provider", "in": ["azure"]}]},
+        ],
+    },
+    "ejbca": {
+        "label": "EJBCA (REST enrollment)",
+        "automated": True, "stub": False,
+        "secret_hint": "Enrollment password CSR_EJBCA_PASSWORD; optional mTLS "
+                       "client cert CSR_EJBCA_CLIENT_CERT / CSR_EJBCA_CLIENT_KEY "
+                       "(+ CSR_EJBCA_CA_FILE), all in the service env",
+        "fields": [
+            {"key": "base_url", "setting": "ejbca_base_url", "label": "EJBCA base URL",
+             "placeholder": "https://ejbca.example.com"},
+            {"key": "ca_name", "setting": "ejbca_ca_name", "label": "CA name",
+             "placeholder": "ManagementCA"},
+            {"key": "cert_profile", "setting": "ejbca_cert_profile",
+             "label": "Certificate profile", "placeholder": "SERVER"},
+            {"key": "ee_profile", "setting": "ejbca_ee_profile",
+             "label": "End-entity profile", "placeholder": "ENDUSER"},
+            {"key": "username", "setting": "ejbca_username", "label": "Enrollment username",
+             "placeholder": "csr-dashboard"},
+        ],
+    },
+    "venafi": {
+        "label": "Venafi TPP (Trust Protection Platform)",
+        "automated": True, "stub": False,
+        "secret_hint": "OAuth bearer token CSR_VENAFI_TOKEN (service env)",
+        "fields": [
+            {"key": "base_url", "setting": "venafi_base_url", "label": "TPP base URL",
+             "placeholder": "https://tpp.example.com"},
+            {"key": "policy_dn", "setting": "venafi_policy_dn", "label": "Policy folder (DN)",
+             "placeholder": "\\VED\\Policy\\Certificates\\CSR Dashboard"},
+        ],
+    },
+    "aws_pca": {
+        "label": "AWS Private CA (ACM PCA)",
+        "automated": True, "stub": False,
+        "secret_hint": "CSR_AWS_PCA_ACCESS_KEY / CSR_AWS_PCA_SECRET_KEY "
+                       "(+ optional CSR_AWS_PCA_SESSION_TOKEN) in the service env",
+        "fields": [
+            {"key": "ca_arn", "setting": "aws_pca_ca_arn", "label": "CA ARN",
+             "placeholder": "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority/..."},
+            {"key": "region", "setting": "aws_pca_region", "label": "Region",
+             "placeholder": "us-east-1"},
+            {"key": "signing_algorithm", "setting": "aws_pca_signing_algorithm",
+             "label": "Signing algorithm", "placeholder": "SHA256WITHRSA"},
+            {"key": "validity_days", "setting": "aws_pca_validity_days",
+             "label": "Validity (days)", "placeholder": "365"},
         ],
     },
 }
@@ -531,6 +593,14 @@ def _credential_present(provider):
         # with none); it's "configured" once a directory URL is set. Per-config
         # requirements (EAB / TSIG) surface at test/sign time.
         return bool(_cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL"))
+    if provider == "ejbca":
+        return bool(os.environ.get("CSR_EJBCA_PASSWORD")
+                    or os.environ.get("CSR_EJBCA_CLIENT_CERT"))
+    if provider == "venafi":
+        return bool(os.environ.get("CSR_VENAFI_TOKEN"))
+    if provider == "aws_pca":
+        return bool(os.environ.get("CSR_AWS_PCA_ACCESS_KEY")
+                    and os.environ.get("CSR_AWS_PCA_SECRET_KEY"))
     return True   # manual needs no credential
 
 
@@ -551,7 +621,22 @@ def sign_csr(csr_pem, template):
         return _sign_windows_ca(csr_pem, template)
     if backend == "acme":
         return _sign_acme(csr_pem, template)
+    if backend in ("ejbca", "venafi", "aws_pca"):
+        import ca_providers
+        try:
+            leaf, chain = getattr(ca_providers, "sign_" + backend)(
+                csr_pem, _provider_settings(backend))
+        except ca_providers.CAProviderError as e:
+            raise SignError(str(e))
+        return SignResult(leaf, chain)
     raise SignError(f"unknown signer_backend: {backend}")
+
+
+def _provider_settings(backend):
+    """Resolve a provider's non-secret connection fields from app_settings into
+    a plain dict keyed by field key (what ca_providers.sign_* expect)."""
+    return {f["key"]: ((_get_setting(f["setting"]) if _get_setting else "") or "")
+            for f in PROVIDERS.get(backend, {}).get("fields", [])}
 
 
 def revoke_cert(serial_number, backend="openbao"):
@@ -597,6 +682,12 @@ def test_connection(backend="openbao"):
         return _test_windows_ca()
     if backend == "acme":
         return _test_acme()
+    if backend in ("ejbca", "venafi", "aws_pca"):
+        import ca_providers
+        try:
+            return getattr(ca_providers, "test_" + backend)()
+        except ca_providers.CAProviderError as e:
+            raise SignError(str(e))
     if backend != "openbao":
         raise SignError(f"no connection test for backend: {backend}")
     addr, mount = _openbao_addr_mount()

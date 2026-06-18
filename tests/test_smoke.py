@@ -522,3 +522,110 @@ def test_acme_solver_azure_zone_validation(client):
     finally:
         for k in ("acme_challenge_type", "acme_dns_provider", "acme_dns_zone"):
             appmod.set_setting(k, "")
+
+
+# --- Phase 3: enterprise CA providers (EJBCA / Venafi / AWS PCA / Ent ADCS) --
+def _self_signed_b64der():
+    """A real cert as base64 DER, for canned EJBCA/Venafi responses."""
+    import base64
+    import subprocess
+    key = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
+    pem = subprocess.run(["openssl", "req", "-new", "-x509", "-key", "/dev/stdin",
+                          "-subj", "/CN=t", "-days", "1"], input=key, capture_output=True).stdout
+    der = subprocess.run(["openssl", "x509", "-inform", "PEM", "-outform", "DER"],
+                         input=pem, capture_output=True).stdout
+    return base64.b64encode(der).decode(), pem.decode()
+
+
+def _ca_recorder(responses):
+    calls = []
+
+    def fake(method, url, headers=None, body=None, timeout=30, context=None):
+        calls.append({"method": method, "url": url, "headers": headers or {}, "body": body})
+        return responses.pop(0)
+    return calls, fake
+
+
+def test_ejbca_request(monkeypatch):
+    import json
+    import ca_providers
+    b64der, _ = _self_signed_b64der()
+    calls, fake = _ca_recorder([(200, json.dumps(
+        {"certificate": b64der, "certificate_chain": []}).encode())])
+    monkeypatch.setattr(ca_providers, "_http", fake)
+    leaf, _chain = ca_providers.sign_ejbca("CSRPEM", {
+        "base_url": "https://ejbca.x", "ca_name": "CA",
+        "cert_profile": "SERVER", "ee_profile": "ENDUSER", "username": "u"})
+    assert "BEGIN CERTIFICATE" in leaf
+    assert calls[0]["url"].endswith("/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll")
+    sent = json.loads(calls[0]["body"])
+    assert sent["certificate_request"] == "CSRPEM"
+    assert sent["certificate_authority_name"] == "CA" and sent["end_entity_profile_name"] == "ENDUSER"
+
+
+def test_venafi_request(monkeypatch):
+    import base64
+    import json
+    import ca_providers
+    _b64der, pem = _self_signed_b64der()
+    monkeypatch.setenv("CSR_VENAFI_TOKEN", "tok")
+    calls, fake = _ca_recorder([
+        (200, json.dumps({"CertificateDN": "\\VED\\cert1"}).encode()),
+        (200, json.dumps({"CertificateData": base64.b64encode(pem.encode()).decode()}).encode()),
+    ])
+    monkeypatch.setattr(ca_providers, "_http", fake)
+    leaf, _chain = ca_providers.sign_venafi("CSRPEM", {
+        "base_url": "https://tpp.x", "policy_dn": "\\VED\\Policy"})
+    assert "BEGIN CERTIFICATE" in leaf
+    assert calls[0]["url"].endswith("/vedsdk/certificates/request")
+    assert "Bearer tok" in calls[0]["headers"]["Authorization"]
+    req = json.loads(calls[0]["body"])
+    assert req["PKCS10"] == "CSRPEM" and req["PolicyDN"] == "\\VED\\Policy"
+    assert calls[1]["url"].endswith("/vedsdk/certificates/retrieve")
+
+
+def test_aws_pca_request(monkeypatch):
+    import base64
+    import json
+    import ca_providers
+    monkeypatch.setenv("CSR_AWS_PCA_ACCESS_KEY", "AKID")
+    monkeypatch.setenv("CSR_AWS_PCA_SECRET_KEY", "secret")
+    calls, fake = _ca_recorder([
+        (200, json.dumps({"CertificateArn": "arn:aws:acm-pca:us-east-1:1:certificate/abc"}).encode()),
+        (200, json.dumps({"Certificate": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
+                          "CertificateChain": "-----BEGIN CERTIFICATE-----\nY\n-----END CERTIFICATE-----"}).encode()),
+    ])
+    monkeypatch.setattr(ca_providers, "_http", fake)
+    leaf, chain = ca_providers.sign_aws_pca("CSRPEM", {
+        "ca_arn": "arn:aws:acm-pca:us-east-1:1:certificate-authority/x", "region": "us-east-1"})
+    assert "X" in leaf and "Y" in chain
+    issue = calls[0]
+    assert issue["headers"]["x-amz-target"] == "ACMPrivateCA.IssueCertificate"
+    assert "AWS4-HMAC-SHA256" in issue["headers"]["Authorization"]
+    body = json.loads(issue["body"])
+    assert base64.b64decode(body["Csr"]).decode() == "CSRPEM"
+    assert calls[1]["headers"]["x-amz-target"] == "ACMPrivateCA.GetCertificate"
+
+
+def test_enterprise_providers_registered(client):
+    body = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    assert {"ejbca", "venafi", "aws_pca"} <= set(body["backends"])
+    provs = {p["key"]: p for p in body["providers"]}
+    for k in ("ejbca", "venafi", "aws_pca"):
+        assert provs[k]["automated"] and not provs[k]["stub"]
+    # windows_ca gained the Enterprise certificate-template field
+    assert "template" in {f["key"] for f in provs["windows_ca"]["fields"]}
+
+
+def test_enterprise_capability_keys(client):
+    import capabilities
+    for k in ("ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca"):
+        assert k in capabilities.CAPABILITIES
+
+
+def test_template_pin_enterprise_backend(client):
+    import json
+    tid = client.get("/api/templates", headers=CAC).get_json()["templates"][0]["id"]
+    r = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                   data=json.dumps({"signer_backend": "venafi"}))
+    assert r.status_code == 200 and r.get_json()["signer_backend"] == "venafi"
