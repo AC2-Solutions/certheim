@@ -251,6 +251,34 @@ def test_duplicate_group_name_409_not_500(client):
     client.delete(f"/api/admin/groups/{r1.get_json()['id']}", headers=WRITE)
 
 
+def test_user_multi_group_assignment(client):
+    # Assign a user to multiple groups in one PUT /admin/users, and remove.
+    import json
+    g1 = client.post("/api/admin/groups", headers=WRITE,
+                     data=json.dumps({"name": "mg-one"})).get_json()["id"]
+    g2 = client.post("/api/admin/groups", headers=WRITE,
+                     data=json.dumps({"name": "mg-two"})).get_json()["id"]
+    me = client.get("/api/me", headers=CAC).get_json()
+    dn = me["dn"]
+    # assign both
+    r = client.put("/api/admin/users", headers=WRITE,
+                   data=json.dumps({"dn": dn, "group_ids": [g1, g2]}))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    users = {u["dn"]: u for u in client.get("/api/admin/users", headers=CAC).get_json()["users"]}
+    assert g1 in users[dn]["group_ids"] and g2 in users[dn]["group_ids"]
+    # drop g2 in one save
+    client.put("/api/admin/users", headers=WRITE,
+               data=json.dumps({"dn": dn, "group_ids": [g1]}))
+    users = {u["dn"]: u for u in client.get("/api/admin/users", headers=CAC).get_json()["users"]}
+    assert g1 in users[dn]["group_ids"] and g2 not in users[dn]["group_ids"]
+    # unknown group rejected
+    bad = client.put("/api/admin/users", headers=WRITE,
+                     data=json.dumps({"dn": dn, "group_ids": [999999]}))
+    assert bad.status_code == 400
+    client.delete(f"/api/admin/groups/{g1}", headers=WRITE)
+    client.delete(f"/api/admin/groups/{g2}", headers=WRITE)
+
+
 def test_csr_subject_shape(client):
     b = client.get("/api/admin/csr-subject", headers=CAC).get_json()
     assert "config" in b and "configured" in b
