@@ -1120,7 +1120,7 @@ def set_setting(key, value):
 
 # Let the capability resolver read admin-declared env flags (cap_*).
 capabilities.configure(get_setting=get_setting)
-sign.configure(get_setting=get_setting)
+sign.configure(get_setting=get_setting, set_setting=set_setting)
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
