@@ -30,6 +30,7 @@ MANIFEST=(
   "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
   "backend/capabilities.py   /opt/csr-dashboard/capabilities.py                root:csrapi 0640 backend"
   "backend/sign.py           /opt/csr-dashboard/sign.py                        root:csrapi 0640 backend"
+  "backend/renew.py          /opt/csr-dashboard/renew.py                       root:csrapi 0640 backend"
   "backend/csr_subject.py    /opt/csr-dashboard/csr_subject.py                 root:csrapi 0640 backend"
   "backend/routes_integrations.py /opt/csr-dashboard/routes_integrations.py    root:csrapi 0640 backend"
   "backend/routes_feedback.py /opt/csr-dashboard/routes_feedback.py            root:csrapi 0640 backend"
@@ -53,6 +54,8 @@ MANIFEST=(
   "helper/csr_dashboard_helper.d/20-generate.sh  /root/sslcerts/scripts/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
   "systemd/csr-expiry-warn.service /etc/systemd/system/csr-expiry-warn.service root:root 0644 systemd"
   "systemd/csr-expiry-warn.timer   /etc/systemd/system/csr-expiry-warn.timer   root:root 0644 systemd"
+  "systemd/csr-auto-renew.service  /etc/systemd/system/csr-auto-renew.service  root:root 0644 systemd"
+  "systemd/csr-auto-renew.timer    /etc/systemd/system/csr-auto-renew.timer    root:root 0644 systemd"
   "systemd/csr-api.service          /etc/systemd/system/csr-api.service          root:root 0644 systemd"
   "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
   "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
@@ -122,7 +125,9 @@ if [[ "$changed_tags" == *systemd* ]]; then
     # to restart). Same fail-loud gate as nginx -t below.
     for unit in /etc/systemd/system/csr-api.service \
                 /etc/systemd/system/csr-expiry-warn.service \
-                /etc/systemd/system/csr-expiry-warn.timer; do
+                /etc/systemd/system/csr-expiry-warn.timer \
+                /etc/systemd/system/csr-auto-renew.service \
+                /etc/systemd/system/csr-auto-renew.timer; do
         [[ -f "$unit" ]] || continue
         if ! systemd-analyze verify "$unit" 2>&1; then
             echo "systemd unit FAILED validation: $unit" >&2
@@ -132,6 +137,9 @@ if [[ "$changed_tags" == *systemd* ]]; then
         fi
     done
     systemctl daemon-reload
+    # Enable the periodic timers (idempotent). The .service units are oneshot,
+    # triggered by their timers; we enable the timers, not the services.
+    systemctl enable --now csr-expiry-warn.timer csr-auto-renew.timer 2>/dev/null || true
 fi
 if [[ "$changed_tags" == *nginx* ]]; then
     # Validate before (re)loading - a bad config must not take nginx down.

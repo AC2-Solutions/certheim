@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily CSR Dashboard automated certificate renewal run
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

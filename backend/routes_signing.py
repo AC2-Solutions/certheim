@@ -38,6 +38,11 @@ def _config_view():
         # OpenBao capability (env_supports openbao + entitled) for the UI hint.
         "capability": capabilities.status(CAP_OPENBAO),
         "crl_ocsp": sign.crl_ocsp_urls(),
+        # Automated-renewal master switch + default window (per-template windows
+        # can override). Only effective for templates that opt in + an automated
+        # backend; see renew.run_auto_renew.
+        "auto_renew_enabled": (get_setting("auto_renew_enabled") or "0") in ("1", "true", "yes", "on"),
+        "auto_renew_before_days": int(get_setting("auto_renew_before_days") or 30),
     }
 
 
@@ -182,6 +187,17 @@ def put_signing_config():
 
     set_setting("signing_default_backend", backend)
     set_setting("signing_max_ttl", str(ttl) if ttl not in (None, "") else "")
+    # Automated-renewal master switch + default window (optional in the payload).
+    if "auto_renew_enabled" in payload:
+        set_setting("auto_renew_enabled",
+                    "1" if payload.get("auto_renew_enabled") else "0")
+    if "auto_renew_before_days" in payload:
+        rd = payload.get("auto_renew_before_days")
+        try:
+            rd = max(1, min(int(rd), 365))
+        except (TypeError, ValueError):
+            return jsonify(error="auto_renew_before_days must be 1-365"), 400
+        set_setting("auto_renew_before_days", str(rd))
     # Persist the selected provider's connection fields generically. The UI
     # sends {fields: {<field_key>: <value>}} for the chosen provider; each maps
     # to its app_settings key via the provider registry.

@@ -252,8 +252,8 @@ fi
 log "9/9  Deploy code + start services"
 # ---------------------------------------------------------------------------
 bash ./deploy.sh
-systemctl enable csr-api.service csr-expiry-warn.timer >/dev/null 2>&1 || true
-systemctl start csr-expiry-warn.timer 2>/dev/null || true
+systemctl enable csr-api.service csr-expiry-warn.timer csr-auto-renew.timer >/dev/null 2>&1 || true
+systemctl start csr-expiry-warn.timer csr-auto-renew.timer 2>/dev/null || true
 
 echo ""
 echo "==================================================================="

@@ -150,6 +150,14 @@ email" verifies wiring.
   `audit_log` table (admin Audit panel).
 - **Expiry warnings**: `csr-expiry-warn.timer` (daily 06:30 UTC) runs
   `app.run_expiry_warnings()`.
+- **Automated renewal**: `csr-auto-renew.timer` (daily 07:00 UTC) runs
+  `app.run_auto_renew()` — re-signs issued certs nearing expiry whose template
+  opts into auto-renew, via that template's CA backend. Off by default; enable
+  on Admin → Signing/CA (master switch + default window) and per template
+  (auto-renew checkbox + window). Trigger on demand with
+  `POST /csr/api/admin/run-auto-renew`. Both timer entrypoints are re-exported
+  from the `app` module — if either timer logs
+  `AttributeError: module 'app' has no attribute ...`, that re-export is missing.
 - **GitLab integration**: Admin → GitLab (config in `integrations.conf`);
   inbound webhook at `/csr/api/webhooks/gitlab` (validated by `X-Gitlab-Token`).
 
