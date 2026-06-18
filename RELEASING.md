@@ -21,8 +21,10 @@ subjects since the last `v*` tag and picks the bump:
 The highest applicable bump wins (one `feat` among several `fix`es → minor).
 
 The job then regenerates **`VERSION`**, prepends a section to **`CHANGELOG.md`**,
-writes **`RELEASE-NOTES-vX.Y.Z.md`**, commits (`release: vX.Y.Z [skip ci]`), and
-**tags `vX.Y.Z`** — so every release has notes, automatically.
+writes **`RELEASE-NOTES-vX.Y.Z.md`**, commits (`release: vX.Y.Z [skip ci]`),
+**tags `vX.Y.Z`**, and creates a **GitLab Release** object (Deploy → Releases)
+using those notes as its description — so every release has notes, automatically,
+both in-repo and in the GitLab UI.
 
 ## So: write Conventional Commits
 
