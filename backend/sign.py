@@ -165,9 +165,94 @@ def _sign_openbao(csr_pem, template):
     return SignResult(cert, chain_pem)
 
 
-# --- public API -----------------------------------------------------------
+# --- CyberArk provider (configurable slot) --------------------------------
+# The framework + admin UI let an operator point at CyberArk and store its
+# connection config; the actual sign/revoke API calls are intentionally a
+# clearly-marked stub until wired+tested against a real CyberArk instance.
+_CYBERARK_TODO = (
+    "CyberArk is selected and its connection is saved, but the CyberArk signing "
+    "API integration is not built in this release. Use OpenBao, or implement the "
+    "CyberArk calls in sign.py (_sign_cyberark/_revoke_cyberark) against your "
+    "CyberArk instance.")
 
-BACKENDS = ("manual", "openbao")
+
+def _sign_cyberark(csr_pem, template):
+    raise SignError(_CYBERARK_TODO)
+
+
+# --- provider registry (admin-selectable signing backends) ----------------
+# Each provider declares connection fields rendered in the admin UI. A field's
+# value is stored non-secret in app_settings under its `setting` key; secrets
+# come from the environment (see secret_hint). 'manual' has no automated signing.
+PROVIDERS = {
+    "manual": {
+        "label": "Manual (signers upload certs by hand)",
+        "automated": False, "stub": False, "secret_hint": "", "fields": [],
+    },
+    "openbao": {
+        "label": "OpenBao PKI",
+        "automated": True, "stub": False,
+        "secret_hint": "AppRole CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID (service env)",
+        "fields": [
+            {"key": "addr", "setting": "openbao_addr", "label": "OpenBao address",
+             "placeholder": "https://openbao.example.com"},
+            {"key": "pki_mount", "setting": "openbao_pki_mount", "label": "PKI mount",
+             "placeholder": "pki_csr"},
+            {"key": "default_role", "setting": "openbao_default_role", "label": "Default role",
+             "placeholder": "csr-dashboard"},
+        ],
+    },
+    "cyberark": {
+        "label": "CyberArk",
+        "automated": True, "stub": True,
+        "secret_hint": "API token CSR_CYBERARK_TOKEN (service env)",
+        "fields": [
+            {"key": "base_url", "setting": "signing_cyberark_base_url",
+             "label": "CyberArk base URL", "placeholder": "https://cyberark.example.com"},
+            {"key": "ca_id", "setting": "signing_cyberark_ca_id",
+             "label": "Issuing CA / policy ID", "placeholder": "policy or CA identifier"},
+            {"key": "app_id", "setting": "signing_cyberark_app_id",
+             "label": "Application ID", "placeholder": "csr-dashboard"},
+        ],
+    },
+}
+
+BACKENDS = tuple(PROVIDERS.keys())
+
+
+def field_setting(provider, field_key):
+    """Map a provider's field key -> its app_settings key (None if unknown)."""
+    for f in PROVIDERS.get(provider, {}).get("fields", []):
+        if f["key"] == field_key:
+            return f["setting"]
+    return None
+
+
+def provider_meta():
+    """Provider registry + current field values for the admin UI. Values pulled
+    via the injected get_setting; never includes secrets."""
+    out = []
+    for key, p in PROVIDERS.items():
+        fields = [{
+            "key": f["key"], "label": f["label"],
+            "placeholder": f.get("placeholder", ""),
+            "value": (_get_setting(f["setting"]) if _get_setting else "") or "",
+        } for f in p["fields"]]
+        out.append({
+            "key": key, "label": p["label"], "automated": p["automated"],
+            "stub": p["stub"], "secret_hint": p["secret_hint"],
+            "credential_present": _credential_present(key), "fields": fields,
+        })
+    return out
+
+
+def _credential_present(provider):
+    if provider == "openbao":
+        return bool(os.environ.get("CSR_OPENBAO_ROLE_ID")
+                    and os.environ.get("CSR_OPENBAO_SECRET_ID"))
+    if provider == "cyberark":
+        return bool(os.environ.get("CSR_CYBERARK_TOKEN"))
+    return True   # manual needs no credential
 
 
 def sign_csr(csr_pem, template):
@@ -177,37 +262,48 @@ def sign_csr(csr_pem, template):
     backend = ((template or {}).get("signer_backend") or "manual").strip()
     if backend == "manual":
         raise BackendUnavailable("manual signing - use the cert-upload path")
+    if not csr_pem or "REQUEST" not in csr_pem:
+        raise SignError("no CSR to sign")
     if backend == "openbao":
-        if not csr_pem or "REQUEST" not in csr_pem:
-            raise SignError("no CSR to sign")
         return _sign_openbao(csr_pem, template)
+    if backend == "cyberark":
+        return _sign_cyberark(csr_pem, template)
     raise SignError(f"unknown signer_backend: {backend}")
 
 
-def revoke_cert(serial_number):
-    """Revoke a previously-issued certificate by serial via OpenBao PKI.
+def revoke_cert(serial_number, backend="openbao"):
+    """Revoke a previously-issued certificate by serial via its CA backend.
     `serial_number` is OpenBao's colon-hex form (e.g. '39:dd:2a:...'). Returns
-    the revocation epoch (or None). Raises SignError. Requires the AppRole
-    policy to allow `update <mount>/revoke` (sign-only won't work)."""
+    the revocation epoch (or None). Raises SignError. The OpenBao AppRole policy
+    must allow `update <mount>/revoke` (sign-only won't work)."""
     if not serial_number:
         raise SignError("no serial to revoke")
-    addr, mount = _openbao_addr_mount()
-    token = _openbao_login(addr)
-    data = _http(f"{addr}/v1/{mount}/revoke",
-                 {"serial_number": serial_number}, token=token)
-    return (data.get("data") or {}).get("revocation_time")
+    if backend == "openbao":
+        addr, mount = _openbao_addr_mount()
+        token = _openbao_login(addr)
+        data = _http(f"{addr}/v1/{mount}/revoke",
+                     {"serial_number": serial_number}, token=token)
+        return (data.get("data") or {}).get("revocation_time")
+    if backend == "cyberark":
+        raise SignError(_CYBERARK_TODO)
+    raise SignError(f"revoke not supported for backend: {backend}")
 
 
 def crl_ocsp_urls():
-    """Best-effort distribution points for display (configured on the mount)."""
+    """Best-effort OpenBao distribution points for display (mount config)."""
     addr, mount = _openbao_addr_mount()
     base = f"{addr}/v1/{mount}"
     return {"crl": f"{base}/crl", "ocsp": f"{base}/ocsp", "ca": f"{base}/ca/pem"}
 
 
-def test_connection():
-    """Admin 'Test connection': prove login works and the PKI mount answers,
-    WITHOUT signing anything. Returns a small status dict; raises SignError."""
+def test_connection(backend="openbao"):
+    """Admin 'Test connection' for a provider, WITHOUT signing. Returns a small
+    status dict; raises SignError."""
+    if backend == "cyberark":
+        raise SignError("CyberArk connection test is not built in this release; "
+                        "the configuration has been saved.")
+    if backend != "openbao":
+        raise SignError(f"no connection test for backend: {backend}")
     addr, mount = _openbao_addr_mount()
     token = _openbao_login(addr)  # proves the AppRole credential is valid
     # read the mount CA to confirm the PKI mount exists/answers; it returns raw

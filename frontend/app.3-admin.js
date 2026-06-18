@@ -339,79 +339,109 @@ document.getElementById("admin-email-test-btn")?.addEventListener("click", async
 });
 
 // ===== Admin: Signing / CA (v2 in-UI signing) =====
-// Mirrors the email-config tab: load a config object into fields, PUT to save,
-// POST .../test to prove the backend answers. The capability + AppRole status
-// lines self-explain why automated signing may be unavailable in a deployment.
+// Provider-driven: the backend returns a provider registry (OpenBao / CyberArk
+// / …), each with its own connection fields. The dropdown picks the provider;
+// its fields render dynamically so the signing "location" is changeable in-UI.
 let _signingCfgCache = null;
 
-function _signingToggleBackend() {
-  const b = document.getElementById("signing-cfg-backend").value;
-  document.getElementById("signing-openbao-fields").hidden = (b !== "openbao");
+function _signingSelectedProvider() {
+  const c = _signingCfgCache;
+  const key = document.getElementById("signing-cfg-backend").value;
+  return (c && (c.providers || []).find(p => p.key === key)) || null;
 }
-document.getElementById("signing-cfg-backend")?.addEventListener("change", _signingToggleBackend);
+
+// Render the selected provider's connection fields + credential/help lines.
+function _signingRenderProvider() {
+  const p = _signingSelectedProvider();
+  const wrap = document.getElementById("signing-provider-fields");
+  const hint = document.getElementById("signing-backend-hint");
+  const cred = document.getElementById("signing-cred-state");
+  document.getElementById("signing-ttl-wrap").hidden = !(p && p.automated);
+  if (!p || !p.automated) {
+    wrap.innerHTML = ""; cred.innerHTML = "";
+    hint.textContent = "Manual: signers return certs via Upload Cert; the "
+                     + "Approve & sign / Revoke actions stay hidden.";
+    return;
+  }
+  hint.innerHTML = p.stub
+    ? `<span class="pill pill-purple">framework</span> ${escapeHtml(p.label)} can be configured here, but its signing API isn't wired in this build yet.`
+    : `Sign through ${escapeHtml(p.label)}.`;
+  wrap.innerHTML = (p.fields || []).map(f => `
+    <label class="textarea-label" for="sigf-${f.key}">${escapeHtml(f.label)}</label>
+    <input type="text" id="sigf-${f.key}" class="form-input" data-fkey="${f.key}"
+           placeholder="${escapeHtml(f.placeholder || "")}" value="${escapeHtml(f.value || "")}">`
+  ).join("");
+  cred.innerHTML = (p.credential_present
+      ? '<span class="pill pill-ok">credential configured</span>'
+      : '<span class="pill pill-err">no credential</span>')
+    + (p.secret_hint ? ` <span class="status">${escapeHtml(p.secret_hint)}</span>` : "");
+}
+document.getElementById("signing-cfg-backend")?.addEventListener("change", _signingRenderProvider);
 
 async function loadSigningConfig() {
   const r = await jsonReq("/admin/signing-config");
   if (!r.ok) return;
   const c = r.body;
   _signingCfgCache = c;
-  document.getElementById("signing-cfg-backend").value = c.default_backend || "manual";
-  document.getElementById("signing-cfg-addr").value = c.openbao_addr || "";
-  document.getElementById("signing-cfg-mount").value = c.openbao_pki_mount || "";
-  document.getElementById("signing-cfg-role").value = c.openbao_default_role || "";
+
+  // Populate the provider dropdown from the registry.
+  const sel = document.getElementById("signing-cfg-backend");
+  sel.innerHTML = (c.providers || []).map(p =>
+    `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
+  sel.value = c.default_backend || "manual";
   document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
-  _signingToggleBackend();
+  _signingRenderProvider();
 
-  // AppRole credential presence (env-only; never the value).
-  document.getElementById("signing-approle-state").innerHTML = c.approle_configured
-    ? '<span class="pill pill-ok">AppRole credential configured</span>'
-    : '<span class="pill pill-err">no AppRole credential</span> <span class="status">set CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID in the service env</span>';
-
-  // CRL / OCSP distribution points (informational; configured on the mount).
+  // CRL / OCSP distribution points (OpenBao; informational).
   const crlEl = document.getElementById("signing-crl-info");
   const dp = c.crl_ocsp || {};
-  if ((c.default_backend || "manual") !== "manual" && dp.crl) {
+  if (c.default_backend === "openbao" && dp.crl) {
     crlEl.innerHTML = `CRL: <code>${escapeHtml(dp.crl)}</code> &nbsp; OCSP: <code>${escapeHtml(dp.ocsp || "-")}</code>`;
     crlEl.hidden = false;
   } else {
     crlEl.hidden = true;
   }
 
-  // Capability note (offline deployment / missing entitlement self-explains).
+  // Capability note for OpenBao (offline deployment / entitlement self-explains).
   const cap = c.capability || {};
   const note = document.getElementById("cap-note-signing");
-  if (cap.available === false) {
+  if (c.default_backend === "openbao" && cap.available === false) {
     note.textContent = "⚠ OpenBao signing unavailable here" + (cap.reason ? " — " + cap.reason : "");
     note.hidden = false;
   } else {
     note.hidden = true;
   }
 
-  // Overall state line, like email-config-state.
+  // Overall state line.
+  const p = _signingSelectedProvider();
   const state = document.getElementById("signing-config-state");
-  if ((c.default_backend || "manual") === "manual") {
+  if (!p || !p.automated) {
     state.innerHTML = '<span class="pill pill-mute">manual signing</span> <span class="status">automated Approve &amp; sign is disabled</span>';
-  } else if (cap.available === false) {
-    state.innerHTML = `<span class="pill pill-err">unavailable</span> <span class="status">${escapeHtml(cap.reason || "automated backend not usable here")}</span>`;
-  } else if (!c.approle_configured) {
-    state.innerHTML = '<span class="pill pill-err">not configured</span> <span class="status">AppRole credential missing</span>';
+  } else if (p.stub) {
+    state.innerHTML = `<span class="pill pill-purple">framework only</span> <span class="status">${escapeHtml(p.label)} signing not wired in this build</span>`;
+  } else if (c.default_backend === "openbao" && cap.available === false) {
+    state.innerHTML = `<span class="pill pill-err">unavailable</span> <span class="status">${escapeHtml(cap.reason || "backend not usable here")}</span>`;
+  } else if (!p.credential_present) {
+    state.innerHTML = '<span class="pill pill-err">not configured</span> <span class="status">provider credential missing</span>';
   } else {
-    state.innerHTML = `<span class="pill pill-ok">automated signing enabled</span> <span class="status">via ${escapeHtml(c.default_backend)}</span>`;
+    state.innerHTML = `<span class="pill pill-ok">automated signing enabled</span> <span class="status">via ${escapeHtml(p.label)}</span>`;
   }
 }
 
 document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("signing-cfg-status");
   const ttlRaw = document.getElementById("signing-cfg-ttl").value.trim();
+  const fields = {};
+  document.querySelectorAll("#signing-provider-fields [data-fkey]").forEach(el => {
+    fields[el.dataset.fkey] = el.value.trim();
+  });
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/signing-config", {
     method: "PUT",
     body: JSON.stringify({
       default_backend: document.getElementById("signing-cfg-backend").value,
-      openbao_addr: document.getElementById("signing-cfg-addr").value.trim(),
-      openbao_pki_mount: document.getElementById("signing-cfg-mount").value.trim(),
-      openbao_default_role: document.getElementById("signing-cfg-role").value.trim(),
       max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
+      fields,
     }),
   });
   if (!r.ok) {
@@ -424,8 +454,11 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
 
 document.getElementById("signing-cfg-test-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("signing-cfg-status");
+  const backend = document.getElementById("signing-cfg-backend").value;
   setStatus(status, "Testing connection…");
-  const r = await jsonReq("/admin/signing-config/test", { method: "POST" });
+  const r = await jsonReq("/admin/signing-config/test", {
+    method: "POST", body: JSON.stringify({ backend }),
+  });
   if (!r.ok || !(r.body && r.body.ok)) {
     setStatus(status, (r.body && r.body.error) || "Connection failed", "err");
     return;

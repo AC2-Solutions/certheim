@@ -12,7 +12,6 @@ policy (design §4.3) is a P2 refinement - sign_csr already takes a template
 dict, so that drops in without touching this flow.
 """
 from flask import Blueprint, request, jsonify, g
-import os
 import time
 import capabilities
 import sign
@@ -28,19 +27,16 @@ CAP_OPENBAO = "ca.signing.openbao"
 
 
 def _config_view():
-    """Non-secret signing config + live capability/credential status."""
-    cap = capabilities.status(CAP_OPENBAO)
+    """Non-secret signing config: the selected provider, the full provider
+    registry (with current field values + credential presence) so the admin UI
+    can render any provider's connection fields, plus capability + CRL/OCSP."""
     return {
         "default_backend": (get_setting("signing_default_backend") or "manual"),
-        "openbao_addr": get_setting("openbao_addr") or "",
-        "openbao_pki_mount": get_setting("openbao_pki_mount") or "",
-        "openbao_default_role": get_setting("openbao_default_role") or "",
         "max_ttl": get_setting("signing_max_ttl") or "",
-        # AppRole creds are env-only; report presence, never the value.
-        "approle_configured": bool(os.environ.get("CSR_OPENBAO_ROLE_ID")
-                                   and os.environ.get("CSR_OPENBAO_SECRET_ID")),
+        "providers": sign.provider_meta(),
         "backends": list(sign.BACKENDS),
-        "capability": cap,
+        # OpenBao capability (env_supports openbao + entitled) for the UI hint.
+        "capability": capabilities.status(CAP_OPENBAO),
         "crl_ocsp": sign.crl_ocsp_urls(),
     }
 
@@ -141,7 +137,7 @@ def revoke_job(job_id):
     if not serial:
         return jsonify(error="could not read the certificate serial"), 500
     try:
-        rev_time = sign.revoke_cert(serial)
+        rev_time = sign.revoke_cert(serial, backend=backend)
     except sign.SignError as e:
         log_event("revoke", "backend_error", job_id=job_id, error=str(e)[:200])
         return jsonify(error=f"revoke failed: {e}"), 502
@@ -184,10 +180,16 @@ def put_signing_config():
             return jsonify(error="max_ttl must be a positive integer (seconds)"), 400
 
     set_setting("signing_default_backend", backend)
-    set_setting("openbao_addr", (payload.get("openbao_addr") or "").strip())
-    set_setting("openbao_pki_mount", (payload.get("openbao_pki_mount") or "").strip())
-    set_setting("openbao_default_role", (payload.get("openbao_default_role") or "").strip())
     set_setting("signing_max_ttl", str(ttl) if ttl not in (None, "") else "")
+    # Persist the selected provider's connection fields generically. The UI
+    # sends {fields: {<field_key>: <value>}} for the chosen provider; each maps
+    # to its app_settings key via the provider registry.
+    fields = payload.get("fields") or {}
+    if isinstance(fields, dict):
+        for fkey, fval in fields.items():
+            skey = sign.field_setting(backend, fkey)
+            if skey:
+                set_setting(skey, ("" if fval is None else str(fval)).strip())
     log_event("signing_config", "update", backend=backend,
               actor=g.identity["dn"][:128])
     return jsonify(ok=True, **_config_view())
@@ -197,12 +199,14 @@ def put_signing_config():
 @require_admin
 @require_csrf
 def test_signing_config():
-    """Prove the OpenBao AppRole login works and the PKI mount answers,
-    without signing anything."""
+    """Test the selected provider's connection without signing anything."""
+    payload = request.get_json(silent=True) or {}
+    backend = (payload.get("backend")
+               or get_setting("signing_default_backend") or "openbao").strip()
     try:
-        info = sign.test_connection()
+        info = sign.test_connection(backend)
     except sign.SignError as e:
-        log_event("signing_config", "test_fail", error=str(e)[:200])
+        log_event("signing_config", "test_fail", backend=backend, error=str(e)[:200])
         return jsonify(ok=False, error=str(e)), 502
-    log_event("signing_config", "test_ok", addr=info.get("addr", "-"))
+    log_event("signing_config", "test_ok", backend=backend, addr=info.get("addr", "-"))
     return jsonify(ok=True, **info)
