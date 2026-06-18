@@ -880,31 +880,21 @@
       <p id="signing-crl-info" class="hint" hidden></p>
       <p id="cap-note-signing" class="hint" style="color:var(--danger)" hidden></p>
 
-      <label for="signing-cfg-backend" class="textarea-label">Default signing backend</label>
-      <select id="signing-cfg-backend" class="form-input" style="max-width:320px">
-        <option value="manual">Manual (signers upload signed certs by hand)</option>
-        <option value="openbao">OpenBao PKI (automated)</option>
-      </select>
-      <p class="hint">With <code>manual</code>, the Approve &amp; sign button stays
-         hidden and certs are returned via upload. Choose <code>openbao</code> to
-         sign through the connected OpenBao PKI engine.</p>
+      <label for="signing-cfg-backend" class="textarea-label">Signing provider</label>
+      <select id="signing-cfg-backend" class="form-input" style="max-width:340px"></select>
+      <p id="signing-backend-hint" class="hint"></p>
 
-      <div id="signing-openbao-fields" hidden>
-        <label for="signing-cfg-addr" class="textarea-label">OpenBao address</label>
-        <input type="text" id="signing-cfg-addr" class="form-input"
-               placeholder="https://openbao.example.com">
-        <label for="signing-cfg-mount" class="textarea-label">PKI mount</label>
-        <input type="text" id="signing-cfg-mount" class="form-input" placeholder="pki_csr">
-        <label for="signing-cfg-role" class="textarea-label">Default role</label>
-        <input type="text" id="signing-cfg-role" class="form-input" placeholder="csr-dashboard">
+      <!-- Connection fields for the selected provider, rendered from the
+           provider registry so OpenBao / CyberArk / future providers each
+           show their own settings. -->
+      <div id="signing-provider-fields"></div>
+      <p id="signing-cred-state" class="status" style="margin-top:8px"></p>
+
+      <div id="signing-ttl-wrap" hidden>
         <label for="signing-cfg-ttl" class="textarea-label">Max TTL
-          <span class="hint">(seconds, optional &mdash; the OpenBao role is authoritative)</span></label>
+          <span class="hint">(seconds, optional &mdash; the CA role is authoritative)</span></label>
         <input type="number" id="signing-cfg-ttl" class="form-input" min="1"
                style="max-width:200px" placeholder="(role default)">
-        <p id="signing-approle-state" class="status" style="margin-top:8px"></p>
-        <p class="hint">The AppRole credential (<code>CSR_OPENBAO_ROLE_ID</code> /
-           <code>CSR_OPENBAO_SECRET_ID</code>) is read from the service
-           environment, never stored in the database.</p>
       </div>
 
       <div class="bulk-row" style="margin-top:10px">
