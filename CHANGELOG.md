@@ -3,6 +3,15 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.2.0 — 2026-06-18
+
+### Added / Changed
+- (renew) automated certificate renewal loop
+
+### Fixed
+- (audit) make log_event safe outside a request context
+- (deploy) ship backend/renew.py in the deploy + verify manifests
+
 ## 2.1.0 — 2026-06-18
 
 ### Added / Changed
