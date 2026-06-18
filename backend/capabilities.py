@@ -36,6 +36,10 @@ CAPABILITIES = {
                           "desc": "Assign jobs from a Slack message"},
     "ca.signing.openbao": {"env": ["openbao"],
                           "desc": "In-UI certificate signing via OpenBao PKI"},
+    "ca.signing.windows_ca": {"env": ["winca"],
+                          "desc": "In-UI signing via a Windows CA (AD CS / certreq)"},
+    "ca.signing.cyberark": {"env": [],
+                          "desc": "In-UI signing via CyberArk (configurable slot)"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
 }
 
@@ -111,6 +115,7 @@ def _detect_env():
     else:
         caps["egress_internet"] = _probe_egress()
     caps["openbao"] = _flag("openbao", False)
+    caps["winca"] = _flag("winca", False)
     return caps
 
 

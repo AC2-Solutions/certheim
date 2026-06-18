@@ -189,19 +189,20 @@ def get_job(job_id):
     # resolves to an automated backend that's usable here. Authoritative
     # server-side gate (the /sign route enforces the same).
     _tid = row["template_id"] if "template_id" in row.keys() else None
+    _pol_backend = resolve_signing_policy(_tid)["signer_backend"]
     out["can_sign"] = bool(
         row["status"] == "pending"
         and (user_is_signer or user_is_admin)
-        and resolve_signing_policy(_tid)["signer_backend"] != "manual"
-        and capabilities.available("ca.signing.openbao")
+        and _pol_backend != "manual"
+        and capabilities.available("ca.signing." + _pol_backend)
     )
-    # Revoke is offered on issued certs that came from the automated (OpenBao)
-    # backend, for a signer/admin, when OpenBao is usable here.
+    # Revoke is offered on issued certs from a backend that supports in-UI
+    # revocation (OpenBao, Windows CA), for a signer/admin, when usable here.
     out["can_revoke"] = bool(
         row["status"] == "issued"
         and (user_is_signer or user_is_admin)
-        and resolve_signing_policy(_tid)["signer_backend"] == "openbao"
-        and capabilities.available("ca.signing.openbao")
+        and _pol_backend in ("openbao", "windows_ca")
+        and capabilities.available("ca.signing." + _pol_backend)
     )
     log_event("get_job", "ok", job_id=job_id)
     return jsonify(out)

@@ -180,6 +180,109 @@ def _sign_cyberark(csr_pem, template):
     raise SignError(_CYBERARK_TODO)
 
 
+# --- Windows CA (Active Directory Certificate Services) provider -----------
+# The dashboard reaches a Windows CA over SSH (Windows OpenSSH) and drives the
+# native `certreq`/`certutil` tools as a CA-admin user. Connection config (host,
+# CA config string, ssh user) is admin-set; the SSH private key path + optional
+# known_hosts come from the environment (secret), never the DB.
+def _winca_cfg():
+    return {
+        "host": _cfg("winca_host", "CSR_WINCA_HOST", ""),
+        "config": _cfg("winca_config", "CSR_WINCA_CONFIG", ""),
+        "user": _cfg("winca_ssh_user", "CSR_WINCA_SSH_USER", "Administrator"),
+        "key": os.environ.get("CSR_WINCA_SSH_KEY", "").strip(),
+        "known_hosts": os.environ.get("CSR_WINCA_KNOWN_HOSTS", "").strip(),
+    }
+
+
+def _winca_run_ps(ps_script, timeout=60):
+    """Run a PowerShell script on the Windows CA host over SSH (key auth) and
+    return its stdout. The script is passed base64 (-EncodedCommand) to avoid
+    all quoting issues across the bash->ssh->powershell boundary."""
+    import base64
+    import subprocess
+    c = _winca_cfg()
+    if not c["host"]:
+        raise SignError("Windows CA host not configured")
+    if not c["key"] or not os.path.isfile(c["key"]):
+        raise SignError("Windows CA SSH key not configured (CSR_WINCA_SSH_KEY)")
+    b64 = base64.b64encode(ps_script.encode("utf-16-le")).decode()
+    opts = ["ssh", "-i", c["key"], "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=20"]
+    if c["known_hosts"]:
+        opts += ["-o", "StrictHostKeyChecking=yes",
+                 "-o", "UserKnownHostsFile=" + c["known_hosts"]]
+    else:
+        opts += ["-o", "StrictHostKeyChecking=accept-new"]
+    cmd = opts + [f'{c["user"]}@{c["host"]}',
+                  "powershell -NoProfile -NonInteractive -EncodedCommand " + b64]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              env={"PATH": "/usr/bin:/bin"})
+    except subprocess.TimeoutExpired:
+        raise SignError("Windows CA SSH timed out")
+    except Exception as e:  # noqa: BLE001
+        raise SignError(f"Windows CA SSH failed: {e}")
+    out = (proc.stdout or "").replace("\r", "")
+    if proc.returncode != 0 and not out:
+        raise SignError("Windows CA SSH error: " + (proc.stderr or "").strip()[:200])
+    return out
+
+
+def _extract_pem_cert(text):
+    if "-----BEGIN CERTIFICATE-----" not in text:
+        return None
+    body = text.split("-----BEGIN CERTIFICATE-----", 1)[1]
+    body = body.split("-----END CERTIFICATE-----")[0]
+    return "-----BEGIN CERTIFICATE-----" + body + "-----END CERTIFICATE-----\n"
+
+
+def _sign_windows_ca(csr_pem, template):
+    import base64
+    c = _winca_cfg()
+    if not c["config"]:
+        raise SignError("Windows CA config string not set (e.g. 'HOST\\CA Common Name')")
+    csr_b64 = base64.b64encode(csr_pem.encode()).decode()
+    # Write the CSR to a temp dir, submit to the CA, emit the issued cert, clean up.
+    ps = (
+        "$ErrorActionPreference='Stop'\n"
+        "$d=Join-Path $env:TEMP ('csrd_'+[guid]::NewGuid().ToString('N'))\n"
+        "New-Item -ItemType Directory -Force -Path $d | Out-Null\n"
+        "[IO.File]::WriteAllBytes(\"$d\\r.csr\",[Convert]::FromBase64String('" + csr_b64 + "'))\n"
+        "$o = certreq -submit -config '" + c["config"] + "' \"$d\\r.csr\" \"$d\\c.cer\" 2>&1 | Out-String\n"
+        "if(Test-Path \"$d\\c.cer\"){ Get-Content \"$d\\c.cer\" -Raw } else { 'WINCA_ERR: '+$o }\n"
+        "Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue\n"
+    )
+    out = _winca_run_ps(ps)
+    cert = _extract_pem_cert(out)
+    if not cert:
+        raise SignError("Windows CA did not issue a certificate: " + out.strip()[-300:])
+    return SignResult(cert, "")
+
+
+def _revoke_windows_ca(serial_number):
+    c = _winca_cfg()
+    # Windows certutil -revoke takes the serial WITHOUT colons.
+    serial = (serial_number or "").replace(":", "")
+    ps = ("$o = certutil -config '" + c["config"] + "' -revoke " + serial
+          + " 2>&1 | Out-String; $o\n")
+    out = _winca_run_ps(ps)
+    if "completed successfully" in out.lower() or "revoked successfully" in out.lower():
+        return None
+    raise SignError("Windows CA revoke failed: " + out.strip()[-200:])
+
+
+def _test_windows_ca():
+    c = _winca_cfg()
+    out = _winca_run_ps("(whoami); '---'; (certutil -config '" + (c["config"] or "")
+                        + "' -ping 2>&1 | Out-String)", timeout=30)
+    low = out.lower()
+    if "interface is alive" in low or "command completed successfully" in low \
+            or (c["user"].lower() in low):
+        return {"ok": True, "addr": c["host"], "mount": c["config"]}
+    raise SignError("Windows CA reachability check inconclusive: " + out.strip()[-200:])
+
+
 # --- provider registry (admin-selectable signing backends) ----------------
 # Each provider declares connection fields rendered in the admin UI. A field's
 # value is stored non-secret in app_settings under its `setting` key; secrets
@@ -213,6 +316,19 @@ PROVIDERS = {
              "label": "Issuing CA / policy ID", "placeholder": "policy or CA identifier"},
             {"key": "app_id", "setting": "signing_cyberark_app_id",
              "label": "Application ID", "placeholder": "csr-dashboard"},
+        ],
+    },
+    "windows_ca": {
+        "label": "Windows CA (AD CS / certreq)",
+        "automated": True, "stub": False,
+        "secret_hint": "SSH key CSR_WINCA_SSH_KEY (+ optional CSR_WINCA_KNOWN_HOSTS) in the service env",
+        "fields": [
+            {"key": "host", "setting": "winca_host", "label": "CA host (SSH)",
+             "placeholder": "ca.example.com"},
+            {"key": "config", "setting": "winca_config", "label": "CA config string",
+             "placeholder": "HOSTNAME\\CA Common Name"},
+            {"key": "ssh_user", "setting": "winca_ssh_user", "label": "SSH user (CA admin)",
+             "placeholder": "Administrator"},
         ],
     },
 }
@@ -252,6 +368,9 @@ def _credential_present(provider):
                     and os.environ.get("CSR_OPENBAO_SECRET_ID"))
     if provider == "cyberark":
         return bool(os.environ.get("CSR_CYBERARK_TOKEN"))
+    if provider == "windows_ca":
+        key = os.environ.get("CSR_WINCA_SSH_KEY", "").strip()
+        return bool(key and os.path.isfile(key))
     return True   # manual needs no credential
 
 
@@ -268,6 +387,8 @@ def sign_csr(csr_pem, template):
         return _sign_openbao(csr_pem, template)
     if backend == "cyberark":
         return _sign_cyberark(csr_pem, template)
+    if backend == "windows_ca":
+        return _sign_windows_ca(csr_pem, template)
     raise SignError(f"unknown signer_backend: {backend}")
 
 
@@ -284,6 +405,8 @@ def revoke_cert(serial_number, backend="openbao"):
         data = _http(f"{addr}/v1/{mount}/revoke",
                      {"serial_number": serial_number}, token=token)
         return (data.get("data") or {}).get("revocation_time")
+    if backend == "windows_ca":
+        return _revoke_windows_ca(serial_number)
     if backend == "cyberark":
         raise SignError(_CYBERARK_TODO)
     raise SignError(f"revoke not supported for backend: {backend}")
@@ -302,6 +425,8 @@ def test_connection(backend="openbao"):
     if backend == "cyberark":
         raise SignError("CyberArk connection test is not built in this release; "
                         "the configuration has been saved.")
+    if backend == "windows_ca":
+        return _test_windows_ca()
     if backend != "openbao":
         raise SignError(f"no connection test for backend: {backend}")
     addr, mount = _openbao_addr_mount()

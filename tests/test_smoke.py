@@ -183,12 +183,13 @@ def test_slack_interact_unconfigured_or_unsigned(client):
 def test_signing_config_shape(client):
     body = client.get("/api/admin/signing-config", headers=CAC).get_json()
     assert body.get("default_backend") == "manual"          # safe default
-    assert {"manual", "openbao", "cyberark"} <= set(body.get("backends", []))
+    assert {"manual", "openbao", "cyberark", "windows_ca"} <= set(body.get("backends", []))
     # provider registry drives the UI: each provider carries its own fields
     provs = {p["key"]: p for p in body.get("providers", [])}
-    assert "openbao" in provs and "cyberark" in provs
+    assert "openbao" in provs and "cyberark" in provs and "windows_ca" in provs
     assert any(f["key"] == "addr" for f in provs["openbao"]["fields"])
-    assert provs["cyberark"]["stub"] is True
+    assert any(f["key"] == "config" for f in provs["windows_ca"]["fields"])
+    assert provs["cyberark"]["stub"] is True and provs["windows_ca"]["stub"] is False
     assert "capability" in body
 
 
