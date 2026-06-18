@@ -280,6 +280,24 @@ def test_user_multi_group_assignment(client):
     client.delete(f"/api/admin/groups/{g2}", headers=WRITE)
 
 
+def test_fleet_track_on_issue(client):
+    # An issued cert is auto-added to fleet tracking via _fleet_track_issued.
+    import subprocess, tempfile
+    appmod = client._appmod
+    d = tempfile.mkdtemp()
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", d + "/k", "-out", d + "/c",
+                    "-subj", "/CN=fleettest.example.com", "-days", "30"],
+                   check=True, capture_output=True)
+    pem = open(d + "/c").read()
+    with appmod.db() as conn:
+        appmod._fleet_track_issued(conn, "fleettrack-host", pem, job_id="jobxyz")
+    certs = client.get("/api/fleet-certs", headers=CAC).get_json()["certs"]
+    match = [c for c in certs if c.get("host") == "fleettrack-host"]
+    assert match, "issued cert not tracked in fleet_certs"
+    assert match[0].get("cn") == "fleettest.example.com"
+
+
 def test_csr_subject_shape(client):
     b = client.get("/api/admin/csr-subject", headers=CAC).get_json()
     assert "config" in b and "configured" in b
