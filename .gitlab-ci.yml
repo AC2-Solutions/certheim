@@ -108,10 +108,19 @@ release:
       git push origin "v$ver"
       # Create the GitLab Release object (tag + notes shown under Deploy>Releases).
       # Non-fatal: the tag is already pushed; the release object is secondary.
+      # NOTE: this needs RELEASE_TOKEN to have the `api` scope - `write_repository`
+      # is Git-over-HTTP only and CANNOT call the API (the POST 403s). The browser
+      # User-Agent dodges the Cloudflare bot rule (1010) on API writes to the
+      # public host. Print the HTTP status so a failure isn't silent.
       desc="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read()))' "RELEASE-NOTES-v$ver.md")"
-      curl -sf -X POST -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" -H "Content-Type: application/json" \
+      rel_code="$(curl -sS -A "Mozilla/5.0" -o /tmp/rel-resp.json -w '%{http_code}' \
+        -X POST -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" -H "Content-Type: application/json" \
         --data "{\"tag_name\":\"v$ver\",\"name\":\"v$ver\",\"description\":$desc}" \
-        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" >/dev/null \
-        && echo "GitLab Release v$ver created" \
-        || echo "warn: GitLab Release object not created (tag v$ver is pushed regardless)"
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" || echo 000)"
+      if [ "$rel_code" = "201" ]; then
+        echo "GitLab Release v$ver created"
+      else
+        echo "warn: GitLab Release object not created (HTTP $rel_code; tag v$ver is pushed regardless):"
+        head -c 300 /tmp/rel-resp.json || true; echo
+      fi
       echo "Released v$ver"
