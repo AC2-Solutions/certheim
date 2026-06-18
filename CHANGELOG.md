@@ -3,6 +3,18 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.7.0 — 2026-06-18
+
+_Released 2026-06-18. 2 changes since v2.6.0._
+
+### Features
+
+- **signing:** ACME server endpoint - dashboard as an RFC 8555 CA [phase 4] (`a18beab`)
+
+### Other changes
+
+- **acme:** document the ACME server + reverse-proxy requirement (`46d16f2`)
+
 ## 2.6.0 — 2026-06-18
 
 _Released 2026-06-18. 1 change since v2.5.0._
