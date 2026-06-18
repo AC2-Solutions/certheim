@@ -198,6 +198,9 @@ WEBHOOK_EVENTS = (
     "job.revoked",
     "job.cancelled",
     "job.failed",
+    "job.expired",
+    "job.expiring",
+    "fleet_cert.expiring",
     "feedback.submitted",
 )
 WEBHOOK_TIMEOUT = 10  # seconds

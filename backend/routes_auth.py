@@ -1,6 +1,6 @@
 """routes_auth blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, g, jsonify, request, session
-import re, string, time
+import re, sqlite3, string, time
 from app import (  # noqa: E402
     APP_VERSION, BOOTSTRAP_FIRST_ADMIN, EMAIL_RE, LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL, LOCKOUT_SECONDS, LOCKOUT_THRESHOLD, LOGIN_BANNERS, NAME_RE, _get_or_create_session, _normalize_name_part, _sessions, _sessions_lock, _set_session_cookie, _upsert_user, auth_mode, banner_options, create_local_session, current_banner, db, derive_username, destroy_local_session, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, set_setting, verify_password)
 bp = Blueprint("auth", __name__)

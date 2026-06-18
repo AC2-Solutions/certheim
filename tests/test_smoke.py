@@ -121,6 +121,7 @@ def test_me_is_admin(client):
     "/api/templates",
     "/api/admin/signing-config",
     "/api/admin/csr-subject",
+    "/api/admin/stats",            # uses Path() — regressed to a 500 once
 ])
 def test_admin_reads_ok(client, path):
     assert client.get(path, headers=CAC).status_code == 200
@@ -236,6 +237,18 @@ def test_template_signing_policy(client):
     # nonexistent template -> 404
     assert client.put("/api/admin/templates/999999/signing", headers=WRITE,
                       data=json.dumps({"signer_backend": "manual"})).status_code == 404
+
+
+def test_duplicate_group_name_409_not_500(client):
+    # A duplicate group name must hit sqlite3.IntegrityError -> 409, not a
+    # NameError 500 (regression: routes_admin didn't import sqlite3).
+    import json
+    b = json.dumps({"name": "dup-grp-smoke"})
+    r1 = client.post("/api/admin/groups", headers=WRITE, data=b)
+    assert r1.status_code == 200, r1.get_data(as_text=True)
+    r2 = client.post("/api/admin/groups", headers=WRITE, data=b)
+    assert r2.status_code == 409, r2.get_data(as_text=True)
+    client.delete(f"/api/admin/groups/{r1.get_json()['id']}", headers=WRITE)
 
 
 def test_csr_subject_shape(client):
