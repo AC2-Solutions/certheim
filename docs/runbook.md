@@ -160,6 +160,19 @@ email" verifies wiring.
   `AttributeError: module 'app' has no attribute ...`, that re-export is missing.
 - **GitLab integration**: Admin → GitLab (config in `integrations.conf`);
   inbound webhook at `/csr/api/webhooks/gitlab` (validated by `X-Gitlab-Token`).
+- **ACME server** (the dashboard *as* an RFC 8555 CA, Phase 4): off by default.
+  Enable on Admin → Signing/CA (toggle + directory base URL) and entitle it with
+  the `ca.server.acme` capability (env `CSR_CAP_ACME_SERVER=1`). It signs through
+  the **default signing backend** and validates **HTTP-01** by fetching the
+  challenge from the requested host, so:
+  - **Reverse proxy**: forward the public `/acme/` path to the app (e.g. nginx
+    `location /csr/acme/ { proxy_pass http://127.0.0.1:5002/acme/; }`). On mTLS
+    boxes add `ssl_verify_client off;` in that location — ACME clients are
+    anonymous (authenticated per-request by JWS, not CAC).
+  - **Validation reachability**: the app must reach `http://<requested-host>/`
+    on port 80 to read `/.well-known/acme-challenge/<token>`.
+  - Client points `--server` at `<base-url>/directory`. State lives in the
+    `acme_*` tables. Revoke / DNS-01 validation / key-rollover are follow-ons.
 
 ---
 
