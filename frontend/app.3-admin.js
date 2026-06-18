@@ -710,6 +710,26 @@ document.getElementById("admin-test-email-btn").addEventListener("click", async 
   }
 });
 
+// Render the group-membership checkboxes in the user-edit modal. Owner
+// memberships are shown checked + disabled (managed from the group side).
+function _renderUserEditGroups(user) {
+  const wrap = document.getElementById("user-edit-groups");
+  if (!wrap) return;
+  const memberOf = new Set(user.group_ids || []);
+  const ownerOf = new Set(user.owner_group_ids || []);
+  const groups = adminAllGroups || [];
+  if (!groups.length) { wrap.innerHTML = '<span class="status">No groups defined.</span>'; return; }
+  wrap.innerHTML = groups.map(g => {
+    const owner = ownerOf.has(g.id);
+    const checked = memberOf.has(g.id) || owner;
+    return `<label style="display:inline-flex;align-items:center;gap:4px;font-size:13px">`
+      + `<input type="checkbox" class="ue-group" data-gid="${g.id}"${checked ? " checked" : ""}${owner ? " disabled" : ""}> `
+      + escapeHtml(g.name)
+      + (owner ? ' <span class="pill pill-blue" style="font-size:10px">owner</span>' : "")
+      + `</label>`;
+  }).join("");
+}
+
 function openUserEdit(user) {
   document.getElementById("user-edit-dn").textContent = user.dn;
   document.getElementById("user-edit-dn").dataset.dn = user.dn;
@@ -720,6 +740,7 @@ function openUserEdit(user) {
   document.getElementById("user-edit-admin").checked = !!user.is_admin;
   document.getElementById("user-edit-active").checked = !!user.is_active;
   document.getElementById("user-edit-notes").value = user.notes || "";
+  _renderUserEditGroups(user);
   const pwField = document.getElementById("user-edit-password");
   if (pwField) pwField.value = "";
   const isSelf = currentUser && user.dn === currentUser.dn;
@@ -777,6 +798,8 @@ document.getElementById("user-edit-save-btn").addEventListener("click", async ()
     is_admin: document.getElementById("user-edit-admin").checked,
     is_active: document.getElementById("user-edit-active").checked,
     notes: document.getElementById("user-edit-notes").value,
+    group_ids: [...document.querySelectorAll("#user-edit-groups .ue-group")]
+      .filter(c => c.checked).map(c => parseInt(c.dataset.gid, 10)),
   };
   setStatus(status, "Saving…");
   const r = await jsonReq("/admin/users", {

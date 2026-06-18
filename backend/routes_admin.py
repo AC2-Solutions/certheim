@@ -23,6 +23,13 @@ def admin_list_users():
               FROM users
              ORDER BY last_seen_at DESC
         """).fetchall()
+        # Each user's group memberships (so the user-edit modal can show + edit
+        # all groups at once). owner_group_ids are not removable via that modal.
+        member_groups, owner_groups = {}, {}
+        for m in conn.execute("SELECT user_dn, group_id, role FROM user_groups").fetchall():
+            member_groups.setdefault(m["user_dn"], []).append(m["group_id"])
+            if m["role"] == "owner":
+                owner_groups.setdefault(m["user_dn"], []).append(m["group_id"])
     log_event("admin_list_users", "ok", count=len(rows))
     return jsonify(users=[{
         "dn": r["dn"], "cn": r["cn"], "email": r["email"],
@@ -31,6 +38,8 @@ def admin_list_users():
         "first_name": r["first_name"], "last_name": r["last_name"],
         "created_at": r["created_at"], "last_seen_at": r["last_seen_at"],
         "notes": r["notes"],
+        "group_ids": member_groups.get(r["dn"], []),
+        "owner_group_ids": owner_groups.get(r["dn"], []),
     } for r in rows])
 
 @bp.put("/api/admin/users")
@@ -82,18 +91,37 @@ def admin_update_user():
         fields["last_name"] = new_last or None
         regen_username = True
 
-    if not fields:
+    # Optional: set the user's full group membership in one save (the user-edit
+    # modal's multi-group selector). Adds as 'member'; never removes an 'owner'
+    # membership (those are managed from the group/owner side).
+    group_ids = None
+    if "group_ids" in payload:
+        if not isinstance(payload["group_ids"], list):
+            return jsonify(error="group_ids must be a list"), 400
+        try:
+            group_ids = {int(x) for x in payload["group_ids"]}
+        except (TypeError, ValueError):
+            return jsonify(error="group_ids must be integers"), 400
+
+    if not fields and group_ids is None:
         return jsonify(error="no fields to update"), 400
 
     with db() as conn:
+        # Validate BEFORE any write — a `return` inside this `with` commits, so a
+        # late validation failure must not follow a partial write.
+        if not conn.execute("SELECT 1 FROM users WHERE dn = ?", (target_dn,)).fetchone():
+            return jsonify(error="user not found"), 404
+        if group_ids is not None:
+            for gid in group_ids:
+                if not conn.execute("SELECT 1 FROM groups WHERE id = ?", (gid,)).fetchone():
+                    return jsonify(error=f"group {gid} does not exist"), 400
+
         # If names changed, compute the new username inside this transaction so
         # the collision check + update are atomic.
         if regen_username:
             row = conn.execute(
                 "SELECT first_name, last_name, username FROM users WHERE dn = ?",
                 (target_dn,)).fetchone()
-            if not row:
-                return jsonify(error="user not found"), 404
             eff_first = new_first if new_first is not None else (row["first_name"] or "")
             eff_last = new_last if new_last is not None else (row["last_name"] or "")
             if _normalize_name_part(eff_first) or _normalize_name_part(eff_last):
@@ -106,20 +134,28 @@ def admin_update_user():
                         re.match(r"^" + re.escape(base) + r"\d*$", cur_username or "")):
                     pass  # already a valid first.last[N] for these names; keep it
                 else:
-                    candidate = derive_username(eff_first, eff_last, conn)
-                    fields["username"] = candidate
+                    fields["username"] = derive_username(eff_first, eff_last, conn)
 
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        values = list(fields.values()) + [target_dn]
-        cur = conn.execute(
-            f"UPDATE users SET {set_clause} WHERE dn = ?", values
-        )
-        if cur.rowcount == 0:
-            return jsonify(error="user not found"), 404
+        if fields:
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(f"UPDATE users SET {set_clause} WHERE dn = ?",
+                         list(fields.values()) + [target_dn])
 
-    log_event("admin_user_update", "ok",
-              target_dn=target_dn[:128],
-              fields=",".join(fields.keys()))
+        if group_ids is not None:
+            current = {r["group_id"]: r["role"] for r in conn.execute(
+                "SELECT group_id, role FROM user_groups WHERE user_dn = ?",
+                (target_dn,)).fetchall()}
+            for gid in group_ids - set(current):
+                conn.execute(
+                    "INSERT OR IGNORE INTO user_groups (user_dn, group_id, added_at, role) "
+                    "VALUES (?, ?, ?, 'member')", (target_dn, gid, time.time()))
+            for gid, role in current.items():
+                if gid not in group_ids and role != "owner":
+                    conn.execute("DELETE FROM user_groups WHERE user_dn = ? AND group_id = ?",
+                                 (target_dn, gid))
+
+    log_event("admin_user_update", "ok", target_dn=target_dn[:128],
+              fields=",".join(fields.keys()) + ("+groups" if group_ids is not None else ""))
     return jsonify(ok=True, username=fields.get("username"))
 
 @bp.post("/api/admin/users/set-password")
