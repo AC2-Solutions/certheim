@@ -48,6 +48,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via Venafi TPP"},
     "ca.signing.aws_pca": {"env": ["aws_pca"],
                           "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
+    "ca.server.acme": {"env": ["acme_server"],
+                          "desc": "Expose an ACME (RFC 8555) server for external clients"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
 }
 
@@ -128,6 +130,7 @@ def _detect_env():
     caps["ejbca"] = _flag("ejbca", False)
     caps["venafi"] = _flag("venafi", False)
     caps["aws_pca"] = _flag("aws_pca", False)
+    caps["acme_server"] = _flag("acme_server", False)
     return caps
 
 

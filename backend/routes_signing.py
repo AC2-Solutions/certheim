@@ -43,6 +43,11 @@ def _config_view():
         # backend; see renew.run_auto_renew.
         "auto_renew_enabled": (get_setting("auto_renew_enabled") or "0") in ("1", "true", "yes", "on"),
         "auto_renew_before_days": int(get_setting("auto_renew_before_days") or 30),
+        # ACME server (Phase 4): expose an RFC 8555 directory for external
+        # clients. Off by default + gated by the ca.server.acme capability.
+        "acme_server_enabled": (get_setting("acme_server_enabled") or "0") in ("1", "true", "yes", "on"),
+        "acme_server_base_url": get_setting("acme_server_base_url") or "",
+        "acme_server_capability": capabilities.status("ca.server.acme"),
     }
 
 
@@ -198,6 +203,10 @@ def put_signing_config():
         except (TypeError, ValueError):
             return jsonify(error="auto_renew_before_days must be 1-365"), 400
         set_setting("auto_renew_before_days", str(rd))
+    if "acme_server_enabled" in payload:
+        set_setting("acme_server_enabled", "1" if payload.get("acme_server_enabled") else "0")
+    if "acme_server_base_url" in payload:
+        set_setting("acme_server_base_url", (payload.get("acme_server_base_url") or "").strip())
     # Persist the selected provider's connection fields generically. The UI
     # sends {fields: {<field_key>: <value>}} for the chosen provider; each maps
     # to its app_settings key via the provider registry.

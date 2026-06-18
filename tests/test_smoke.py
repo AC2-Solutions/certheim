@@ -69,6 +69,7 @@ def client():
     os.environ["CSR_DASHBOARD_ENV"] = os.path.join(tmp, "absent.env")
     os.environ["CSR_BOOTSTRAP_FIRST_ADMIN"] = "1"
     os.environ["CSR_CAP_EGRESS_INTERNET"] = "1"
+    os.environ["CSR_CAP_ACME_SERVER"] = "1"      # entitle the ACME-server tests
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "backend"))
     import app as appmod
     appmod.app.config.update(TESTING=True)
@@ -629,3 +630,149 @@ def test_template_pin_enterprise_backend(client):
     r = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                    data=json.dumps({"signer_backend": "venafi"}))
     assert r.status_code == 200 and r.get_json()["signer_backend"] == "venafi"
+
+
+# --- Phase 4: the dashboard's ACME server (RFC 8555) -----------------------
+import base64 as _b64
+import json as _json
+
+
+def _b64u(b):
+    return _b64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _acme_nonce(client):
+    return client.get("/acme/new-nonce").headers["Replay-Nonce"]
+
+
+def _jws_post(client, path, key_pem, jwk, nonce, payload, url, kid=None):
+    """Build a flattened JWS (RS256, signed with openssl) and POST it to the
+    dashboard's ACME server via the Flask test client."""
+    import os
+    import subprocess
+    import tempfile
+    prot = {"alg": "RS256", "nonce": nonce, "url": url}
+    prot["kid"] = kid if kid else None
+    if kid:
+        prot["kid"] = kid
+    else:
+        del prot["kid"]
+        prot["jwk"] = jwk
+    p64 = _b64u(_json.dumps(prot).encode())
+    y64 = "" if payload is None else _b64u(_json.dumps(payload).encode())
+    kf = tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False)
+    kf.write(key_pem); kf.close()
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", kf.name],
+                         input=f"{p64}.{y64}".encode(), capture_output=True).stdout
+    os.remove(kf.name)
+    return client.post(path, data=_json.dumps(
+        {"protected": p64, "payload": y64, "signature": _b64u(sig)}),
+        content_type="application/jose+json")
+
+
+def test_acme_server_directory_gated(client):
+    appmod = client._appmod
+    appmod.set_setting("acme_server_enabled", "0")
+    assert client.get("/acme/directory").status_code == 404      # off by default
+    appmod.set_setting("acme_server_base_url", "http://localhost/acme")
+    appmod.set_setting("acme_server_enabled", "1")
+    try:
+        d = client.get("/acme/directory")
+        assert d.status_code == 200
+        body = d.get_json()
+        assert body["newOrder"].endswith("/acme/new-order")
+        assert body["newNonce"].endswith("/acme/new-nonce")
+        assert client.get("/acme/new-nonce").headers.get("Replay-Nonce")
+    finally:
+        appmod.set_setting("acme_server_enabled", "0")
+
+
+def test_acme_server_rejects_bad_jws(client):
+    appmod = client._appmod
+    appmod.set_setting("acme_server_enabled", "1")
+    appmod.set_setting("acme_server_base_url", "http://localhost/acme")
+    try:
+        import acme_client
+        key = acme_client.new_account_key_pem()
+        jwk = acme_client._rsa_jwk(key)
+        # tamper: sign a different payload than we send -> signature check fails
+        r = client.post("/acme/new-account", content_type="application/jose+json",
+                        data=_json.dumps({"protected": _b64u(_json.dumps(
+                            {"alg": "RS256", "nonce": _acme_nonce(client),
+                             "url": "http://localhost/acme/new-account", "jwk": jwk}).encode()),
+                            "payload": _b64u(b'{"x":1}'), "signature": _b64u(b"not-a-sig")}))
+        assert r.status_code in (400, 401)
+        assert "urn:ietf:params:acme:error" in r.get_data(as_text=True)
+    finally:
+        appmod.set_setting("acme_server_enabled", "0")
+
+
+def test_acme_server_full_flow(client, monkeypatch):
+    """End-to-end through the ACME server: account -> order -> authz ->
+    challenge -> finalize -> certificate. The outbound HTTP-01 fetch and the CA
+    signing call are stubbed; everything else (JWS verify, state machine, CSR
+    name binding, persistence) is real."""
+    import subprocess
+    import acme_client
+    import acme_server
+    import sign
+    appmod = client._appmod
+    appmod.set_setting("acme_server_enabled", "1")
+    appmod.set_setting("acme_server_base_url", "http://localhost/acme")
+    appmod.set_setting("signing_default_backend", "openbao")   # != manual
+    # stub challenge validation + the CA signing
+    monkeypatch.setattr(acme_server, "validate_http01", lambda *a, **k: (True, "valid"))
+    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol: sign.SignResult(
+        "-----BEGIN CERTIFICATE-----\nFAKELEAF\n-----END CERTIFICATE-----\n",
+        "-----BEGIN CERTIFICATE-----\nFAKECHAIN\n-----END CERTIFICATE-----\n"))
+    try:
+        key = acme_client.new_account_key_pem()
+        jwk = acme_client._rsa_jwk(key)
+        base = "http://localhost/acme"
+
+        r = _jws_post(client, "/acme/new-account", key, jwk, _acme_nonce(client),
+                      {"termsOfServiceAgreed": True}, base + "/new-account")
+        assert r.status_code in (200, 201), r.get_data(as_text=True)
+        kid = r.headers["Location"]
+
+        r = _jws_post(client, "/acme/new-order", key, jwk, _acme_nonce(client),
+                      {"identifiers": [{"type": "dns", "value": "x.example.com"}]},
+                      base + "/new-order", kid=kid)
+        assert r.status_code == 201, r.get_data(as_text=True)
+        order = r.get_json()
+        assert order["status"] == "pending" and order["authorizations"]
+
+        az_url = order["authorizations"][0]
+        az_path = az_url[az_url.index("/acme/"):]
+        r = _jws_post(client, az_path, key, jwk, _acme_nonce(client), None, az_url, kid=kid)
+        authz = r.get_json()
+        ch = authz["challenges"][0]
+        assert ch["type"] == "http-01" and ch["token"]
+
+        ch_path = ch["url"][ch["url"].index("/acme/"):]
+        r = _jws_post(client, ch_path, key, jwk, _acme_nonce(client), {}, ch["url"], kid=kid)
+        assert r.get_json()["status"] == "valid"
+
+        fin_url = order["finalize"]
+        fin_path = fin_url[fin_url.index("/acme/"):]
+        # a CSR whose SAN matches the order identifier
+        kb = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
+        csr = subprocess.run(["openssl", "req", "-new", "-key", "/dev/stdin",
+                              "-subj", "/CN=x.example.com", "-addext",
+                              "subjectAltName=DNS:x.example.com"],
+                             input=kb, capture_output=True).stdout.decode()
+        der_b64u = acme_client.csr_pem_to_der_b64u(csr)
+        r = _jws_post(client, fin_path, key, jwk, _acme_nonce(client),
+                      {"csr": der_b64u}, fin_url, kid=kid)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        issued = r.get_json()
+        assert issued["status"] == "valid" and issued.get("certificate")
+
+        cert_path = issued["certificate"][issued["certificate"].index("/acme/"):]
+        r = _jws_post(client, cert_path, key, jwk, _acme_nonce(client), None,
+                      issued["certificate"], kid=kid)
+        assert r.status_code == 200
+        assert "FAKELEAF" in r.get_data(as_text=True) and "FAKECHAIN" in r.get_data(as_text=True)
+    finally:
+        appmod.set_setting("acme_server_enabled", "0")
+        appmod.set_setting("signing_default_backend", "manual")

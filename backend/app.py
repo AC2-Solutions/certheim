@@ -836,6 +836,63 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_expires ON fleet_certs(expires_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_host ON fleet_certs(host)")
 
+    # ACME server (Phase 4): state for the dashboard's own RFC 8555 directory.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_accounts (
+            id          TEXT PRIMARY KEY,
+            thumbprint  TEXT UNIQUE NOT NULL,
+            jwk_json    TEXT NOT NULL,
+            contact     TEXT,
+            status      TEXT NOT NULL DEFAULT 'valid',
+            created_at  REAL NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_orders (
+            id               TEXT PRIMARY KEY,
+            account_id       TEXT NOT NULL,
+            status           TEXT NOT NULL DEFAULT 'pending',
+            identifiers_json TEXT NOT NULL,
+            csr_pem          TEXT,
+            cert_id          TEXT,
+            error            TEXT,
+            created_at       REAL NOT NULL,
+            expires_at       REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_authzs (
+            id         TEXT PRIMARY KEY,
+            order_id   TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            status     TEXT NOT NULL DEFAULT 'pending'
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_challenges (
+            id       TEXT PRIMARY KEY,
+            authz_id TEXT NOT NULL,
+            token    TEXT NOT NULL,
+            status   TEXT NOT NULL DEFAULT 'pending',
+            error    TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_certs (
+            id         TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            pem        TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS acme_nonces (
+            nonce      TEXT PRIMARY KEY,
+            created_at REAL NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_authz_order ON acme_authzs(order_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_chal_authz ON acme_challenges(authz_id)")
+
     # One-time backfill: parse notAfter from already-issued certs that
     # pre-date the expires_at column. Best-effort.
     backfill = conn.execute(
@@ -1952,6 +2009,8 @@ from routes_admin import bp as admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 from routes_signing import bp as signing_bp  # noqa: E402
 app.register_blueprint(signing_bp)
+from routes_acme import bp as acme_bp  # noqa: E402
+app.register_blueprint(acme_bp)
 
 # Background-pass entrypoints for the systemd timers, re-exported onto the `app`
 # module so the units can call `app.run_expiry_warnings()` / `app.run_auto_renew()`.

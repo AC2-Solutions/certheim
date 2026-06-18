@@ -912,6 +912,22 @@
                style="max-width:200px" placeholder="30">
       </div>
 
+      <div id="signing-acmesrv-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">
+        <label class="status" style="display:block;margin-bottom:4px">
+          <input type="checkbox" id="signing-cfg-acmesrv"> Expose an ACME server (RFC 8555)
+        </label>
+        <p class="hint" style="margin:2px 0 6px">
+          When on, external clients (<code>certbot</code>, cert-manager, acme.sh) can enroll
+          directly: the dashboard validates domain control (HTTP-01) and signs via the
+          default backend above. Clients point at the directory URL below.
+          <span id="signing-acmesrv-cap" class="status"></span></p>
+        <label for="signing-cfg-acmesrv-url" class="textarea-label">ACME directory base URL
+          <span class="hint">(public, e.g. https://host/csr/acme)</span></label>
+        <input type="text" id="signing-cfg-acmesrv-url" class="form-input"
+               style="max-width:420px" placeholder="https://host/csr/acme">
+        <p id="signing-acmesrv-dir" class="status" style="margin-top:4px"></p>
+      </div>
+
       <div class="bulk-row" style="margin-top:10px">
         <button id="signing-cfg-save-btn" type="button">Save</button>
         <span id="signing-cfg-status" class="status"></span>
