@@ -22,7 +22,7 @@ cp -v /usr/local/sbin/csr-bootstrap-admin  tools/csr-bootstrap-admin 2>/dev/null
 cp -v /usr/local/sbin/csr-uninstall        tools/csr-uninstall.sh 2>/dev/null || true
 cp -v /usr/local/sbin/csr-set-auth         tools/csr-set-auth 2>/dev/null || true
 # nginx include - adjust to your actual filename:
-cp -v /etc/nginx/rcdn01.d/30-csr.conf    nginx/
+cp -v /etc/nginx/csr-dashboard.d/30-csr.conf    nginx/
 # sanitized config example (live email.conf is intentionally NOT tracked)
 if [[ ! -f config/email.conf.example && -f /etc/csr-dashboard/email.conf ]]; then
     cp -v /etc/csr-dashboard/email.conf config/email.conf.example

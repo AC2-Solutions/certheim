@@ -157,7 +157,7 @@ A dedicated mount keeps blast radius small. See
 `sign.py`'s backend interface is the seam:
 
 - homelab / enclave → `openbao` backend;
-- DoD prod (`rcdn01`) → an enterprise sub-CA backend (EST/CMP) **or** the
+- an enterprise prod deployment → an enterprise sub-CA backend (EST/CMP) **or** the
   existing human loop. Auto-signing against the real DoD CA is normally
   policy-restricted (offline root, RA approval, HSM) — which is exactly why the
   default trust model is approval-gated.

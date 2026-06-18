@@ -35,8 +35,8 @@ import sign
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
 # a single file to edit. Search order: $CSR_DASHBOARD_ENV, then the default
-# path. Missing file is fine - built-in defaults below match the rcdn01
-# baseline. Format: plain KEY=value lines, # comments allowed, no shell
+# path. Missing file is fine - sensible generic defaults below.
+# Format: plain KEY=value lines, # comments allowed, no shell
 # expansion (read with stdlib, so no python-dotenv dependency - matters for
 # the offline/air-gapped bundle).
 _ENV_DEFAULTS = {
@@ -211,7 +211,7 @@ HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$")
 # endpoint can't pile up unbounded threads.
 _webhook_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
 
-DASHBOARD_URL_FALLBACK = "https://nipat-pl-rcdn01.eucom.mil/csr/"
+DASHBOARD_URL_FALLBACK = "https://csr.example.com/"
 
 
 WEBHOOK_TYPES = ("generic", "slack", "teams", "discord")
@@ -994,7 +994,7 @@ def derive_username(first, last, conn):
     return f"{base}{n}"
 
 def parse_dod_cn(dn):
-    """Best-effort (first, last) from a DoD CAC DN. DoD CNs are typically
+    """Best-effort (first, last) from a CAC/PIV DN. Such CNs are typically
     LAST.FIRST.MIDDLE.EDIPI (e.g. SMITH.JOHN.ANDREW.1234567890). Returns
     title-cased (first, last); empty strings when it can't tell (admin can
     then correct via the user edit form)."""
@@ -1150,7 +1150,7 @@ _SETTINGS_DEFAULTS = {
     # "1" = self-registration is open (independent of the email domain filter).
     "allow_registration": "0",
     # Login consent banner: "none" or a key in LOGIN_BANNERS, or "custom".
-    "login_banner": "dod",
+    "login_banner": "none",
     # Custom banner content (used only when login_banner == "custom").
     "login_banner_custom_title": "Notice and Consent",
     "login_banner_custom_text": "",
@@ -1187,7 +1187,7 @@ def current_banner():
     Public (the login page needs it pre-auth). Returns:
       {key, label, link, title, paragraphs[], items[]}  or  None ("none"/empty).
     """
-    key = (get_setting("login_banner") or "dod").strip().lower()
+    key = (get_setting("login_banner") or "none").strip().lower()
     if key == "none":
         return None
     if key == "custom":
@@ -1758,7 +1758,7 @@ CA_BUNDLE = "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
 
 def _cert_upload_warnings(cert_pem):
     """Non-blocking sanity checks on an uploaded cert: chain trust against
-    the system CA bundle (which includes the imported DoD CAs), and validity
+    the system CA bundle (which includes any imported enterprise CAs), and validity
     window sanity. Returns a list of human-readable warning strings."""
     warnings = []
     try:

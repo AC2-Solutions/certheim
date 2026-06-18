@@ -90,13 +90,13 @@ cat > "$OUT/install/START_HERE" <<'STARTHERE'
 # --- REQUIRED: this site's values ------------------------------------------
 
 # This deployment's domain and hostname. The installer rewrites the bundled
-# files to use these in place of the defaults (eucom.mil / nipat-pl-rcdn01):
+# files to use these in place of the defaults (example.com / csr-host):
 #   - CSR_DOMAIN   = the domain appended to bare hostnames on cert requests
 #                    (the helper's DOMAIN_SUFFIX) and shown in the UI.
 #   - CSR_HOSTNAME = this server's short hostname, shown in UI titles and
 #                    used to build the FQDN (CSR_HOSTNAME.CSR_DOMAIN).
-CSR_DOMAIN="eucom.mil"
-CSR_HOSTNAME="nipat-pl-rcdn01"
+CSR_DOMAIN="example.com"
+CSR_HOSTNAME="csr-host"
 
 # SMG relay IP or hostname (the mail relay this server sends through).
 # OPTIONAL: leave BLANK to disable email entirely (the dashboard works fine
@@ -268,9 +268,9 @@ else
     echo "=========================================================="
     echo
 
-    ask CSR_DOMAIN "Domain to append to bare hostnames" "eucom.mil" \
+    ask CSR_DOMAIN "Domain to append to bare hostnames" "example.com" \
         "Bare cert names get this appended (e.g. 'web' -> 'web.<domain>')."
-    ask CSR_HOSTNAME "This server's short hostname" "nipat-pl-rcdn01" \
+    ask CSR_HOSTNAME "This server's short hostname" "csr-host" \
         "Shown in UI titles; combined with the domain to form the FQDN."
 
     DASHBOARD_URL_DEFAULT="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
@@ -309,7 +309,7 @@ else
     if [[ "$USE_MTLS" == "0" ]]; then
         AUTH_MODE="local"
         ask TRUSTED_EMAIL_DOMAIN "Trusted email domain for self-registration" "" \
-            "Only emails at this exact domain may self-register (e.g. eucom.mil).
+            "Only emails at this exact domain may self-register (e.g. example.com).
   Leave blank to disable self-registration (admins create users instead)."
         ask_yn REQUIRE_APPROVAL "Require admin approval for new accounts?" "n" \
             "Yes -> new registrations are 'pending' until an admin approves.
@@ -364,8 +364,8 @@ cd "$BUNDLE_ROOT"
 # ---------------------------------------------------------------------------
 log "0/8  Validating configuration"
 # ---------------------------------------------------------------------------
-: "${CSR_DOMAIN:=eucom.mil}"
-: "${CSR_HOSTNAME:=nipat-pl-rcdn01}"
+: "${CSR_DOMAIN:=example.com}"
+: "${CSR_HOSTNAME:=csr-host}"
 [[ -n "${DASHBOARD_URL:-}" ]] || DASHBOARD_URL="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
 [[ "$DASHBOARD_URL" != *CHANGEME* ]] || die "DASHBOARD_URL not set"
 # Email is OPTIONAL: empty SMG_HOST = email disabled (valid).
@@ -522,13 +522,13 @@ fi
 # ---------------------------------------------------------------------------
 log "6.5/8  Rewriting domain/hostname in bundle files"
 # ---------------------------------------------------------------------------
-# Substitute the build-time defaults (eucom.mil / nipat-pl-rcdn01) with this
+# Substitute the build-time defaults (example.com / csr-host) with this
 # deployment's values across the DEPLOYABLE files, before deploy.sh copies
 # them live. Scoped to the specific files that carry these strings; skipped
 # entirely if the operator left the defaults. Hostname is replaced first so
 # the FQDN (host.domain) composes correctly, then the domain.
-DEF_DOMAIN="eucom.mil"
-DEF_HOST="nipat-pl-rcdn01"
+DEF_DOMAIN="example.com"
+DEF_HOST="csr-host"
 if [[ "$CSR_DOMAIN" != "$DEF_DOMAIN" || "$CSR_HOSTNAME" != "$DEF_HOST" ]]; then
     files=(
         backend/app.py backend/notify.py
@@ -708,9 +708,9 @@ On a box that has never run this app, before/around install:
 \`\`\`bash
 # OS packages from the enclave repo (NOT in the bundle):
 #   ${PYBIN} nginx sqlite fapolicyd openssl policycoreutils sudo
-# nginx must include the rcdn01.d drop-in and be enabled (F9):
-grep -q 'rcdn01.d' /etc/nginx/nginx.conf || \\
-  sed -i '/http {/a\\    include /etc/nginx/rcdn01.d/*.conf;' /etc/nginx/nginx.conf
+# nginx must include the csr-dashboard.d drop-in and be enabled (F9):
+grep -q 'csr-dashboard.d' /etc/nginx/nginx.conf || \\
+  sed -i '/http {/a\\    include /etc/nginx/csr-dashboard.d/*.conf;' /etc/nginx/nginx.conf
 systemctl enable --now nginx
 # open 443 (the installer does NOT touch firewalld) (F11):
 firewall-cmd --permanent --add-service=https && firewall-cmd --reload

@@ -277,20 +277,20 @@
                                               transition: transform 0.2s; }
   details.openssl-toggle[open] > summary::before { transform: rotate(90deg); }
 
-  /* DoD banner - now a modal opened from a link on the login page.
+  /* Consent banner - now a modal opened from a link on the login page.
      Use :not([hidden]) so the hidden attribute actually hides it (a bare
      display:flex would override [hidden]'s display:none). */
-  #dod-banner:not([hidden]) { position: fixed; inset: 0; background: var(--modal-overlay);
+  #consent-banner:not([hidden]) { position: fixed; inset: 0; background: var(--modal-overlay);
                 z-index: 9999; display: flex; align-items: center; justify-content: center;
                 padding: 20px; }
-  #dod-banner[hidden] { display: none; }
-  #dod-banner .inner { background: var(--modal-bg); color: var(--fg);
+  #consent-banner[hidden] { display: none; }
+  #consent-banner .inner { background: var(--modal-bg); color: var(--fg);
                        max-width: 780px; max-height: 90vh; overflow: auto;
                        border-radius: 6px; padding: 24px; font-size: 13px; line-height: 1.5;
                        border: 1px solid var(--border); }
-  #dod-banner h2 { margin: 0 0 12px; color: var(--danger); }
-  #dod-banner ul { padding-left: 20px; }
-  #dod-banner .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  #consent-banner h2 { margin: 0 0 12px; color: var(--danger); }
+  #consent-banner ul { padding-left: 20px; }
+  #consent-banner .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
   /* Login gate - :not([hidden]) so the hidden attribute works */
   #login-view:not([hidden]) { position: fixed; inset: 0; z-index: 9000;

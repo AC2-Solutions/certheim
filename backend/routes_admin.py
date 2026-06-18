@@ -1446,7 +1446,7 @@ def admin_test_email():
 
     fake_job = {
         "id": "TEST-" + uuid.uuid4().hex[:8],
-        "target_host": "test.eucom.mil",
+        "target_host": "test.example.com",
         "requester_email": recipient,
     }
     ok, reason = notify.send_cert_issued(fake_job, g.identity["dn"])

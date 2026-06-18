@@ -1,8 +1,8 @@
 # CSR Dashboard
 
-Flask/SQLite certificate request & lifecycle dashboard for the ECJ63
-Platforms RHEL fleet. Runs on `nipat-pl-rcdn01.eucom.mil` behind nginx
-with DoD PKI CAC mTLS.
+Flask/SQLite certificate request & lifecycle dashboard for an
+Platforms RHEL fleet. Runs behind nginx
+with PKI/CAC mTLS (or local accounts).
 
 ## Repo layout → live paths
 
@@ -12,7 +12,7 @@ with DoD PKI CAC mTLS.
 | `frontend/` | `/var/www/csr/` | root:nginx 0640 (+restorecon) |
 | `helper/` | `/root/sslcerts/scripts/` | root:root 0750 / 0640 |
 | `systemd/` | `/etc/systemd/system/` | root:root 0644 |
-| `nginx/` | `/etc/nginx/rcdn01.d/` | root:root 0644 |
+| `nginx/` | `/etc/nginx/csr-dashboard.d/` | root:root 0644 |
 | `tools/csrbackup.sh` | `/usr/local/sbin/csrbackup` | root:root 0750 |
 | `ansible/` | run from AAP / CLI, not installed | — |
 
@@ -23,7 +23,7 @@ admin UI; `config/email.conf.example` documents the shape).
 ## Change workflow
 
 ```
-git clone git@nipat-pl-gtlb01.eucom.mil:platforms/linux/csr-dashboard.git
+git clone git@<your-git-host>:<group>/csr-dashboard.git
 cd csr-dashboard
 # edit files...
 sudo ./deploy.sh --diff      # review exactly what will change on the box

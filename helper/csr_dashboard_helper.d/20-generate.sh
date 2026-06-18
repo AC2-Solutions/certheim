@@ -56,7 +56,7 @@ generate_typed() {
         sans_part=""
         [[ "$line" == *,* ]] && sans_part="${line#*,}"
 
-        # Domain-qualify bare short names ("test" -> "test.eucom.mil"),
+        # Domain-qualify bare short names ("test" -> "test.example.com"),
         # matching the legacy csr-rhel.sh behavior. IPs/emails untouched.
         cn=$(fqdn_qualify "$cn")
 

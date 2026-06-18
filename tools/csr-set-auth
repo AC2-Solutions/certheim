@@ -6,7 +6,7 @@ get_setting). Used by the installer to configure password-auth mode on a box
 without CAC mTLS, and usable by an admin from the CLI.
 
 Usage:
-  csr-set-auth --mode local --domain eucom.mil [--require-approval]
+  csr-set-auth --mode local --domain example.com [--require-approval]
   csr-set-auth --mode mtls
   csr-set-auth --show
 

@@ -41,9 +41,9 @@ diagnosis, the fix applied, and whether it should be finalized into the repo.
 - **Finalize into repo:** YES — commit `requirements.txt`.
 
 ### F3 — `nginx/30-csr.conf` is referenced but ABSENT from the repo (BLOCKER for deploy.sh)
-- **Symptom:** `deploy.sh` MANIFEST unconditionally includes `nginx/30-csr.conf /etc/nginx/rcdn01.d/30-csr.conf`; the file does not exist anywhere in the repo (only referenced in comments). deploy.sh exits `MISSING in repo: nginx/30-csr.conf`.
+- **Symptom:** `deploy.sh` MANIFEST unconditionally includes `nginx/30-csr.conf /etc/nginx/csr-dashboard.d/30-csr.conf`; the file does not exist anywhere in the repo (only referenced in comments). deploy.sh exits `MISSING in repo: nginx/30-csr.conf`.
 - **Fix applied:** authored `nginx/30-csr.conf` from the app's contract (serve `/csr/` static from /var/www/csr; proxy `/csr/api/`→127.0.0.1:5002/api/; set X-Client-DN/Verify/Serial from the TLS client cert). See F-NGINX below for the CAC-mTLS vs self-signed decision.
-- **Finalize into repo:** YES — the production nginx config must be committed (currently it only lives on the rcdn01 box).
+- **Finalize into repo:** YES — the production nginx config must be committed (currently it only lives on the production box).
 ### F4 — fapolicyd blocks non-root reads of ALL interpreted-language source (.py/.sh/.js…) on the STIG target
 - **Symptom:** `make-offline-bundle.sh` (run as a normal user) dies: `cp: cannot open 'backend/app.py' for reading: Operation not permitted` — only on the `.py` files.
 - **Diagnosis:** EPERM (not EACCES) ⇒ fapolicyd, not DAC/SELinux. `/etc/fapolicyd/rules.d/10-languages.rules` defines `%languages=…,text/x-python,…` and the STIG ruleset denies untrusted subjects `perm=open` on those types. adam (untrusted subject) → DENIED; root → OK. Confirmed: `cat app.py` DENIED as adam, OK as root.
@@ -69,10 +69,10 @@ diagnosis, the fix applied, and whether it should be finalized into the repo.
 - **Diagnosis:** the guard tests `-x` (executable bit) rather than presence. The bundle preserves the build user's restrictive `0700`; under fapolicyd/STIG the file is never meant to be exec-by-path anyway (we run it via `bash`, see F7). The `-x` test is the wrong predicate.
 - **Fix applied:** changed guard to `[[ -f ./deploy.sh ]]` and the call to `bash ./deploy.sh` (F7).
 - **Finalize into repo:** YES — in `offline-install.sh` change `[[ -x ./deploy.sh ]]` → `[[ -f ./deploy.sh ]]` and `./deploy.sh` → `bash ./deploy.sh`.
-### F9 — nginx not enabled/started on a fresh box; rcdn01.d include not wired; deploy.sh only *reloads* (BLOCKER for frontend)
+### F9 — nginx not enabled/started on a fresh box; csr-dashboard.d include not wired; deploy.sh only *reloads* (BLOCKER for frontend)
 - **Symptom:** end of deploy step 7: `nginx.service is not active, cannot reload.` deploy.sh aborts (set -e) at `systemctl reload nginx`, so it never reaches the csr-api restart either.
-- **Diagnosis:** deploy.sh assumes nginx is already running and an enclave include layout (`/etc/nginx/rcdn01.d/` `include`d from a server{} block in nginx.conf). On a fresh RHEL box: nginx is installed-but-disabled, and nothing includes `rcdn01.d`. Also `nginx -t` "passed" misleadingly — because the un-wired 30-csr.conf wasn't even loaded.
-- **Fix applied (post-install):** wired `include /etc/nginx/rcdn01.d/*.conf;` into nginx.conf, generated a self-signed server cert (PKI placeholder — see F-PKI), `systemctl enable --now nginx`. deploy.sh changed conceptually to `systemctl reload-or-restart nginx` and to not hard-fail when nginx is down at first install.
+- **Diagnosis:** deploy.sh assumes nginx is already running and an enclave include layout (`/etc/nginx/csr-dashboard.d/` `include`d from a server{} block in nginx.conf). On a fresh RHEL box: nginx is installed-but-disabled, and nothing includes `csr-dashboard.d`. Also `nginx -t` "passed" misleadingly — because the un-wired 30-csr.conf wasn't even loaded.
+- **Fix applied (post-install):** wired `include /etc/nginx/csr-dashboard.d/*.conf;` into nginx.conf, generated a self-signed server cert (PKI placeholder — see F-PKI), `systemctl enable --now nginx`. deploy.sh changed conceptually to `systemctl reload-or-restart nginx` and to not hard-fail when nginx is down at first install.
 - **Finalize into repo:** YES (deploy.sh: use `reload-or-restart`; document the nginx.conf include + enable step in OFFLINE-INSTALL.md as a one-time prereq) + the production server-block/wiring must be committed under nginx/.
 
 ### F10 — venv permission fix is INCOMPLETE: non-exec files (pyvenv.cfg, site-packages *.py) stay 0600 → csr-api crash-loops (BLOCKER)
