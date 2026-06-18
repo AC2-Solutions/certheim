@@ -13,6 +13,7 @@ PAIRS=(
   "backend/capabilities.py|/opt/csr-dashboard/capabilities.py"
   "backend/sign.py|/opt/csr-dashboard/sign.py"
   "backend/renew.py|/opt/csr-dashboard/renew.py"
+  "backend/acme_client.py|/opt/csr-dashboard/acme_client.py"
   "backend/csr_subject.py|/opt/csr-dashboard/csr_subject.py"
   "backend/routes_integrations.py|/opt/csr-dashboard/routes_integrations.py"
   "backend/routes_feedback.py|/opt/csr-dashboard/routes_feedback.py"

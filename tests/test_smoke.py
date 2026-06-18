@@ -362,3 +362,59 @@ def test_revoke_negatives(client):
     assert client.post(rid, headers=CAC).status_code == 403    # no CSRF header
     # admin passes the signer gate; missing job -> 404 (not 500)
     assert client.post(rid, headers=WRITE).status_code == 404
+
+
+# --- ACME (RFC 8555) client provider --------------------------------------
+def test_acme_provider_registered(client):
+    body = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    assert "acme" in body.get("backends", [])
+    provs = {p["key"]: p for p in body.get("providers", [])}
+    assert "acme" in provs and provs["acme"]["automated"] is True
+    fkeys = {f["key"] for f in provs["acme"]["fields"]}
+    assert {"directory_url", "challenge_type", "dns_server", "http_webroot"} <= fkeys
+
+
+def test_acme_capability_key_present(client):
+    import capabilities
+    assert "ca.signing.acme" in capabilities.CAPABILITIES
+    # not available without the env flag (offline-safe default)
+    assert capabilities.available("ca.signing.acme") in (True, False)
+
+
+def test_template_can_pin_acme_backend(client):
+    import json
+    tid = client.get("/api/templates", headers=CAC).get_json()["templates"][0]["id"]
+    r = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                   data=json.dumps({"signer_backend": "acme"}))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()["signer_backend"] == "acme"
+    # unknown backend still rejected
+    assert client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                      data=json.dumps({"signer_backend": "nope"})).status_code == 400
+
+
+def test_acme_client_pure_helpers():
+    """Offline unit coverage for the JOSE/encoding + CSR-parsing helpers (no
+    network): base64url, JWK + RFC 7638 thumbprint stability, chain split, and
+    identifier extraction from a real CSR."""
+    import subprocess
+    import acme_client as ac
+    assert ac.b64u(b"\x00\xff") == "AP8"                      # no padding, urlsafe
+    # account key -> JWK with members in thumbprint order; thumbprint stable
+    key = ac.new_account_key_pem()
+    jwk = ac._rsa_jwk(key)
+    assert list(jwk.keys()) == ["e", "kty", "n"] and jwk["kty"] == "RSA"
+    assert ac._jwk_thumbprint(jwk) == ac._jwk_thumbprint(dict(jwk))
+    # chain split: leaf vs the rest
+    leaf, chain = ac._split_chain(
+        "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n"
+        "-----BEGIN CERTIFICATE-----\nBBB\n-----END CERTIFICATE-----\n")
+    assert "AAA" in leaf and "BBB" in chain
+    # identifiers parsed from a real CSR (CN + SAN)
+    k = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
+    csr = subprocess.run(
+        ["openssl", "req", "-new", "-key", "/dev/stdin", "-subj", "/CN=a.example.com",
+         "-addext", "subjectAltName=DNS:a.example.com,DNS:b.example.com"],
+        input=k, capture_output=True).stdout.decode()
+    ids = ac.csr_identifiers(csr)
+    assert "a.example.com" in ids and "b.example.com" in ids

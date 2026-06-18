@@ -729,8 +729,9 @@ def admin_set_template_signing(template_id):
     approval)."""
     payload = request.get_json(silent=True) or {}
     backend = (payload.get("signer_backend") or "manual").strip()
-    if backend not in ("manual", "openbao"):
-        return jsonify(error="signer_backend must be 'manual' or 'openbao'"), 400
+    import sign
+    if backend not in sign.BACKENDS:
+        return jsonify(error=f"signer_backend must be one of {list(sign.BACKENDS)}"), 400
     role = (payload.get("openbao_role") or "").strip() or None
     ttl = payload.get("max_ttl")
     if ttl in (None, ""):

@@ -118,18 +118,30 @@ function signingBadge(t) {
        + (t.auto_renew ? ' <span class="pill pill-purple">auto-renew</span>' : "");
 }
 
+// Automated signing backends a template may pin (besides "manual" = inherit
+// the global default). Labels mirror the provider registry.
+const SIGNING_BACKENDS = [
+  ["openbao", "OpenBao"], ["windows_ca", "Windows CA"],
+  ["cyberark", "CyberArk"], ["acme", "ACME"],
+];
+
 function editTemplateSigning(td, t) {
-  const isOB = (t.signer_backend || "manual") !== "manual";
+  const cur = t.signer_backend || "manual";
+  const notManual = cur !== "manual";
+  const opts = SIGNING_BACKENDS.map(([v, lbl]) =>
+    `<option value="${v}"${cur === v ? " selected" : ""}>${lbl}</option>`).join("");
   td.innerHTML = `
     <select class="sig-backend form-input" style="width:auto;display:inline-block">
-      <option value="manual"${!isOB ? " selected" : ""}>Inherit global</option>
-      <option value="openbao"${isOB ? " selected" : ""}>OpenBao</option>
+      <option value="manual"${!notManual ? " selected" : ""}>Inherit global</option>
+      ${opts}
     </select>
-    <span class="sig-ob"${isOB ? "" : " hidden"}>
-      <input class="sig-role form-input" style="width:130px;display:inline-block"
-             placeholder="role (optional)" value="${escapeHtml(t.openbao_role || "")}">
-      <input class="sig-ttl form-input" type="number" min="1" style="width:90px;display:inline-block"
-             placeholder="TTL s" value="${t.max_ttl || ""}">
+    <span class="sig-auto-wrap"${notManual ? "" : " hidden"}>
+      <span class="sig-ob"${cur === "openbao" ? "" : " hidden"}>
+        <input class="sig-role form-input" style="width:130px;display:inline-block"
+               placeholder="role (optional)" value="${escapeHtml(t.openbao_role || "")}">
+        <input class="sig-ttl form-input" type="number" min="1" style="width:90px;display:inline-block"
+               placeholder="TTL s" value="${t.max_ttl || ""}">
+      </span>
       <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-auto"${t.auto_sign ? " checked" : ""}> auto-sign</label>
       <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-renew"${t.auto_renew ? " checked" : ""}> auto-renew</label>
       <input class="sig-renew-days form-input" type="number" min="1" max="365" style="width:70px;display:inline-block"
@@ -139,18 +151,24 @@ function editTemplateSigning(td, t) {
     <button class="link-btn sig-cancel">Cancel</button>
     <span class="sig-status status"></span>`;
   const backSel = td.querySelector(".sig-backend");
-  const obWrap = td.querySelector(".sig-ob");
-  backSel.addEventListener("change", () => { obWrap.hidden = backSel.value !== "openbao"; });
+  const obWrap = td.querySelector(".sig-auto-wrap");
+  const obFields = td.querySelector(".sig-ob");
+  backSel.addEventListener("change", () => {
+    obWrap.hidden = backSel.value === "manual";        // auto-sign/renew for any automated backend
+    obFields.hidden = backSel.value !== "openbao";     // role/TTL are OpenBao-specific
+  });
   td.querySelector(".sig-cancel").addEventListener("click", () => {
     td.innerHTML = `${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button>`;
     td.querySelector(".admin-template-sign").addEventListener("click", () => editTemplateSigning(td, t));
   });
   td.querySelector(".sig-save").addEventListener("click", async () => {
-    const ttlRaw = td.querySelector(".sig-ttl").value.trim();
+    const ttlEl = td.querySelector(".sig-ttl");
+    const roleEl = td.querySelector(".sig-role");
+    const ttlRaw = ttlEl ? ttlEl.value.trim() : "";
     const renewRaw = td.querySelector(".sig-renew-days").value.trim();
     const body = {
       signer_backend: backSel.value,
-      openbao_role: td.querySelector(".sig-role").value.trim(),
+      openbao_role: roleEl ? roleEl.value.trim() : "",
       max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
       auto_sign: td.querySelector(".sig-auto").checked,
       auto_renew: td.querySelector(".sig-renew").checked,

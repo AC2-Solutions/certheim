@@ -40,6 +40,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via a Windows CA (AD CS / certreq)"},
     "ca.signing.cyberark": {"env": [],
                           "desc": "In-UI signing via CyberArk (configurable slot)"},
+    "ca.signing.acme": {"env": ["acme"],
+                          "desc": "In-UI signing via any ACME (RFC 8555) CA"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
 }
 
@@ -116,6 +118,7 @@ def _detect_env():
         caps["egress_internet"] = _probe_egress()
     caps["openbao"] = _flag("openbao", False)
     caps["winca"] = _flag("winca", False)
+    caps["acme"] = _flag("acme", False)
     return caps
 
 

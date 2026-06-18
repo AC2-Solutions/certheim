@@ -42,14 +42,18 @@ class SignResult:
         self.chain_pem = chain_pem
 
 
-# get_setting is injected by app.py (same pattern as capabilities.configure).
+# get_setting/set_setting are injected by app.py (same pattern as
+# capabilities.configure). set_setting is used to persist the ACME account key.
 _get_setting = None
+_set_setting = None
 
 
-def configure(get_setting=None):
-    global _get_setting
+def configure(get_setting=None, set_setting=None):
+    global _get_setting, _set_setting
     if get_setting is not None:
         _get_setting = get_setting
+    if set_setting is not None:
+        _set_setting = set_setting
 
 
 def _cfg(setting_key, env_var, default=""):
@@ -283,6 +287,79 @@ def _test_windows_ca():
     raise SignError("Windows CA reachability check inconclusive: " + out.strip()[-200:])
 
 
+# --- ACME (RFC 8555) provider ---------------------------------------------
+# The dashboard acts as an ACME *client* against any RFC 8555 CA. The heavy
+# lifting (JWS, orders, challenges) lives in acme_client; here we just assemble
+# the client + a challenge solver from config and map errors to SignError.
+def _acme_account_key():
+    """The app's persistent ACME account key (PEM). Generated on first use and
+    stored in app_settings so the same ACME account is reused across orders."""
+    import acme_client
+    key = (_get_setting("acme_account_key") if _get_setting else None) or ""
+    if "PRIVATE KEY" in key:
+        return key
+    key = acme_client.new_account_key_pem()
+    if _set_setting:
+        _set_setting("acme_account_key", key)
+    return key
+
+
+def _acme_client():
+    import acme_client
+    directory = _cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL")
+    if not directory:
+        raise SignError("ACME directory URL is not configured")
+    return acme_client.AcmeClient(
+        directory, _acme_account_key(),
+        ca_file=(_cfg("acme_ca_file", "CSR_ACME_CA_FILE") or None),
+        contact_email=_cfg("acme_account_email", "CSR_ACME_ACCOUNT_EMAIL"),
+        eab_kid=_cfg("acme_eab_kid", "CSR_ACME_EAB_KID"),
+        eab_hmac_b64=os.environ.get("CSR_ACME_EAB_HMAC", "").strip(),
+    )
+
+
+def _acme_solver():
+    """Build the configured challenge solver. DNS-01 (RFC2136/nsupdate) is the
+    default; HTTP-01 (webroot) is the alternative."""
+    import acme_client
+    ctype = (_cfg("acme_challenge_type", "CSR_ACME_CHALLENGE_TYPE") or "dns-01").strip().lower()
+    if ctype == "http-01":
+        webroot = _cfg("acme_http_webroot", "CSR_ACME_HTTP_WEBROOT")
+        if not webroot:
+            raise SignError("HTTP-01 selected but no webroot is configured "
+                            "(acme_http_webroot)")
+        return acme_client.Http01WebrootSolver(webroot)
+    server = _cfg("acme_dns_server", "CSR_ACME_DNS_SERVER")
+    tsig_name = _cfg("acme_dns_tsig_name", "CSR_ACME_DNS_TSIG_NAME")
+    tsig_secret = os.environ.get("CSR_ACME_DNS_TSIG_SECRET", "").strip()
+    if not (server and tsig_name and tsig_secret):
+        raise SignError("DNS-01 requires acme_dns_server + acme_dns_tsig_name + "
+                        "CSR_ACME_DNS_TSIG_SECRET (service env)")
+    algo = _cfg("acme_dns_tsig_algo", "CSR_ACME_DNS_TSIG_ALGO") or "hmac-sha256"
+    port = _cfg("acme_dns_port", "CSR_ACME_DNS_PORT") or "53"
+    return acme_client.Dns01Rfc2136Solver(server, tsig_name, tsig_secret,
+                                          tsig_algo=algo, port=int(port))
+
+
+def _sign_acme(csr_pem, template):
+    import acme_client
+    client = _acme_client()
+    solver = _acme_solver()
+    try:
+        leaf, chain = client.issue(csr_pem, solver)
+    except acme_client.AcmeError as e:
+        raise SignError(str(e))
+    return SignResult(leaf, chain)
+
+
+def _test_acme():
+    import acme_client
+    try:
+        return _acme_client().test()
+    except acme_client.AcmeError as e:
+        raise SignError(str(e))
+
+
 # --- provider registry (admin-selectable signing backends) ----------------
 # Each provider declares connection fields rendered in the admin UI. A field's
 # value is stored non-secret in app_settings under its `setting` key; secrets
@@ -331,6 +408,31 @@ PROVIDERS = {
              "placeholder": "Administrator"},
         ],
     },
+    "acme": {
+        "label": "ACME (RFC 8555 - Let's Encrypt, step-ca, ZeroSSL, ...)",
+        "automated": True, "stub": False,
+        "secret_hint": "EAB HMAC CSR_ACME_EAB_HMAC (commercial CAs) + DNS-01 TSIG "
+                       "CSR_ACME_DNS_TSIG_SECRET, both in the service env",
+        "fields": [
+            {"key": "directory_url", "setting": "acme_directory_url",
+             "label": "ACME directory URL",
+             "placeholder": "https://acme-v02.api.letsencrypt.org/directory"},
+            {"key": "account_email", "setting": "acme_account_email",
+             "label": "Account contact email", "placeholder": "pki@example.com"},
+            {"key": "eab_kid", "setting": "acme_eab_kid",
+             "label": "EAB key id (optional)", "placeholder": "external account key id"},
+            {"key": "challenge_type", "setting": "acme_challenge_type",
+             "label": "Challenge (dns-01 | http-01)", "placeholder": "dns-01"},
+            {"key": "dns_server", "setting": "acme_dns_server",
+             "label": "DNS-01: update server", "placeholder": "ns1.example.com"},
+            {"key": "dns_tsig_name", "setting": "acme_dns_tsig_name",
+             "label": "DNS-01: TSIG key name", "placeholder": "acme-update."},
+            {"key": "dns_tsig_algo", "setting": "acme_dns_tsig_algo",
+             "label": "DNS-01: TSIG algorithm", "placeholder": "hmac-sha256"},
+            {"key": "http_webroot", "setting": "acme_http_webroot",
+             "label": "HTTP-01: webroot path", "placeholder": "/var/www/acme"},
+        ],
+    },
 }
 
 BACKENDS = tuple(PROVIDERS.keys())
@@ -371,6 +473,11 @@ def _credential_present(provider):
     if provider == "windows_ca":
         key = os.environ.get("CSR_WINCA_SSH_KEY", "").strip()
         return bool(key and os.path.isfile(key))
+    if provider == "acme":
+        # ACME needs no single mandatory env secret (public CA + HTTP-01 works
+        # with none); it's "configured" once a directory URL is set. Per-config
+        # requirements (EAB / TSIG) surface at test/sign time.
+        return bool(_cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL"))
     return True   # manual needs no credential
 
 
@@ -389,6 +496,8 @@ def sign_csr(csr_pem, template):
         return _sign_cyberark(csr_pem, template)
     if backend == "windows_ca":
         return _sign_windows_ca(csr_pem, template)
+    if backend == "acme":
+        return _sign_acme(csr_pem, template)
     raise SignError(f"unknown signer_backend: {backend}")
 
 
@@ -409,6 +518,12 @@ def revoke_cert(serial_number, backend="openbao"):
         return _revoke_windows_ca(serial_number)
     if backend == "cyberark":
         raise SignError(_CYBERARK_TODO)
+    if backend == "acme":
+        # ACME revokes by certificate (not serial); the in-UI revoke path passes
+        # only the serial today. Threading the stored cert PEM through is a small
+        # follow-on; until then revoke at the ACME CA.
+        raise SignError("ACME revocation is not wired in this build; revoke the "
+                        "certificate at the ACME CA.")
     raise SignError(f"revoke not supported for backend: {backend}")
 
 
@@ -427,6 +542,8 @@ def test_connection(backend="openbao"):
                         "the configuration has been saved.")
     if backend == "windows_ca":
         return _test_windows_ca()
+    if backend == "acme":
+        return _test_acme()
     if backend != "openbao":
         raise SignError(f"no connection test for backend: {backend}")
     addr, mount = _openbao_addr_mount()

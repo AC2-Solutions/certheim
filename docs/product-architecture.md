@@ -83,8 +83,12 @@ Slack — on `feat/configurable-login-banner`) vs the "production v1.4.0" tree.
 - **Identity/auth:** one mode per instance (CAC/mTLS or local), pluggable; SSO/
   OIDC/SAML as a connected/enterprise capability. (Model A identity stays.)
 - **CA / signing:** request→sign→issue lifecycle; signer providers (manual,
-  OpenBao PKI — v2, future EJBCA/ADCS/ACME); approval-gated; key never on the
-  app box. This is the product's core differentiator — invest here.
+  OpenBao PKI, standalone Windows AD CS, **ACME / RFC 8555** — Let's Encrypt /
+  step-ca / ZeroSSL / Sectigo / DigiCert; CyberArk slot; future
+  EJBCA/Venafi/AWS PCA/Enterprise ADCS); approval-gated; key never on the app
+  box. The ACME provider is a dependency-free client (openssl + stdlib JOSE)
+  with pluggable challenge solvers (DNS-01 RFC2136/nsupdate, HTTP-01 webroot;
+  cloud DNS solvers later). This is the product's core differentiator — invest here.
 - **Notifications & integrations:** email + chat + generic webhooks, all
   provider-pluggable and event-driven; rich messages (job deep-links, assign).
 - **Audit & compliance:** append-only audit log + export; STIG/FIPS/SELinux/
