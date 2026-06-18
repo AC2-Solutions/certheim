@@ -418,3 +418,107 @@ def test_acme_client_pure_helpers():
         input=k, capture_output=True).stdout.decode()
     ids = ac.csr_identifiers(csr)
     assert "a.example.com" in ids and "b.example.com" in ids
+
+
+# --- Phase 2: cloud DNS-01 solvers (Cloudflare / Route53 / Azure) ----------
+def test_sigv4_known_answer():
+    """AWS SigV4 'get-vanilla' published test vector — independent verification
+    of the hand-rolled signing (no live AWS to test against)."""
+    import acme_dns
+    h = acme_dns.aws_sigv4_headers(
+        "GET", "example.amazonaws.com", "/", "", b"",
+        "AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        region="us-east-1", service="service",
+        amzdate="20150830T123600Z", datestamp="20150830")
+    assert "SignedHeaders=host;x-amz-date" in h["Authorization"]
+    assert ("Signature=5fa00fa31553b73ebf1942676e86291e8372ff2"
+            "a2260956d9b8aae1d763fbf31") in h["Authorization"]
+
+
+def _http_recorder(responses):
+    calls = []
+
+    def fake(method, url, headers=None, body=None, timeout=20):
+        calls.append({"method": method, "url": url, "headers": headers or {}, "body": body})
+        return responses.pop(0)
+    return calls, fake
+
+
+def test_cloudflare_solver(monkeypatch):
+    import json
+    import acme_dns
+    calls, fake = _http_recorder([
+        (200, {}, b'{"result":[{"id":"zone123"}]}'),              # zone lookup
+        (200, {}, b'{"success":true,"result":{"id":"rec456"}}'),  # create TXT
+        (200, {}, b'{}'),                                         # delete
+    ])
+    monkeypatch.setattr(acme_dns, "_http", fake)
+    s = acme_dns.Dns01CloudflareSolver("tok", propagation_wait=0)
+    s.setup("a.example.com", "token", "keyauth-XYZ")
+    create = json.loads(calls[1]["body"])
+    assert create["name"] == "_acme-challenge.a.example.com" and create["type"] == "TXT"
+    assert create["content"] == acme_dns._txt_value("keyauth-XYZ")
+    assert "Bearer tok" in calls[1]["headers"]["Authorization"]
+    s.cleanup()
+    assert calls[2]["method"] == "DELETE" and "rec456" in calls[2]["url"]
+
+
+def test_route53_solver(monkeypatch):
+    import acme_dns
+    calls, fake = _http_recorder([(200, {}, b"<ok/>"), (200, {}, b"<ok/>")])
+    monkeypatch.setattr(acme_dns, "_http", fake)
+    s = acme_dns.Dns01Route53Solver("AKID", "secret", "/hostedzone/Z123", propagation_wait=0)
+    s.setup("a.example.com", "token", "keyauth-1")
+    up = calls[0]
+    assert "Z123" in up["url"] and b"UPSERT" in up["body"]
+    assert b"_acme-challenge.a.example.com." in up["body"]
+    assert acme_dns._txt_value("keyauth-1").encode() in up["body"]
+    assert "AWS4-HMAC-SHA256" in up["headers"]["Authorization"]
+    s.cleanup()
+    assert b"DELETE" in calls[1]["body"]
+
+
+def test_azure_solver(monkeypatch):
+    import json
+    import acme_dns
+    calls, fake = _http_recorder([
+        (200, {}, b'{"access_token":"tok123"}'),   # oauth token
+        (200, {}, b'{}'),                          # PUT record
+        (200, {}, b'{"access_token":"tok123"}'),   # token (cleanup)
+        (200, {}, b'{}'),                          # DELETE
+    ])
+    monkeypatch.setattr(acme_dns, "_http", fake)
+    s = acme_dns.Dns01AzureSolver("tenant", "cid", "csecret", "sub", "rg",
+                                  "example.com", propagation_wait=0)
+    s.setup("a.example.com", "token", "keyauth-1")
+    put = calls[1]
+    assert put["method"] == "PUT" and "dnsZones/example.com/TXT/_acme-challenge.a" in put["url"]
+    body = json.loads(put["body"])
+    assert body["properties"]["TXTRecords"][0]["value"] == [acme_dns._txt_value("keyauth-1")]
+    assert "Bearer tok123" in put["headers"]["Authorization"]
+
+
+def test_acme_dns_provider_field_shape(client):
+    body = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    acme = next(p for p in body["providers"] if p["key"] == "acme")
+    f = {x["key"]: x for x in acme["fields"]}
+    assert f["challenge_type"]["options"] == ["dns-01", "http-01"]
+    assert f["dns_provider"]["options"] == ["rfc2136", "cloudflare", "route53", "azure"]
+    # dns_zone is conditional on challenge=dns-01 AND a cloud provider
+    assert any(c["field"] == "dns_provider" for c in f["dns_zone"]["show_if"])
+
+
+def test_acme_solver_azure_zone_validation(client):
+    """The dns-01 dispatch validates provider-specific config (Azure needs a
+    'sub/rg/zone' triplet)."""
+    import sign
+    appmod = client._appmod
+    appmod.set_setting("acme_challenge_type", "dns-01")
+    appmod.set_setting("acme_dns_provider", "azure")
+    appmod.set_setting("acme_dns_zone", "not-a-triplet")
+    try:
+        with pytest.raises(sign.SignError):
+            sign._acme_solver()
+    finally:
+        for k in ("acme_challenge_type", "acme_dns_provider", "acme_dns_zone"):
+            appmod.set_setting(k, "")
