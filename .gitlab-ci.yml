@@ -106,4 +106,12 @@ release:
       git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
       git push origin "HEAD:${CI_DEFAULT_BRANCH}"
       git push origin "v$ver"
+      # Create the GitLab Release object (tag + notes shown under Deploy>Releases).
+      # Non-fatal: the tag is already pushed; the release object is secondary.
+      desc="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read()))' "RELEASE-NOTES-v$ver.md")"
+      curl -sf -X POST -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" -H "Content-Type: application/json" \
+        --data "{\"tag_name\":\"v$ver\",\"name\":\"v$ver\",\"description\":$desc}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" >/dev/null \
+        && echo "GitLab Release v$ver created" \
+        || echo "warn: GitLab Release object not created (tag v$ver is pushed regardless)"
       echo "Released v$ver"
