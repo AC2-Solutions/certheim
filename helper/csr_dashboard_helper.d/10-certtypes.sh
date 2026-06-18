@@ -230,9 +230,12 @@ prompt             = no
 [req_dn]
 EOF
 
-    # Full organizational subject DN (configured in 00-common.sh), CN last.
+    # Full organizational subject DN (configured via the admin UI -> subject.conf,
+    # falling back to 00-common.sh defaults), CN last.
     # Repeated OUs need numeric prefixes in openssl req config syntax.
     if [[ -n "${SUBJECT_C:-}" ]];  then echo "C  = $SUBJECT_C";  fi
+    if [[ -n "${SUBJECT_ST:-}" ]]; then echo "ST = $SUBJECT_ST"; fi
+    if [[ -n "${SUBJECT_L:-}" ]];  then echo "L  = $SUBJECT_L";  fi
     if [[ -n "${SUBJECT_O:-}" ]];  then echo "O  = $SUBJECT_O";  fi
     local _i=0 _ou
     for _ou in "${SUBJECT_OUS[@]}"; do

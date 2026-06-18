@@ -404,6 +404,7 @@
       <button type="button" data-panel="webhooks">Integrations</button>
       <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="signingca">Signing / CA</button>
+      <button type="button" data-panel="csrsubject">CSR Subject</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -900,6 +901,53 @@
       <div class="bulk-row" style="margin-top:10px">
         <button id="signing-cfg-save-btn" type="button">Save</button>
         <span id="signing-cfg-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="csrsubject" hidden>
+      <div class="card-header">
+        <h2>CSR Subject / Organization</h2>
+      </div>
+      <p class="hint">The organizational identity (Country, Org, OUs, …) written
+         into every generated CSR. Configure it for your organization &mdash;
+         these are <strong>not</strong> hardcoded. Pick a starter profile, then
+         add/remove OU tags as needed.</p>
+      <p id="csrsubject-oobe" class="status" style="font-weight:600" hidden></p>
+
+      <label for="csrsubject-profile" class="textarea-label">Start from a profile</label>
+      <div class="bulk-row">
+        <select id="csrsubject-profile" class="form-input" style="max-width:340px"></select>
+        <button id="csrsubject-apply-profile" class="secondary" type="button">Apply profile</button>
+      </div>
+
+      <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:8px">
+        <label>Country (C)
+          <input type="text" id="csrsubject-c" class="form-input" style="width:90px" maxlength="8" placeholder="US"></label>
+        <label>State (ST)
+          <input type="text" id="csrsubject-st" class="form-input" style="width:160px"></label>
+        <label>Locality (L)
+          <input type="text" id="csrsubject-l" class="form-input" style="width:160px"></label>
+      </div>
+      <label for="csrsubject-o" class="textarea-label">Organization (O)</label>
+      <input type="text" id="csrsubject-o" class="form-input" style="max-width:420px" placeholder="e.g. U.S. Government or Acme, Inc.">
+
+      <label class="textarea-label">Organizational Units (OU tags)</label>
+      <div id="csrsubject-ou-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+      <div class="bulk-row">
+        <input type="text" id="csrsubject-ou-add" class="form-input" style="max-width:220px" placeholder="add an OU (e.g. USEUCOM)" list="csrsubject-ou-suggestions">
+        <datalist id="csrsubject-ou-suggestions"></datalist>
+        <button id="csrsubject-ou-add-btn" class="secondary" type="button">Add OU</button>
+      </div>
+
+      <label for="csrsubject-domain" class="textarea-label">Domain suffix
+        <span class="hint">(short names like "web1" become "web1.&lt;suffix&gt;"; leave blank to disable)</span></label>
+      <input type="text" id="csrsubject-domain" class="form-input" style="max-width:260px" placeholder="e.g. example.com">
+
+      <p class="hint" style="margin-top:10px">Resulting subject:
+        <code id="csrsubject-preview"></code></p>
+      <div class="bulk-row">
+        <button id="csrsubject-save-btn" type="button">Save</button>
+        <span id="csrsubject-status" class="status"></span>
       </div>
     </section>
 

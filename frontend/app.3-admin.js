@@ -10,6 +10,7 @@ async function refreshAdminView() {
     loadEmailConfig(),
     refreshAdminTemplates(),
     loadSigningConfig(),
+    loadCsrSubject(),
   ]);
 }
 
@@ -1983,3 +1984,110 @@ document.getElementById("nav-tour").addEventListener("click", () => {
   showTutorial();
 });
 
+
+// ===== Admin: CSR Subject / Organization (configurable, OOBE) =====
+let _csrSubjectProfiles = [];
+let _csrSubjectOobePrompted = false;
+
+function _csrSubjectCfg() {
+  return {
+    country: document.getElementById("csrsubject-c").value.trim(),
+    state: document.getElementById("csrsubject-st").value.trim(),
+    locality: document.getElementById("csrsubject-l").value.trim(),
+    org: document.getElementById("csrsubject-o").value.trim(),
+    ous: [...document.querySelectorAll("#csrsubject-ou-chips [data-ou]")].map(c => c.dataset.ou),
+    domain_suffix: document.getElementById("csrsubject-domain").value.trim(),
+  };
+}
+
+function _csrSubjectPreview() {
+  const c = _csrSubjectCfg(), parts = [];
+  if (c.country) parts.push("C=" + c.country);
+  if (c.state) parts.push("ST=" + c.state);
+  if (c.locality) parts.push("L=" + c.locality);
+  if (c.org) parts.push("O=" + c.org);
+  c.ous.forEach(ou => parts.push("OU=" + ou));
+  parts.push("CN=<hostname>");
+  document.getElementById("csrsubject-preview").textContent = parts.join(", ");
+}
+
+function _csrSubjectRenderOUs(ous) {
+  const wrap = document.getElementById("csrsubject-ou-chips");
+  wrap.innerHTML = (ous && ous.length)
+    ? ous.map(ou => `<span class="pill pill-blue" data-ou="${escapeHtml(ou)}">${escapeHtml(ou)} <a href="#" class="csrsubject-ou-del" data-ou="${escapeHtml(ou)}" style="text-decoration:none;font-weight:700">&times;</a></span>`).join("")
+    : '<span class="status">no OUs</span>';
+  wrap.querySelectorAll(".csrsubject-ou-del").forEach(a => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    _csrSubjectRenderOUs(_csrSubjectCfg().ous.filter(x => x !== a.dataset.ou));
+    _csrSubjectPreview();
+  }));
+}
+
+async function loadCsrSubject() {
+  const r = await jsonReq("/admin/csr-subject");
+  if (!r.ok) return;
+  const b = r.body, cfg = b.config || {};
+  _csrSubjectProfiles = b.profiles || [];
+  document.getElementById("csrsubject-c").value = cfg.country || "";
+  document.getElementById("csrsubject-st").value = cfg.state || "";
+  document.getElementById("csrsubject-l").value = cfg.locality || "";
+  document.getElementById("csrsubject-o").value = cfg.org || "";
+  document.getElementById("csrsubject-domain").value = cfg.domain_suffix || "";
+  _csrSubjectRenderOUs(cfg.ous || []);
+  document.getElementById("csrsubject-profile").innerHTML =
+    '<option value="">&mdash; choose a profile &mdash;</option>' +
+    _csrSubjectProfiles.map(p => `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
+  document.getElementById("csrsubject-ou-suggestions").innerHTML =
+    (b.suggested_ous || []).map(o => `<option value="${escapeHtml(o)}">`).join("");
+  _csrSubjectPreview();
+  const oobe = document.getElementById("csrsubject-oobe");
+  if (!b.configured) {
+    oobe.textContent = "⚙ Initial setup: choose your organization profile, adjust the fields, and Save so new CSRs carry the correct subject.";
+    oobe.hidden = false;
+    // First-run prompt: bring the admin to this tab once.
+    if (!_csrSubjectOobePrompted) {
+      _csrSubjectOobePrompted = true;
+      document.querySelector('#admin-nav button[data-panel="csrsubject"]')?.click();
+    }
+  } else {
+    oobe.hidden = true;
+  }
+}
+
+document.getElementById("csrsubject-apply-profile")?.addEventListener("click", () => {
+  const p = _csrSubjectProfiles.find(x => x.key === document.getElementById("csrsubject-profile").value);
+  if (!p) return;
+  document.getElementById("csrsubject-c").value = p.country || "";
+  document.getElementById("csrsubject-st").value = p.state || "";
+  document.getElementById("csrsubject-l").value = p.locality || "";
+  document.getElementById("csrsubject-o").value = p.org || "";
+  document.getElementById("csrsubject-domain").value = p.domain_suffix || "";
+  _csrSubjectRenderOUs(p.ous || []);
+  _csrSubjectPreview();
+});
+
+function _csrSubjectAddOU() {
+  const inp = document.getElementById("csrsubject-ou-add");
+  const v = inp.value.trim();
+  if (!v) return;
+  const cur = _csrSubjectCfg().ous;
+  if (!cur.some(x => x.toLowerCase() === v.toLowerCase())) {
+    cur.push(v); _csrSubjectRenderOUs(cur); _csrSubjectPreview();
+  }
+  inp.value = "";
+}
+document.getElementById("csrsubject-ou-add-btn")?.addEventListener("click", _csrSubjectAddOU);
+document.getElementById("csrsubject-ou-add")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); _csrSubjectAddOU(); }
+});
+["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o"].forEach(id =>
+  document.getElementById(id)?.addEventListener("input", _csrSubjectPreview));
+
+document.getElementById("csrsubject-save-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("csrsubject-status");
+  setStatus(status, "Saving…");
+  const r = await jsonReq("/admin/csr-subject", { method: "PUT", body: JSON.stringify(_csrSubjectCfg()) });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Save failed", "err"); return; }
+  setStatus(status, "Saved — new CSRs will use this subject.", "ok");
+  loadCsrSubject();
+});
