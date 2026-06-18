@@ -1,6 +1,6 @@
 """Email notifications for the CSR Dashboard.
 
-Plain SMTP over port 25 to an IP-whitelisted relay (e.g., DoD SMG).
+Plain SMTP over port 25 to an IP-whitelisted relay (e.g., an internal SMTP smarthost).
 No STARTTLS, no SSL, no authentication.
 
 Reads config from /etc/csr-dashboard/email.conf at import time. All
@@ -312,7 +312,7 @@ def _compose_and_send(*, subject, body, to_addr, cc_addrs, event_tag, job_id):
 def _dashboard_url():
     return _config.get(
         "content", "dashboard_url",
-        fallback="https://nipat-pl-rcdn01.eucom.mil/csr/",
+        fallback="https://csr.example.com/",
     ).strip()
 
 
@@ -342,8 +342,8 @@ def send_cert_issued(job, uploader_dn, group_email=None):
         "View the job and download the certificate:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
     return _compose_and_send(
         subject=subject, body=body,
@@ -376,8 +376,8 @@ def send_cancelled(job, canceller_dn, reason, group_email=None):
         "View the job in the dashboard:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
     return _compose_and_send(
         subject=subject, body=body,
@@ -410,8 +410,8 @@ def send_failed(job, marker_dn, error, group_email=None):
         "View the job in the dashboard:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
     return _compose_and_send(
         subject=subject, body=body,
@@ -463,8 +463,8 @@ def send_feedback_received(feedback, admin_emails, submitter_cn, submitter_email
         "Review and respond in the admin dashboard:\n"
         f"  {_dashboard_url()}#admin\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
 
     msg = EmailMessage()
@@ -526,8 +526,8 @@ def send_csrs_created(targets, cert_type, creator_cn, creator_email, recipients)
         "Review and download the CSRs for signing:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
 
     msg = EmailMessage()
@@ -597,7 +597,7 @@ def get_settings():
         "from_address": cfg.get("from", "address", fallback=""),
         "cc": cfg.get("recipients", "cc", fallback=""),
         "dashboard_url": cfg.get("content", "dashboard_url",
-                                 fallback="https://nipat-pl-rcdn01.eucom.mil/csr/"),
+                                 fallback="https://csr.example.com/"),
         "enabled": _enabled,
         "disabled_reason": _disabled_reason,
         "config_path": str(CONFIG_PATH),
@@ -706,8 +706,8 @@ def send_expiry_warning(job, days_left, group_email=None):
         "\n"
         f"Job ID: {job['id']}\n"
         "\n"
-        "This is an automated message from the CSR Dashboard at\n"
-        "nipat-pl-rcdn01.eucom.mil. Do not reply to this address.\n"
+        "This is an automated message from the CSR Dashboard.\n"
+        "Do not reply to this address.\n"
     )
 
     msg = EmailMessage()

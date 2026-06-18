@@ -2,7 +2,7 @@
 """import_certs.py - import fleet-scanned certificates into the CSR Dashboard.
 
 Reads a JSON file produced by the fleet-cert-scan playbook:
-    [{"host": "nipat-pl-web01.eucom.mil",
+    [{"host": "web01.example.com",
       "path": "/etc/pki/tls/certs/web01.crt",
       "pem":  "-----BEGIN CERTIFICATE-----..."},
      ...]

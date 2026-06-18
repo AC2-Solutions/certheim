@@ -4,8 +4,8 @@ const CSRF = { "X-Requested-With": "csr-dashboard", "Content-Type": "application
 const PAGE_SIZE = 50;
 
 // ===== Login banner (configurable; a modal opened from a link on the gate) =====
-const banner = document.getElementById("dod-banner");
-document.getElementById("dod-close").addEventListener("click", () => {
+const banner = document.getElementById("consent-banner");
+document.getElementById("consent-close").addEventListener("click", () => {
   banner.hidden = true;
 });
 document.getElementById("login-show-banner").addEventListener("click", () => {
@@ -19,8 +19,8 @@ document.getElementById("login-show-banner-2")?.addEventListener("click", () => 
 // object ({title, link, paragraphs[], items[]}). Built with textContent so any
 // custom admin text is inert (no HTML injection).
 function renderBanner(b) {
-  const title = document.getElementById("dod-title");
-  const body = document.getElementById("dod-body");
+  const title = document.getElementById("consent-title");
+  const body = document.getElementById("consent-body");
   if (!b) { body.replaceChildren(); return; }
   title.textContent = b.title || "Notice and Consent";
   const frag = document.createDocumentFragment();
@@ -814,14 +814,14 @@ function addRequestRow(cn = "", sans = "") {
   const cnInput = document.createElement("input");
   cnInput.type = "text";
   cnInput.className = "form-input req-cn";
-  cnInput.placeholder = "myserver  or  myserver.eucom.mil";
+  cnInput.placeholder = "myserver  or  myserver.example.com";
   cnInput.autocomplete = "off";
   cnInput.value = cn;
 
   const sansInput = document.createElement("input");
   sansInput.type = "text";
   sansInput.className = "form-input req-sans";
-  sansInput.placeholder = "alt.eucom.mil, 10.1.2.3";
+  sansInput.placeholder = "alt.example.com, 10.1.2.3";
   sansInput.autocomplete = "off";
   sansInput.value = sans;
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>CSR Dashboard - nipat-pl-rcdn01</title>
+<title>CSR Dashboard</title>
 
 <script>
   (function () {
@@ -15,12 +15,12 @@
 </head>
 <body>
 
-<div id="dod-banner" role="dialog" aria-modal="true" aria-labelledby="dod-title" hidden>
+<div id="consent-banner" role="dialog" aria-modal="true" aria-labelledby="consent-title" hidden>
   <div class="inner">
-    <h2 id="dod-title">Notice and Consent</h2>
-    <div id="dod-body"><!-- populated from /auth/info banner --></div>
+    <h2 id="consent-title">Notice and Consent</h2>
+    <div id="consent-body"><!-- populated from /auth/info banner --></div>
     <div class="buttons">
-      <button id="dod-close" type="button">Close</button>
+      <button id="consent-close" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -42,7 +42,7 @@
     <div id="login-agree-warn" class="agree-warn" hidden>
       <span class="agree-warn-icon" aria-hidden="true">&#9432;</span>
       In order to use our services, you must agree to the
-      <button class="link-btn" id="login-show-banner-2" type="button">DoD System User Access Agreement</button>.
+      <button class="link-btn" id="login-show-banner-2" type="button">Notice and Consent Agreement</button>.
     </div>
 
     <!-- CAC option (shown when mTLS is enabled) -->
@@ -98,7 +98,7 @@
 </div>
 
 <header>
-  <h1>CSR Dashboard &mdash; nipat-pl-rcdn01.eucom.mil</h1>
+  <h1>CSR Dashboard</h1>
   <div class="header-actions">
     <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
     <button id="nav-admin" class="header-nav admin-only" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>
@@ -136,8 +136,8 @@
     <div class="details-body">
 
       <p class="hint">One row per certificate request &mdash; request as many at once as you
-         need. Bare <span class="suffix-badge">hostnames automatically get <span class="dom">.eucom.mil</span></span>
-         appended (e.g. <code>myserver</code> &rarr; <code>myserver.eucom.mil</code>);
+         need. Bare <span class="suffix-badge">hostnames automatically get <span class="dom">.example.com</span></span>
+         appended (e.g. <code>myserver</code> &rarr; <code>myserver.example.com</code>);
          entries that already contain a dot are used verbatim; IPv4 addresses become
          IP SANs automatically.</p>
 
@@ -161,7 +161,7 @@
         Notification email <span class="hint">(optional &mdash; applied to every job created in this batch)</span>
       </label>
       <input type="email" id="notify-email" class="form-input"
-             placeholder="adam.collison@example.mil" autocomplete="email" />
+             placeholder="adam.collison@example.com" autocomplete="email" />
 
       <label class="textarea-label">
         Certificate template <span class="hint">(determines the certificate's usages &mdash; create your own in the Templates tab)</span>
@@ -518,7 +518,7 @@
       <p id="admin-auth-status" class="status" style="margin-top:8px"></p>
       <div id="admin-auth-mtls-warn" class="error-box" hidden style="margin-top:10px">
         <strong>Enabling CAC mTLS:</strong> make sure CAC certificate
-        verification actually works on this host (DoD CA bundle installed,
+        verification actually works on this host (your CA bundle installed,
         <code>ssl_verify_client on</code> in nginx) <em>before</em> switching.
         Otherwise admins may be unable to log in. Existing password accounts
         will keep working as a fallback.
@@ -740,7 +740,7 @@
       </div>
 
       <label for="email-cfg-from" class="textarea-label">From address</label>
-      <input type="email" id="email-cfg-from" class="form-input" placeholder="noreply-csr@rcdn.eucom.mil">
+      <input type="email" id="email-cfg-from" class="form-input" placeholder="noreply-csr@example.com">
       <label for="email-cfg-cc" class="textarea-label">Global CC <span class="hint">(optional, comma-separated &mdash; copied on every notification)</span></label>
       <input type="text" id="email-cfg-cc" class="form-input">
       <label for="email-cfg-url" class="textarea-label">Dashboard URL <span class="hint">(used in email bodies)</span></label>
@@ -964,7 +964,7 @@
       <label class="textarea-label">Organizational Units (OU tags)</label>
       <div id="csrsubject-ou-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
       <div class="bulk-row">
-        <input type="text" id="csrsubject-ou-add" class="form-input" style="max-width:220px" placeholder="add an OU (e.g. USEUCOM)" list="csrsubject-ou-suggestions">
+        <input type="text" id="csrsubject-ou-add" class="form-input" style="max-width:220px" placeholder="add an OU (e.g. Engineering)" list="csrsubject-ou-suggestions">
         <datalist id="csrsubject-ou-suggestions"></datalist>
         <button id="csrsubject-ou-add-btn" class="secondary" type="button">Add OU</button>
       </div>
@@ -1017,9 +1017,9 @@
     <h2>Submit External CSR</h2>
     <p class="hint">For CSRs generated outside this dashboard (e.g. from <code>certlm.msc</code>, IIS, OpenSSL on another host). Paste the PKCS#10 CSR in PEM format.</p>
     <label for="external-target">Target hostname</label>
-    <input type="text" id="external-target" placeholder="server01.eucom.mil">
+    <input type="text" id="external-target" placeholder="server01.example.com">
     <label for="external-email">Notification email <span class="hint" style="display:inline">(optional)</span></label>
-    <input type="email" id="external-email" placeholder="you@example.mil" autocomplete="email">
+    <input type="email" id="external-email" placeholder="you@example.com" autocomplete="email">
     <label>Cert type(s) <span class="hint" style="display:inline">(optional, informational)</span></label>
     <div id="external-cert-types" class="cert-type-grid">
       <label><input type="checkbox" class="cert-type-cb" value="web"> TLS Server (web)</label>
@@ -1165,7 +1165,7 @@
     <label for="group-edit-desc" class="textarea-label">Description</label>
     <input type="text" id="group-edit-desc" class="form-input" placeholder="What this group is for">
     <label for="group-edit-email" class="textarea-label">Distribution email <span class="hint">(optional &mdash; sent a copy of every notification for jobs in this group)</span></label>
-    <input type="email" id="group-edit-email" class="form-input" placeholder="team-dl@eucom.mil">
+    <input type="email" id="group-edit-email" class="form-input" placeholder="team-dl@example.com">
     <label style="display:flex; gap:6px; align-items:center; margin-top:12px; cursor:pointer">
       <input type="checkbox" id="group-edit-notify-new">
       Signer group <span class="hint" style="display:inline">&mdash; members (and the distribution email) are notified whenever a new CSR is created, so they can action it for signing</span>
@@ -1291,7 +1291,7 @@
        notifications are sent. This only needs to be done once.</p>
     <label for="email-gate-input" class="textarea-label">Your email address</label>
     <input type="email" id="email-gate-input" class="form-input"
-           placeholder="first.last.ctr@mail.mil" autocomplete="email">
+           placeholder="first.last.ctr@example.com" autocomplete="email">
     <div class="row" style="justify-content:flex-end; margin-top:12px">
       <button id="email-gate-save-btn" type="button">Save and continue</button>
     </div>

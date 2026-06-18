@@ -5,7 +5,7 @@ Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `csrapi` service
 account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/csr-dashboard/jobs.db`.
 Hardened RHEL 9 target: FIPS, SELinux enforcing, fapolicyd enforcing.
 
-This runbook reflects the proven installs on `nipat-pl-rcdn01` (production)
+This runbook reflects the proven installs on `csr-host` (production)
 and a fresh STIG offline VM.
 
 ---
@@ -24,7 +24,7 @@ and a fresh STIG offline VM.
 | `/etc/csr-dashboard/csr-dashboard.env` | csrapi:csrapi 0640 | app env (paths, flags) |
 | `/root/sslcerts/scripts/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
 | `/etc/systemd/system/csr-api.service` | root:root 0644 | gunicorn unit |
-| `/etc/nginx/rcdn01.d/30-csr.conf` | root:root 0644 | **location fragment** |
+| `/etc/nginx/csr-dashboard.d/30-csr.conf` | root:root 0644 | **location fragment** |
 | `/etc/nginx/conf.d/csr-dashboard.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
 | `/usr/local/sbin/{csrbackup,csr-bootstrap-admin}` | root:root 0750 | tools |
 

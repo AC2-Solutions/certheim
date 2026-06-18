@@ -25,7 +25,7 @@ CAC/mTLS or local auth, your CA, your chat tools, your audit trail.
 ## 2. Deployment modes (a customer is in exactly one)
 | Mode | Connectivity | What's distinctive |
 |---|---|---|
-| **Air-gapped / high-side** | none | Offline bundle install (wheelhouse, no PyPI), STIG/FIPS/SELinux/fapolicyd, CAC mTLS, on-box/OpenBao CA, **no phone-home**, license verified **offline**. The reference build (`disa`/rcdn01). |
+| **Air-gapped / high-side** | none | Offline bundle install (wheelhouse, no PyPI), STIG/FIPS/SELinux/fapolicyd, CAC mTLS, on-box/OpenBao CA, **no phone-home**, license verified **offline**. The reference build. |
 | **On-prem connected** | egress only | Same product + the connected conveniences: Slack/Teams/Discord, Mailgun/SendGrid, SSO/OIDC, cloud/enterprise CA, update checks. Most enterprises. |
 | **Managed SaaS** *(later)* | full | We host multi-tenant. Adds tenant isolation, hosted secrets, billing. Explicitly **phase 2** — do not let it distort the on-prem core. |
 

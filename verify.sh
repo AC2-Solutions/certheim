@@ -1,7 +1,7 @@
 #!/bin/bash
 # repo-verify.sh - confirm the clone has every file the repo should contain,
 # and that each tracked file matches what's live on the box. Run from the
-# clone root on rcdn01. Read-only: changes nothing.
+# clone root on the production box. Read-only: changes nothing.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -44,7 +44,7 @@ PAIRS=(
   "systemd/csr-auto-renew.service|/etc/systemd/system/csr-auto-renew.service"
   "systemd/csr-auto-renew.timer|/etc/systemd/system/csr-auto-renew.timer"
   "systemd/csr-api.service|/etc/systemd/system/csr-api.service"
-  "nginx/30-csr.conf|/etc/nginx/rcdn01.d/30-csr.conf"
+  "nginx/30-csr.conf|/etc/nginx/csr-dashboard.d/30-csr.conf"
   "tools/csrbackup.sh|/usr/local/sbin/csrbackup"
   "tools/csr-bootstrap-admin|/usr/local/sbin/csr-bootstrap-admin"
   "tools/csr-uninstall.sh|/usr/local/sbin/csr-uninstall"

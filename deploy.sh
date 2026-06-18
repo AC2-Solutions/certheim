@@ -68,7 +68,7 @@ MANIFEST=(
   "tools/csr-set-auth        /usr/local/sbin/csr-set-auth                       root:root 0750 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
-MANIFEST+=("nginx/30-csr.conf /etc/nginx/rcdn01.d/30-csr.conf root:root 0644 nginx")
+MANIFEST+=("nginx/30-csr.conf /etc/nginx/csr-dashboard.d/30-csr.conf root:root 0644 nginx")
 
 changed_tags=""
 
@@ -157,7 +157,7 @@ if [[ "$changed_tags" == *nginx* ]]; then
     else
         echo "nginx -t FAILED - config NOT (re)loaded; the new file is on disk" >&2
         echo "fix it and run: nginx -t && systemctl reload-or-restart nginx" >&2
-        echo "(on first install also ensure nginx.conf includes rcdn01.d/*.conf" >&2
+        echo "(on first install also ensure nginx.conf includes csr-dashboard.d/*.conf" >&2
         echo " and that nginx is enabled - see OFFLINE-INSTALL.md)" >&2
         exit 1
     fi

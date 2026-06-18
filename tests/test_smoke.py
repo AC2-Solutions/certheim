@@ -21,7 +21,7 @@ import pytest
 
 CAC = {  # mTLS identity headers; with bootstrap, the first user becomes admin
     "X-Client-Verify": "SUCCESS",
-    "X-Client-DN": "CN=TEST.ADMIN.0000000001,OU=PKI,OU=DoD,O=U.S. Government,C=US",
+    "X-Client-DN": "CN=TEST.ADMIN.0000000001,OU=PKI,OU=IT,O=Example Org,C=US",
     "X-Client-Serial": "AA11",
 }
 CSRF = {"X-Requested-With": "csr-dashboard"}

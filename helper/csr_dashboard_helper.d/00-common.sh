@@ -16,15 +16,15 @@ ISSUED_DIR="/home/ansible/issued"
 SUBJECT_C="US"
 SUBJECT_ST=""
 SUBJECT_L=""
-SUBJECT_O="U.S. Government"
-SUBJECT_OUS=("USEUCOM" "DOD" "USA")
+SUBJECT_O="Example Organization"
+SUBJECT_OUS=("IT")
 
 # ----- Domain qualification -----
 # Short names (no dot) in the certlist get this suffix appended, both as the
-# CN and in DNS SANs: "test" -> "test.eucom.mil". Applies only to
+# CN and in DNS SANs: "test" -> "test.example.com". Applies only to
 # hostname-style entries, never to IPs or email addresses.
 # Leave empty to disable qualification.
-DOMAIN_SUFFIX="eucom.mil"
+DOMAIN_SUFFIX="example.com"
 
 # Admin-configured subject override, written by the dashboard via the
 # `write-subject` subcommand. PARSED as simple KEY=VALUE (NOT sourced - this

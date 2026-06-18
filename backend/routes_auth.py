@@ -203,7 +203,7 @@ def admin_get_auth_settings():
         trusted_email_domain=get_setting("trusted_email_domain") or "",
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
         allow_registration=(get_setting("allow_registration") == "1"),
-        login_banner=get_setting("login_banner") or "dod",
+        login_banner=get_setting("login_banner") or "none",
         login_banner_custom_title=get_setting("login_banner_custom_title") or "",
         login_banner_custom_text=get_setting("login_banner_custom_text") or "",
         banner_options=banner_options(),

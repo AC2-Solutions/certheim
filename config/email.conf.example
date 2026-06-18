@@ -21,7 +21,7 @@ timeout = 10
 [from]
 # From: address on outgoing notifications. The relay must accept this
 # address from this server's IP.
-address = noreply-csr@rcdn.eucom.mil
+address = noreply-csr@example.com
 
 [recipients]
 # Optional global Cc on every notification (comma-separated). Blank = none.
@@ -29,4 +29,4 @@ cc =
 
 [content]
 # Base URL used in links inside email bodies. Set to THIS server's URL.
-dashboard_url = https://nipat-pl-rcdn01.eucom.mil/csr/
+dashboard_url = https://csr.example.com/csr/

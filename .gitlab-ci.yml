@@ -1,6 +1,6 @@
 # .gitlab-ci.yml - syntax gates for the csr-dashboard repo.
 #
-# Runs on the instance shell runner (tag: shell) on nipat-pl-gtrn02.
+# Runs on a self-hosted shell runner (tag: shell).
 # The bare `python3` on a RHEL 8 runner is 3.6, which predates the walrus
 # operator (:=) used in the backend - so lint explicitly against 3.9, the
 # AppStream interpreter that matches the app's venv runtime. If your runner

@@ -12,7 +12,7 @@
 #     and .timer) and removes the unit files
 #   - removes the application code (/opt/csr-dashboard), frontend
 #     (/var/www/csr), helper scripts, and the installed tools
-#   - removes ONLY the app's nginx fragment (/etc/nginx/rcdn01.d/30-csr.conf);
+#   - removes ONLY the app's nginx fragment (/etc/nginx/csr-dashboard.d/30-csr.conf);
 #     leaves PKI (DoD CA bundle, server certs) and the rest of nginx alone
 #   - PROMPTS about the database (default: preserve via timestamped backup)
 #   - PROMPTS about removing the csrapi service account
@@ -34,7 +34,7 @@ DB_DIR="/var/lib/csr-dashboard"
 DB_FILE="${DB_DIR}/jobs.db"
 CFG_DIR="/etc/csr-dashboard"
 HELPER_DIR="/root/sslcerts/scripts"
-NGINX_FRAG="/etc/nginx/rcdn01.d/30-csr.conf"
+NGINX_FRAG="/etc/nginx/csr-dashboard.d/30-csr.conf"
 SUDOERS="/etc/sudoers.d/csr-dashboard"
 SVC_USER="csrapi"
 UNITS=(csr-api.service csr-expiry-warn.service csr-expiry-warn.timer)

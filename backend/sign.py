@@ -126,7 +126,7 @@ def _redact(url):
 
 
 def _openbao_addr_mount():
-    addr = _cfg("openbao_addr", "CSR_OPENBAO_ADDR", "https://openbao.ac2.lan").rstrip("/")
+    addr = _cfg("openbao_addr", "CSR_OPENBAO_ADDR", "https://openbao.example.com").rstrip("/")
     mount = _cfg("openbao_pki_mount", "CSR_OPENBAO_PKI_MOUNT", "pki_csr").strip("/")
     return addr, mount
 
