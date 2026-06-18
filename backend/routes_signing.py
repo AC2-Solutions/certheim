@@ -209,4 +209,6 @@ def test_signing_config():
         log_event("signing_config", "test_fail", backend=backend, error=str(e)[:200])
         return jsonify(ok=False, error=str(e)), 502
     log_event("signing_config", "test_ok", backend=backend, addr=info.get("addr", "-"))
-    return jsonify(ok=True, **info)
+    # info already carries ok=True (+ addr/mount); don't pass ok= again or
+    # jsonify raises "multiple values for keyword argument 'ok'" (500).
+    return jsonify(**info)
