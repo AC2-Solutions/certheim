@@ -392,17 +392,40 @@ function _signingRenderProvider() {
   hint.innerHTML = p.stub
     ? `<span class="pill pill-purple">framework</span> ${escapeHtml(p.label)} can be configured here, but its signing API isn't wired in this build yet.`
     : `Sign through ${escapeHtml(p.label)}.`;
-  wrap.innerHTML = (p.fields || []).map(f => `
-    <label class="textarea-label" for="sigf-${f.key}">${escapeHtml(f.label)}</label>
-    <input type="text" id="sigf-${f.key}" class="form-input" data-fkey="${f.key}"
-           placeholder="${escapeHtml(f.placeholder || "")}" value="${escapeHtml(f.value || "")}">`
-  ).join("");
+  wrap.innerHTML = (p.fields || []).map(f => {
+    const ctrl = f.options
+      ? `<select id="sigf-${f.key}" class="form-input" data-fkey="${f.key}">`
+          + f.options.map(o => `<option value="${escapeHtml(o)}"${f.value === o ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")
+          + `</select>`
+      : `<input type="text" id="sigf-${f.key}" class="form-input" data-fkey="${f.key}"
+             placeholder="${escapeHtml(f.placeholder || "")}" value="${escapeHtml(f.value || "")}">`;
+    const showif = f.show_if ? ` data-showif='${JSON.stringify(f.show_if)}'` : "";
+    return `<div class="sigf-row"${showif}>
+      <label class="textarea-label" for="sigf-${f.key}">${escapeHtml(f.label)}</label>
+      ${ctrl}</div>`;
+  }).join("");
+  _sigApplyShowIf();
   cred.innerHTML = (p.credential_present
       ? '<span class="pill pill-ok">credential configured</span>'
       : '<span class="pill pill-err">no credential</span>')
     + (p.secret_hint ? ` <span class="status">${escapeHtml(p.secret_hint)}</span>` : "");
 }
+// Show/hide provider fields whose `show_if` conditions reference sibling field
+// values (e.g. ACME's DNS-provider fields only appear for the chosen provider).
+function _sigApplyShowIf() {
+  const wrap = document.getElementById("signing-provider-fields");
+  if (!wrap) return;
+  const val = k => { const el = wrap.querySelector(`[data-fkey="${k}"]`); return el ? el.value : ""; };
+  wrap.querySelectorAll(".sigf-row[data-showif]").forEach(row => {
+    let conds = [];
+    try { conds = JSON.parse(row.getAttribute("data-showif")); } catch (e) { /* show by default */ }
+    row.hidden = !conds.every(c => (c.in || []).includes(val(c.field)));
+  });
+}
 document.getElementById("signing-cfg-backend")?.addEventListener("change", _signingRenderProvider);
+// Re-evaluate conditional fields when any provider field changes (delegated).
+document.getElementById("signing-provider-fields")?.addEventListener("change", _sigApplyShowIf);
+document.getElementById("signing-provider-fields")?.addEventListener("input", _sigApplyShowIf);
 
 async function loadSigningConfig() {
   const r = await jsonReq("/admin/signing-config");

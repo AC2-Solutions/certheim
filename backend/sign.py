@@ -319,8 +319,10 @@ def _acme_client():
 
 
 def _acme_solver():
-    """Build the configured challenge solver. DNS-01 (RFC2136/nsupdate) is the
-    default; HTTP-01 (webroot) is the alternative."""
+    """Build the configured challenge solver. HTTP-01 (webroot) or DNS-01; for
+    DNS-01, dispatch on the DNS provider (rfc2136 internal, or a cloud provider
+    in acme_dns). Secrets come from the service environment; non-secret config
+    (zones, server) from app_settings."""
     import acme_client
     ctype = (_cfg("acme_challenge_type", "CSR_ACME_CHALLENGE_TYPE") or "dns-01").strip().lower()
     if ctype == "http-01":
@@ -329,12 +331,36 @@ def _acme_solver():
             raise SignError("HTTP-01 selected but no webroot is configured "
                             "(acme_http_webroot)")
         return acme_client.Http01WebrootSolver(webroot)
+
+    prov = (_cfg("acme_dns_provider", "CSR_ACME_DNS_PROVIDER") or "rfc2136").strip().lower()
+    zone = _cfg("acme_dns_zone", "CSR_ACME_DNS_ZONE")
+    if prov in ("cloudflare", "route53", "azure"):
+        import acme_dns
+        if prov == "cloudflare":
+            return acme_dns.Dns01CloudflareSolver(
+                os.environ.get("CSR_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
+        if prov == "route53":
+            return acme_dns.Dns01Route53Solver(
+                os.environ.get("CSR_ACME_DNS_ACCESS_KEY", "").strip(),
+                os.environ.get("CSR_ACME_DNS_SECRET_KEY", "").strip(), zone,
+                session_token=os.environ.get("CSR_ACME_DNS_SESSION_TOKEN", "").strip() or None)
+        parts = (zone or "").split("/")
+        if len(parts) != 3:
+            raise SignError("Azure DNS-01 needs acme_dns_zone = "
+                            "'subscription/resourceGroup/zone'")
+        return acme_dns.Dns01AzureSolver(
+            _cfg("acme_dns_azure_tenant", "CSR_ACME_DNS_AZURE_TENANT"),
+            os.environ.get("CSR_ACME_DNS_CLIENT_ID", "").strip(),
+            os.environ.get("CSR_ACME_DNS_CLIENT_SECRET", "").strip(),
+            parts[0], parts[1], parts[2])
+
+    # default: internal RFC2136 / nsupdate
     server = _cfg("acme_dns_server", "CSR_ACME_DNS_SERVER")
     tsig_name = _cfg("acme_dns_tsig_name", "CSR_ACME_DNS_TSIG_NAME")
     tsig_secret = os.environ.get("CSR_ACME_DNS_TSIG_SECRET", "").strip()
     if not (server and tsig_name and tsig_secret):
-        raise SignError("DNS-01 requires acme_dns_server + acme_dns_tsig_name + "
-                        "CSR_ACME_DNS_TSIG_SECRET (service env)")
+        raise SignError("DNS-01 (rfc2136) requires acme_dns_server + "
+                        "acme_dns_tsig_name + CSR_ACME_DNS_TSIG_SECRET (service env)")
     algo = _cfg("acme_dns_tsig_algo", "CSR_ACME_DNS_TSIG_ALGO") or "hmac-sha256"
     port = _cfg("acme_dns_port", "CSR_ACME_DNS_PORT") or "53"
     return acme_client.Dns01Rfc2136Solver(server, tsig_name, tsig_secret,
@@ -411,8 +437,11 @@ PROVIDERS = {
     "acme": {
         "label": "ACME (RFC 8555 - Let's Encrypt, step-ca, ZeroSSL, ...)",
         "automated": True, "stub": False,
-        "secret_hint": "EAB HMAC CSR_ACME_EAB_HMAC (commercial CAs) + DNS-01 TSIG "
-                       "CSR_ACME_DNS_TSIG_SECRET, both in the service env",
+        "secret_hint": "EAB HMAC CSR_ACME_EAB_HMAC (commercial CAs); DNS-01 secret "
+                       "in the service env per provider: TSIG CSR_ACME_DNS_TSIG_SECRET "
+                       "(rfc2136), CSR_ACME_DNS_API_TOKEN (cloudflare), "
+                       "CSR_ACME_DNS_ACCESS_KEY/SECRET_KEY (route53), "
+                       "CSR_ACME_DNS_CLIENT_ID/CLIENT_SECRET (azure)",
         "fields": [
             {"key": "directory_url", "setting": "acme_directory_url",
              "label": "ACME directory URL",
@@ -422,15 +451,35 @@ PROVIDERS = {
             {"key": "eab_kid", "setting": "acme_eab_kid",
              "label": "EAB key id (optional)", "placeholder": "external account key id"},
             {"key": "challenge_type", "setting": "acme_challenge_type",
-             "label": "Challenge (dns-01 | http-01)", "placeholder": "dns-01"},
-            {"key": "dns_server", "setting": "acme_dns_server",
-             "label": "DNS-01: update server", "placeholder": "ns1.example.com"},
-            {"key": "dns_tsig_name", "setting": "acme_dns_tsig_name",
-             "label": "DNS-01: TSIG key name", "placeholder": "acme-update."},
-            {"key": "dns_tsig_algo", "setting": "acme_dns_tsig_algo",
-             "label": "DNS-01: TSIG algorithm", "placeholder": "hmac-sha256"},
+             "label": "Challenge type", "options": ["dns-01", "http-01"]},
             {"key": "http_webroot", "setting": "acme_http_webroot",
-             "label": "HTTP-01: webroot path", "placeholder": "/var/www/acme"},
+             "label": "HTTP-01: webroot path", "placeholder": "/var/www/acme",
+             "show_if": [{"field": "challenge_type", "in": ["http-01"]}]},
+            {"key": "dns_provider", "setting": "acme_dns_provider",
+             "label": "DNS-01: provider",
+             "options": ["rfc2136", "cloudflare", "route53", "azure"],
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]}]},
+            {"key": "dns_server", "setting": "acme_dns_server",
+             "label": "rfc2136: update server", "placeholder": "ns1.example.com",
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
+                         {"field": "dns_provider", "in": ["rfc2136", ""]}]},
+            {"key": "dns_tsig_name", "setting": "acme_dns_tsig_name",
+             "label": "rfc2136: TSIG key name", "placeholder": "acme-update.",
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
+                         {"field": "dns_provider", "in": ["rfc2136", ""]}]},
+            {"key": "dns_tsig_algo", "setting": "acme_dns_tsig_algo",
+             "label": "rfc2136: TSIG algorithm", "placeholder": "hmac-sha256",
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
+                         {"field": "dns_provider", "in": ["rfc2136", ""]}]},
+            {"key": "dns_zone", "setting": "acme_dns_zone",
+             "label": "Cloud DNS zone / id",
+             "placeholder": "cloudflare: example.com | route53: ZID | azure: sub/rg/zone",
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
+                         {"field": "dns_provider", "in": ["cloudflare", "route53", "azure"]}]},
+            {"key": "dns_azure_tenant", "setting": "acme_dns_azure_tenant",
+             "label": "azure: tenant id", "placeholder": "tenant GUID",
+             "show_if": [{"field": "challenge_type", "in": ["dns-01"]},
+                         {"field": "dns_provider", "in": ["azure"]}]},
         ],
     },
 }
@@ -455,6 +504,10 @@ def provider_meta():
             "key": f["key"], "label": f["label"],
             "placeholder": f.get("placeholder", ""),
             "value": (_get_setting(f["setting"]) if _get_setting else "") or "",
+            # optional UI hints: a fixed option list -> <select>; show_if -> a
+            # list of {field, in:[...]} conditions (all must match to display).
+            "options": f.get("options"),
+            "show_if": f.get("show_if"),
         } for f in p["fields"]]
         out.append({
             "key": key, "label": p["label"], "automated": p["automated"],
