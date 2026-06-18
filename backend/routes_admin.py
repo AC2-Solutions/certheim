@@ -3,8 +3,9 @@ from flask import Blueprint, abort, g, jsonify, request, session
 import json, re, string, time, uuid
 import capabilities
 import notify
+import csr_subject
 from app import (  # noqa: E402
-    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, _cn_from_dn, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, db, derive_username, fire_webhooks, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper)
+    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, _cn_from_dn, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, db, derive_username, fire_webhooks, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper, set_setting)
 bp = Blueprint("admin", __name__)
 
 # ============================================================
@@ -717,6 +718,63 @@ def admin_set_template_signing(template_id):
               backend=backend, auto_sign=auto_sign, actor=g.identity["dn"][:128])
     return jsonify(ok=True, template_id=template_id, signer_backend=backend,
                    openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign))
+
+
+# ----- CSR subject / organization identity (configurable, not hardcoded) -----
+def _subject_config():
+    try:
+        ous = json.loads(get_setting("subject_ous") or "[]")
+    except (TypeError, ValueError):
+        ous = []
+    return {
+        "country": get_setting("subject_country") or "",
+        "state": get_setting("subject_state") or "",
+        "locality": get_setting("subject_locality") or "",
+        "org": get_setting("subject_org") or "",
+        "ous": ous if isinstance(ous, list) else [],
+        "domain_suffix": get_setting("subject_domain_suffix") or "",
+    }
+
+
+@bp.get("/api/admin/csr-subject")
+@require_admin
+def get_csr_subject():
+    """Current subject DN config + org-profile presets + suggested OU tags.
+    `configured` drives the first-run (OOBE) setup prompt."""
+    cfg = _subject_config()
+    return jsonify(
+        config=cfg,
+        configured=(get_setting("subject_configured") == "1"),
+        profiles=csr_subject.ORG_PROFILES,
+        suggested_ous=csr_subject.SUGGESTED_OUS,
+        preview=csr_subject.preview_dn(cfg),
+    )
+
+
+@bp.put("/api/admin/csr-subject")
+@require_admin
+@require_csrf
+def put_csr_subject():
+    """Save the subject DN config (admin) and push it to the signing helper so
+    new CSRs use it. The helper validates + persists subject.conf."""
+    cfg = csr_subject.clean_config(request.get_json(silent=True) or {})
+    # Apply to the helper first; if it rejects, don't persist a half state.
+    rc, _out, err = run_helper(["write-subject"], stdin=csr_subject.render_conf(cfg))
+    if rc != 0:
+        log_event("csr_subject", "write_fail", rc=rc, err=(err or "").strip()[:160])
+        return jsonify(error="the signing helper rejected the subject: "
+                             + (err or "").strip()[:200]), 502
+    set_setting("subject_country", cfg["country"])
+    set_setting("subject_state", cfg["state"])
+    set_setting("subject_locality", cfg["locality"])
+    set_setting("subject_org", cfg["org"])
+    set_setting("subject_ous", json.dumps(cfg["ous"]))
+    set_setting("subject_domain_suffix", cfg["domain_suffix"])
+    set_setting("subject_configured", "1")
+    log_event("csr_subject", "update", actor=g.identity["dn"][:128],
+              org=cfg["org"][:64], ous=len(cfg["ous"]))
+    return jsonify(ok=True, config=cfg, configured=True,
+                   preview=csr_subject.preview_dn(cfg))
 
 
 @bp.delete("/api/templates/<int:template_id>")

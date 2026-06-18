@@ -56,6 +56,8 @@ CRITICAL_ROUTES = [
     ("POST", "/api/admin/signing-config/test"),
     ("PUT", "/api/admin/templates/<int:template_id>/signing"),
     ("POST", "/api/jobs/<job_id>/revoke"),
+    ("GET", "/api/admin/csr-subject"),
+    ("PUT", "/api/admin/csr-subject"),
 ]
 
 
@@ -118,6 +120,7 @@ def test_me_is_admin(client):
     "/api/admin/feedback",
     "/api/templates",
     "/api/admin/signing-config",
+    "/api/admin/csr-subject",
 ])
 def test_admin_reads_ok(client, path):
     assert client.get(path, headers=CAC).status_code == 200
@@ -233,6 +236,23 @@ def test_template_signing_policy(client):
     # nonexistent template -> 404
     assert client.put("/api/admin/templates/999999/signing", headers=WRITE,
                       data=json.dumps({"signer_backend": "manual"})).status_code == 404
+
+
+def test_csr_subject_shape(client):
+    b = client.get("/api/admin/csr-subject", headers=CAC).get_json()
+    assert "config" in b and "configured" in b
+    pkeys = {p["key"] for p in b.get("profiles", [])}
+    assert "dod" in pkeys and "commercial" in pkeys
+    assert "USEUCOM" in b.get("suggested_ous", [])
+
+
+def test_csr_subject_render_sanitizes():
+    import csr_subject as s
+    out = s.render_conf({"org": "X$(id)`whoami`;rm", "ous": ["DoD", "DoD", "A;B"],
+                         "domain_suffix": "ex.com"})
+    assert "$(" not in out and "`" not in out and ";" not in out
+    assert out.count("OU=") == 2          # dedup DoD; ';' stripped from "A;B"
+    assert "DOMAIN_SUFFIX=ex.com" in out
 
 
 def test_revoke_negatives(client):

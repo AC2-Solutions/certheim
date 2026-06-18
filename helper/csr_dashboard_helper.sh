@@ -43,6 +43,12 @@ case "$cmd" in
     write-certlist-rhel)
         write_certlist "$CERTLIST_RHEL"
         ;;
+    read-subject)
+        read_subject
+        ;;
+    write-subject)
+        write_subject
+        ;;
     generate-rhel)
         # Legacy: defers to csr-rhel.sh (web certs only). Kept for external
         # scripts. The dashboard uses generate-typed.
