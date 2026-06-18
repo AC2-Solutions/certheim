@@ -1729,6 +1729,42 @@ class CompletionError(Exception):
         self.payload = payload
 
 
+def _fleet_track_issued(conn, host, cert_pem, notify_email=None, job_id=None):
+    """Upsert a dashboard-issued cert into fleet_certs so it is monitored for
+    expiry alongside scanned certs — issuing a cert here is the same as finding
+    one in the wild. Keyed on (host, path) with a synthetic 'dashboard:<job_id>'
+    path so re-issues update in place and never collide with a real scanned
+    filesystem path. Best-effort: never fails the issue."""
+    try:
+        import import_certs
+        info = import_certs.parse_cert(cert_pem)
+        if not info:
+            return
+        path = "dashboard:" + (str(job_id) if job_id
+                               else (info.get("fingerprint") or "")[:16])
+        now = time.time()
+        conn.execute("""
+            INSERT INTO fleet_certs
+                (host, path, fingerprint, cn, sans_json, issuer, serial,
+                 not_before, expires_at, cert_types, notify_email,
+                 first_seen, last_seen, pem)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(host, path) DO UPDATE SET
+                fingerprint=excluded.fingerprint, cn=excluded.cn,
+                sans_json=excluded.sans_json, issuer=excluded.issuer,
+                serial=excluded.serial, not_before=excluded.not_before,
+                expires_at=excluded.expires_at, cert_types=excluded.cert_types,
+                notify_email=excluded.notify_email, last_seen=excluded.last_seen,
+                pem=excluded.pem, expiry_warned=0
+        """, (host, path, info.get("fingerprint") or "", info.get("cn"),
+              json.dumps(info.get("sans") or []), info.get("issuer"),
+              info.get("serial"), info.get("not_before"), info.get("expires_at"),
+              ",".join(info.get("cert_types") or []), notify_email,
+              now, now, cert_pem))
+    except Exception as e:  # noqa: BLE001 - tracking must never break issuance
+        sys.stderr.write(f"fleet track failed for {host}: {e}\n")
+
+
 def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
                         approver_dn=None, log_action="attach_signed_cert"):
     """Shared completion path for an issued certificate. Verifies the signed
@@ -1764,6 +1800,9 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
             "approved_by_dn=?, approved_at=? WHERE id=?",
             (cert_pem, now, actor_dn, expires_at, signed_via, approver_dn,
              (now if approver_dn else None), job_id))
+        # Auto-track the issued cert for fleet-wide expiry monitoring.
+        _fleet_track_issued(conn, row["target_host"], cert_pem,
+                            notify_email=row["requester_email"], job_id=job_id)
 
     # Filesystem drop (best-effort; never fail the issue over a fs hiccup).
     try:
