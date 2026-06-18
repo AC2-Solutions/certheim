@@ -3,6 +3,11 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.4.0 — 2026-06-18
+
+### Added / Changed
+- (signing) cloud DNS-01 solvers for ACME (Cloudflare/Route53/Azure) [phase 2]
+
 ## 2.3.0 — 2026-06-18
 
 ### Added / Changed
