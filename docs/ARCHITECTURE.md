@@ -35,6 +35,8 @@ CSRF is enforced via the `X-Requested-With: csr-dashboard` header on writes.
 | `app.py` | Flask app wiring + the shared **core**: env/config loading, constant tables (cert types, key algos, seeded templates), the DB connection, `before_request` auth/CSRF, decorators (`require_auth`/`require_admin`/`require_csrf`), identity/session + local-auth helpers, `get_setting`/`set_setting`, the webhook/chat notification engine, `init_db` (schema), and blueprint registration at the tail. Blueprints `from app import (...)` the helpers they need. |
 | `notify.py` | Multi-method email (SMG / SMTP / Mailgun / SendGrid / none); secrets masked on read, preserved on blank save. |
 | `capabilities.py` | Capability/feature-flag resolver: `available(cap) = entitled (license, offline-verifiable, no phone-home) AND env_supports (detected: egress/fips/selinux/openbao…)`. UI shows on / off / not-licensed / unavailable-here. |
+| `sign.py` | Certificate-signing **provider registry** (the CA-signing seam): `manual` / `openbao` (live) / `cyberark` (slot). `sign_csr`/`revoke_cert`/`test_connection` dispatch by provider; `provider_meta()` drives the admin UI. The CA key never resides on the app host (scoped AppRole credential, env-only). |
+| `csr_subject.py` | Configurable CSR **subject DN**: org profiles, suggested OU tags, value sanitization, render to the helper's `subject.conf` (parsed, never sourced), DN preview. |
 
 ### Route blueprints (one domain each)
 | file | mounts | domain |
@@ -47,6 +49,7 @@ CSRF is enforced via the `X-Requested-With: csr-dashboard` header on writes.
 | `routes_admin.py` | `/api/admin/*`, `/api/fleet-certs/*` | admin: users, groups, templates, audit, fleet certs, email config, cleanup, stats |
 | `routes_integrations.py` | `/api/admin/webhooks/*`, `/api/slack/*`, `/api/admin/capabilities` | webhooks CRUD/test, Slack config + signed interactivity callback, capability readout |
 | `routes_feedback.py` | `/api/feedback*` | feedback submit + admin triage |
+| `routes_signing.py` | `/api/jobs/<id>/sign`, `/api/jobs/<id>/revoke`, `/api/admin/signing-config*` | v2 in-UI signing: approve-&-sign, revoke, provider config + test |
 
 ### Standalone / optional
 | file | responsibility |
