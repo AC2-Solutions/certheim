@@ -42,6 +42,12 @@ CAPABILITIES = {
                           "desc": "In-UI signing via CyberArk (configurable slot)"},
     "ca.signing.acme": {"env": ["acme"],
                           "desc": "In-UI signing via any ACME (RFC 8555) CA"},
+    "ca.signing.ejbca": {"env": ["ejbca"],
+                          "desc": "In-UI signing via EJBCA (REST enrollment)"},
+    "ca.signing.venafi": {"env": ["venafi"],
+                          "desc": "In-UI signing via Venafi TPP"},
+    "ca.signing.aws_pca": {"env": ["aws_pca"],
+                          "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
 }
 
@@ -119,6 +125,9 @@ def _detect_env():
     caps["openbao"] = _flag("openbao", False)
     caps["winca"] = _flag("winca", False)
     caps["acme"] = _flag("acme", False)
+    caps["ejbca"] = _flag("ejbca", False)
+    caps["venafi"] = _flag("venafi", False)
+    caps["aws_pca"] = _flag("aws_pca", False)
     return caps
 
 
