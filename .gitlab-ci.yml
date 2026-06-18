@@ -19,6 +19,18 @@ python-syntax:
   script:
     - $PYBIN --version
     - $PYBIN -m py_compile backend/*.py
+    # Undefined-name gate: py_compile does NOT catch NameErrors (e.g. a blueprint
+    # using sqlite3/Path without importing it). pyflakes does. Fail ONLY on
+    # "undefined name" (unused-import noise is ignored). Best-effort install.
+    - |
+      if $PYBIN -m pip install --quiet --user pyflakes 2>/dev/null || pip3 install --quiet --user pyflakes 2>/dev/null; then
+        if $PYBIN -m pyflakes backend/*.py 2>&1 | grep -E "undefined name"; then
+          echo "FAIL: undefined name(s) above — add the missing import."; exit 1
+        fi
+        echo "pyflakes: no undefined names"
+      else
+        echo "WARN: pyflakes unavailable; skipped undefined-name check"
+      fi
     - echo "python OK"
 
 bash-syntax:

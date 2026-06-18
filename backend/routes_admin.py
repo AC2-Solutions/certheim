@@ -1,6 +1,7 @@
 """routes_admin blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, abort, g, jsonify, request, session
-import json, re, string, time, uuid
+import json, re, sqlite3, string, time, uuid
+from pathlib import Path
 import capabilities
 import notify
 import csr_subject
