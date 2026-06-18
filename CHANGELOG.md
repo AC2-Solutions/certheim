@@ -3,6 +3,11 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.3.0 — 2026-06-18
+
+### Added / Changed
+- (signing) ACME (RFC 8555) client provider [phase 1]
+
 ## 2.2.0 — 2026-06-18
 
 ### Added / Changed
