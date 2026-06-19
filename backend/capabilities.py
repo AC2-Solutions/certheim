@@ -131,24 +131,28 @@ def _openssl_fips_provider():
                              capture_output=True, text=True, timeout=5).stdout
     except Exception:
         return None
-    # Provider blocks are indented under a flush-left name line, e.g.:
-    #   fips
-    #     name: Red Hat Enterprise Linux 9 - OpenSSL FIPS Provider
-    #     version: 3.0.7-...
-    #     status: active
+    # Output (indented under a flush-left "Providers:" header):
+    #   Providers:
+    #     fips                  <- provider name (no colon)
+    #       name: Red Hat ... OpenSSL FIPS Provider
+    #       version: 3.0.7-...
+    #       status: active      <- attributes (key: value)
+    # Indent-agnostic: a provider name line is indented with no colon; its
+    # attributes are indented and have "key: value".
     block, name, ver = None, None, None
     for line in out.splitlines():
-        if line and not line[0].isspace():
-            block = line.strip()
-            name = ver = None
+        if not line.strip() or not line[:1].isspace():
+            continue                       # blank or the flush-left "Providers:"
+        s = line.strip()
+        if ":" not in s:
+            block, name, ver = s, None, None   # a provider name (fips/default/base)
         elif block == "fips":
-            s = line.strip()
             if s.startswith("name:"):
                 name = s.split(":", 1)[1].strip()
             elif s.startswith("version:"):
                 ver = s.split(":", 1)[1].strip()
-            elif s == "status: active" and name:
-                return {"name": name, "version": ver or ""}
+            elif s.startswith("status:") and "active" in s:
+                return {"name": name or "OpenSSL FIPS Provider", "version": ver or ""}
     return None
 
 
