@@ -128,10 +128,11 @@ email" verifies wiring.
   scripts can't exec-by-path → run via `bash`.
 - **venv perms**: `python -m venv` is 0700 under root umask 077 → csrapi can't
   traverse → `chmod -R g+rX /opt/csr-dashboard/venv` (installer does this).
-- **systemd**: single-line `ExecStart`; `ProtectSystem=full` + `ProtectHome=true`
-  with `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
-  /var/opt/certinel /etc/csr-dashboard`. `deploy.sh` runs `systemd-analyze
-  verify` before restart.
+- **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
+  `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
+  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome` stays **false** (the
+  sudo'd helper + keys live under `/root/sslcerts`). `deploy.sh` runs
+  `systemd-analyze verify` before restart.
 - **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
   (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.
   `deploy.sh` creates them and sets `var_lib_t` so the confined service can
