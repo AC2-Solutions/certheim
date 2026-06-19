@@ -121,6 +121,41 @@ def _probe_egress():
     return False
 
 
+def _openssl_fips_provider():
+    """The active OpenSSL FIPS provider (name + version) if loaded, else None.
+    This is the real check that the *validated module* is doing the crypto -
+    stronger than the kernel /proc flag alone. Certinel uses only the stdlib +
+    the system `openssl`, both backed by this provider in FIPS mode."""
+    try:
+        out = subprocess.run(["openssl", "list", "-providers"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return None
+    # Output (indented under a flush-left "Providers:" header):
+    #   Providers:
+    #     fips                  <- provider name (no colon)
+    #       name: Red Hat ... OpenSSL FIPS Provider
+    #       version: 3.0.7-...
+    #       status: active      <- attributes (key: value)
+    # Indent-agnostic: a provider name line is indented with no colon; its
+    # attributes are indented and have "key: value".
+    block, name, ver = None, None, None
+    for line in out.splitlines():
+        if not line.strip() or not line[:1].isspace():
+            continue                       # blank or the flush-left "Providers:"
+        s = line.strip()
+        if ":" not in s:
+            block, name, ver = s, None, None   # a provider name (fips/default/base)
+        elif block == "fips":
+            if s.startswith("name:"):
+                name = s.split(":", 1)[1].strip()
+            elif s.startswith("version:"):
+                ver = s.split(":", 1)[1].strip()
+            elif s.startswith("status:") and "active" in s:
+                return {"name": name or "OpenSSL FIPS Provider", "version": ver or ""}
+    return None
+
+
 def _detect_env():
     caps = {}
     # cheap, reliable detections
@@ -128,6 +163,7 @@ def _detect_env():
         caps["fips"] = open("/proc/sys/crypto/fips_enabled").read().strip() == "1"
     except OSError:
         caps["fips"] = False
+    caps["openssl_fips_provider"] = _openssl_fips_provider()
     try:
         caps["selinux_enforcing"] = \
             open("/sys/fs/selinux/enforce").read().strip() == "1"
@@ -156,6 +192,26 @@ def env_caps(refresh=False):
     if _env_cache is None or refresh:
         _env_cache = _detect_env()
     return dict(_env_cache)
+
+
+def fips_status():
+    """FIPS 140-3 posture. `validated` means the crypto is actually running
+    through the platform's FIPS-validated module: the kernel is in FIPS mode AND
+    the OpenSSL FIPS provider is active (Certinel itself bundles no crypto - all
+    hashing/HMAC/TLS/RNG go through the stdlib + system openssl). `fips_required`
+    is an admin setting; `compliant` is false only when required but not validated."""
+    env = env_caps()
+    kernel = bool(env.get("fips"))
+    provider = env.get("openssl_fips_provider")          # {name, version} or None
+    validated = kernel and bool(provider)
+    required = str(_setting("fips_required") or "").strip().lower() in ("1", "true", "yes", "on")
+    return {
+        "kernel_fips": kernel,
+        "openssl_provider": provider,
+        "validated": validated,
+        "required": required,
+        "compliant": validated or not required,
+    }
 
 
 # --- entitlements (license) ------------------------------------------------

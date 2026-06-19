@@ -571,6 +571,25 @@ async function loadSigningConfig() {
   }
   const slEl = document.getElementById("signing-cfg-shortlived-ttl");
   if (slEl) slEl.value = c.key_return_once_max_ttl || 0;
+  // FIPS 140-3 posture
+  const f = c.fips || {};
+  const fEl = document.getElementById("signing-fips-status");
+  if (fEl) {
+    const prov = f.openssl_provider || {};
+    if (f.validated) {
+      fEl.innerHTML = '<span style="color:#34d399;font-weight:600">✓ Validated module active</span> — '
+        + escapeHtml(prov.name || "OpenSSL FIPS provider") + " " + escapeHtml(prov.version || "");
+    } else if (f.kernel_fips) {
+      fEl.innerHTML = '<span style="color:#fbbf24;font-weight:600">⚠ kernel FIPS on, but the OpenSSL FIPS provider was not detected</span>';
+    } else {
+      fEl.textContent = "Host is not in FIPS mode. Certinel bundles no crypto — all hashing, HMAC, TLS and RNG use the stdlib + system OpenSSL, so it runs on the validated module once the host is booted in FIPS mode.";
+    }
+    if (f.required && !f.validated) {
+      fEl.innerHTML += ' <strong style="color:#ef4444">— FIPS is required here but not active.</strong>';
+    }
+  }
+  const frEl = document.getElementById("signing-cfg-fips-required");
+  if (frEl) frEl.checked = !!f.required;
   const asc = c.acme_server_capability || {};
   document.getElementById("signing-acmesrv-cap").textContent =
     asc.available === false ? "⚠ not entitled here" + (asc.reason ? " — " + asc.reason : "") : "";
@@ -647,6 +666,7 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
       key_storage: document.getElementById("signing-cfg-keystorage").value,
       key_return_once_max_ttl:
         parseInt(document.getElementById("signing-cfg-shortlived-ttl").value, 10) || 0,
+      fips_required: document.getElementById("signing-cfg-fips-required").checked,
       fields,
     }),
   });

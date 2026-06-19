@@ -301,7 +301,8 @@ def admin_capabilities():
     """What this deployment can do: per-capability availability + reason, plus
     the detected/declared environment. Drives the admin UI's show/disable/why."""
     return jsonify(capabilities=capabilities.all_status(),
-                   environment=capabilities.env_caps())
+                   environment=capabilities.env_caps(),
+                   fips=capabilities.fips_status())
 
 
 @bp.post("/api/slack/interact")
