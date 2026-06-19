@@ -76,6 +76,29 @@ openssl list -providers | grep -A2 fips # name: ... OpenSSL FIPS Provider / stat
 
 Then in Certinel set **Require FIPS** (Admin → Signing/CA) so any drift is visible.
 
+## RHEL major support — 140-2 vs 140-3
+
+The FIPS *validation* is a property of the platform crypto module, not of
+Certinel (which runs the same source on all three). One codebase serves them;
+`fips_status().standard` reports which standard the host meets.
+
+| RHEL | OpenSSL | FIPS standard | How Certinel detects it |
+|---|---|---|---|
+| **9** | 3.x (provider) | **140-3** — *RHEL 9 OpenSSL FIPS Provider* (`openssl-3.0.7-…el9_2`), covers 9.2/9.4/9.6 | FIPS **provider active** in `openssl list -providers` |
+| **10** | 3.x (provider) | **140-3** — Red Hat **reuses the same** `3.0.7` validated provider; confirm RHEL 10 is a listed Operating Environment on the CMVP cert | same provider check |
+| **8** | 1.1.1 (no providers) | **140-2** — RHEL 8 OpenSSL module | kernel FIPS flag + OpenSSL major `< 3` (no provider model exists) |
+
+Notes:
+- **Do not maintain a separate branch per RHEL.** The app code is identical; only
+  the platform module (and its validation) differs. Detection is one function;
+  build the offline bundle against the target's RHEL major (the wheelhouse/venv)
+  and pin a release **tag** for an ATO.
+- Target **RHEL 9 / 10 for a FIPS 140-3 claim**; RHEL 8 is **140-2** (and 140-2
+  certificates are sunsetting to the CMVP Historical list).
+- Always confirm the current certificate state on the
+  [NIST CMVP list](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
+  at deploy / accreditation time.
+
 ## Status across the reference deployment
 
 - **disa (STIG/gov):** FIPS mode **enabled** — provider *Red Hat Enterprise
