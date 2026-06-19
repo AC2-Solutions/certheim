@@ -152,8 +152,11 @@ if [[ "$changed_tags" == *systemd* ]]; then
     # One-time migration: retire the legacy csr-* unit names (renamed to
     # certinel-*). Stop + disable + remove them so the old csr-api releases
     # 127.0.0.1:5002 before certinel-api binds, and the old timers stop firing.
-    # Idempotent: no-ops once the legacy files are gone.
-    for legacy in csr-api csr-expiry-warn csr-auto-renew csr-deliver csr-slack-listener; do
+    # Idempotent: no-ops once the legacy files are gone. NOTE: csr-slack-listener
+    # is intentionally excluded - it's an opt-in Socket-Mode service installed
+    # manually (not in MANIFEST), so deploy must not retire it without a
+    # replacement; swap it by hand when reconfiguring Slack Socket Mode.
+    for legacy in csr-api csr-expiry-warn csr-auto-renew csr-deliver; do
         if [[ -f "/etc/systemd/system/$legacy.service" || -f "/etc/systemd/system/$legacy.timer" ]]; then
             systemctl disable --now "$legacy.timer" "$legacy.service" 2>/dev/null || true
             rm -f "/etc/systemd/system/$legacy.service" "/etc/systemd/system/$legacy.timer"
