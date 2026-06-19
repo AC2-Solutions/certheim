@@ -288,6 +288,45 @@ def test_keystore_host_fallback_when_no_vault(client, monkeypatch):
     assert loc == "host" and sets and sets[-1][1].get("key_storage") == "host"
 
 
+def test_keystore_effective_mode_precedence(client):
+    """Phase 3: template override > short-lived auto-rule > global policy."""
+    import json
+    import keystore
+    appmod = client._appmod
+    tid = client.get("/api/templates", headers=CAC).get_json()["templates"][0]["id"]
+
+    # global=host, template override=vault -> override wins
+    client.put("/api/admin/signing-config", headers=WRITE,
+               data=json.dumps({"key_storage": "host", "key_return_once_max_ttl": 0}))
+    r = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                   data=json.dumps({"signer_backend": "manual", "key_storage": "vault"}))
+    assert r.status_code == 200 and r.get_json()["key_storage"] == "vault"
+    with appmod.app.app_context():
+        assert keystore.effective_mode(tid) == "vault"
+
+    # clear override -> inherit global (host)
+    client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+               data=json.dumps({"signer_backend": "manual", "key_storage": "default"}))
+    with appmod.app.app_context():
+        assert keystore.effective_mode(tid) == "host"
+
+    # short-lived auto-rule: threshold set + template max_ttl <= threshold -> return_once
+    client.put("/api/admin/signing-config", headers=WRITE,
+               data=json.dumps({"key_storage": "vault", "key_return_once_max_ttl": 3600}))
+    client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+               data=json.dumps({"signer_backend": "manual", "max_ttl": 1800,
+                                "key_storage": "default"}))
+    with appmod.app.app_context():
+        assert keystore.effective_mode(tid) == "return_once"
+
+    # restore
+    client.put("/api/admin/signing-config", headers=WRITE,
+               data=json.dumps({"key_storage": "vault", "key_return_once_max_ttl": 0}))
+    client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+               data=json.dumps({"signer_backend": "manual", "max_ttl": None,
+                                "key_storage": "default"}))
+
+
 def test_sign_requires_auth(client):
     # CSRF header present but no CAC identity -> 403
     assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403

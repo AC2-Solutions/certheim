@@ -703,6 +703,10 @@ def init_db():
         conn.execute("ALTER TABLE cert_templates ADD COLUMN delivery_target TEXT")
     if "delivery_reload" not in tmpl_cols:
         conn.execute("ALTER TABLE cert_templates ADD COLUMN delivery_reload TEXT")
+    # Key-handling Phase 3: per-template private-key storage override.
+    # NULL = use the global key_storage policy (vault | return_once | host).
+    if "key_storage" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN key_storage TEXT")
 
     # Seed the Windows-style built-in templates once (first run only, so
     # admin deletions stick across restarts).

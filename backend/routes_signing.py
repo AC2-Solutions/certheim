@@ -81,6 +81,9 @@ def _config_view():
         # see docs/key-handling-design.md). Enforcement lands in a later phase.
         "key_storage": (get_setting("key_storage") or DEFAULT_KEY_STORAGE),
         "key_storage_options": list(KEY_STORAGE_MODES),
+        # Phase 3 short-lived auto-rule: templates capped at <= this many seconds
+        # don't retain keys (return_once); 0 disables. Per-template override wins.
+        "key_return_once_max_ttl": int(get_setting("key_return_once_max_ttl") or 0),
     }
 
 
@@ -283,6 +286,12 @@ def put_signing_config():
         if ks not in KEY_STORAGE_MODES:
             return jsonify(error=f"key_storage must be one of {list(KEY_STORAGE_MODES)}"), 400
         set_setting("key_storage", ks)
+    if "key_return_once_max_ttl" in payload:
+        try:
+            v = max(0, int(payload.get("key_return_once_max_ttl") or 0))
+        except (TypeError, ValueError):
+            return jsonify(error="key_return_once_max_ttl must be a non-negative integer"), 400
+        set_setting("key_return_once_max_ttl", str(v))
     if "acme_server_enabled" in payload:
         set_setting("acme_server_enabled", "1" if payload.get("acme_server_enabled") else "0")
     if "acme_server_base_url" in payload:

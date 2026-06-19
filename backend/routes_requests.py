@@ -175,7 +175,7 @@ def generate_rhel():
         # host into OpenBao + shred the local copy). No-op for external CSRs.
         if has_key:
             import keystore
-            keystore.secure_after_generate(job_id, local_key)
+            keystore.secure_after_generate(job_id, local_key, template_id)
         job_ids.append(job_id)
         created_targets.append(target)
         run_helper(["delete-csr", csr_name])

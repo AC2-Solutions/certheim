@@ -45,6 +45,33 @@ def policy():
     return p if p in KEY_STORAGE_MODES else DEFAULT_KEY_STORAGE
 
 
+def effective_mode(template_id):
+    """Resolve the key-storage mode for a job (Phase 3). Precedence:
+      1. the template's per-template key_storage override, if set;
+      2. the short-lived auto-rule - a template capped at <= key_return_once_max_ttl
+         seconds doesn't retain keys (return_once); 0 disables the rule;
+      3. the global key_storage policy.
+    """
+    glob = policy()
+    if not template_id:
+        return glob
+    from app import db
+    with db() as conn:
+        r = conn.execute("SELECT key_storage, max_ttl FROM cert_templates "
+                         "WHERE id = ?", (template_id,)).fetchone()
+    if not r:
+        return glob
+    if r["key_storage"] in KEY_STORAGE_MODES:
+        return r["key_storage"]
+    try:
+        thr = int(_get("key_return_once_max_ttl", "0") or 0)
+    except ValueError:
+        thr = 0
+    if thr > 0 and r["max_ttl"] and int(r["max_ttl"]) <= thr:
+        return "return_once"
+    return glob
+
+
 def vault_available():
     """Vault storage needs OpenBao configured (AppRole creds in the env)."""
     return bool(os.environ.get("CSR_OPENBAO_ROLE_ID", "").strip()
@@ -108,12 +135,14 @@ def _set_job(job_id, **cols):
 # --------------------------------------------------------------------------- #
 # Public API                                                                   #
 # --------------------------------------------------------------------------- #
-def secure_after_generate(job_id, key_name):
+def secure_after_generate(job_id, key_name, template_id=None):
     """Apply the key-storage policy to a freshly generated server key (called
-    right after the job is created). Returns the location: 'host' | 'vault' |
-    'returned'. Never raises - any vault failure leaves the key on the host."""
+    right after the job is created). The effective mode honors a per-template
+    override (Phase 3), else the global policy. Returns the location: 'host' |
+    'vault' | 'returned'. Never raises - any vault failure leaves the key on the
+    host."""
     from app import run_helper, log_event
-    mode = policy()
+    mode = effective_mode(template_id)
     if mode == "host" or not key_name:
         _set_job(job_id, key_storage="host")
         return "host"

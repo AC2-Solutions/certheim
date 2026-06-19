@@ -571,7 +571,9 @@ def renew_job(job_id):
         ))
     if has_key:
         import keystore
-        keystore.secure_after_generate(new_id, local_key)
+        keystore.secure_after_generate(
+            new_id, local_key,
+            old["template_id"] if "template_id" in old.keys() else None)
     run_helper(["delete-csr", csr_name])
 
     log_event("renew_job", "ok", job_id=job_id, new_job_id=new_id,
