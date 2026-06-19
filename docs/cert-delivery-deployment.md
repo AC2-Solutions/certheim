@@ -196,6 +196,53 @@ Requires `key_mode = ship` (a TLS Secret needs `tls.key`).
 
 ---
 
+## 5c. P3 providers — `webhook` and `cyberark`
+
+### `webhook` (POST to a receiver)
+
+POSTs the bundle as JSON (`{event, target_host, certificate, private_key?}`) to
+a receiver URL. **https only.** Optionally signed + mutually authenticated from
+Vault `secret/csr-delivery-webhook/<host>` `{secret, ca_cert?, client_cert?, client_key?}`:
+
+- `secret` → an `X-CSR-Signature: sha256=<hmac>` header the receiver verifies
+  over the raw body.
+- `client_cert`/`client_key` → mTLS to the receiver; `ca_cert` pins the
+  receiver's TLS.
+- With no Vault cred it's an unsigned POST (for receivers gated by network/mTLS
+  alone).
+
+**Per template:** Delivery = `webhook receiver`; **target** = the https URL.
+
+### `cyberark` (CyberArk Conjur)
+
+Writes the cert to the Conjur variable named by **target**, and the key (when
+`key_mode = ship`) to `<target>/key`. Config is admin-set; the API key is
+env-only:
+
+```
+# /etc/csr-dashboard/csr-dashboard.env
+CSR_CYBERARK_URL=https://conjur.example.com
+CSR_CYBERARK_ACCOUNT=myConjurAccount
+CSR_CYBERARK_LOGIN=host/csr-dashboard
+CSR_CYBERARK_API_KEY=<api-key>
+# CSR_CYBERARK_CA_CERT=<pem>   # optional, pin Conjur's TLS
+```
+
+The Conjur host/identity needs `update` on those variables.
+
+---
+
+## 5d. Retry, backoff & alerting
+
+Delivery runs inline on issue and is retried by the **`csr-deliver` timer**.
+Failures back off exponentially (2 min → capped at 1 h) up to
+`delivery_max_attempts` (default 8); after that the job is **`abandoned`** and a
+**`job.delivery_failed`** event fires (wire it to chat/email/a webhook so a
+short-lived cert can't lapse unnoticed). A successful delivery fires
+**`job.delivered`**. Both events are in the admin webhook subscription list.
+
+---
+
 ## 6. Verify
 
 - Issue (or re-deliver) a cert under a delivery-enabled template. Delivery runs

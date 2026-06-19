@@ -202,6 +202,8 @@ WEBHOOK_EVENTS = (
     "job.expired",
     "job.expiring",
     "job.renewed",
+    "job.delivered",
+    "job.delivery_failed",
     "fleet_cert.expiring",
     "feedback.submitted",
 )
@@ -810,6 +812,8 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN delivered_at REAL")
     if "delivery_attempts" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0")
+    if "delivery_next_attempt" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delivery_next_attempt REAL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")

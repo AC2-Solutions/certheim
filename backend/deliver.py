@@ -25,6 +25,8 @@ Connection secrets come from the environment / sign.py's OpenBao login or from
 Vault KV; this module stores no long-lived secrets of its own.
 """
 import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -34,6 +36,7 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import sign
@@ -46,15 +49,24 @@ _HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,253}$")
 _K8S_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")
 
 
-def _https(method, url, body=None, headers=None, ca_pem=None, timeout=15):
-    """Arbitrary-method HTTPS to a non-OpenBao endpoint (the Kubernetes API),
-    verifying TLS against an optional CA bundle. Returns (status, text)."""
+def _https(method, url, body=None, headers=None, ca_pem=None, timeout=15,
+           client_cert_pem=None, client_key_pem=None):
+    """Arbitrary-method HTTPS to a non-OpenBao endpoint (Kubernetes API, a
+    webhook receiver, CyberArk), verifying TLS against an optional CA bundle and
+    optionally presenting a client certificate (mTLS). Returns (status, text)."""
     data = body.encode() if isinstance(body, str) else body
     req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    if ca_pem:
-        ctx = ssl.create_default_context(cadata=ca_pem)
-    else:
-        ctx = ssl.create_default_context()
+    ctx = ssl.create_default_context(cadata=ca_pem) if ca_pem else ssl.create_default_context()
+    cf = None
+    if client_cert_pem:
+        # load_cert_chain wants files; write the cert(+key) to a 0600 temp PEM.
+        cf = tempfile.NamedTemporaryFile("w", delete=False, suffix=".pem")
+        cf.write(client_cert_pem if client_cert_pem.endswith("\n") else client_cert_pem + "\n")
+        if client_key_pem:
+            cf.write(client_key_pem if client_key_pem.endswith("\n") else client_key_pem + "\n")
+        cf.close()
+        os.chmod(cf.name, 0o600)
+        ctx.load_cert_chain(cf.name)
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
@@ -67,6 +79,12 @@ def _https(method, url, body=None, headers=None, ca_pem=None, timeout=15):
         raise DeliveryError(f"HTTP {e.code} from {url.split('?')[0]}: {detail}")
     except urllib.error.URLError as e:
         raise DeliveryError(f"unreachable {url.split('?')[0]}: {e.reason}")
+    finally:
+        if cf:
+            try:
+                os.remove(cf.name)
+            except OSError:
+                pass
 
 
 def configure(get_setting=None):
@@ -328,11 +346,102 @@ def _deliver_k8s(job):
     return f"k8s:{cluster}/{namespace}/{name} (status {status})"
 
 
+# --------------------------------------------------------------------------- #
+# P3: webhook (POST to a receiver) provider                                    #
+# --------------------------------------------------------------------------- #
+def _deliver_webhook(job):
+    """POST the bundle as JSON to a receiver URL (delivery_target). Optionally
+    signs the body (HMAC-SHA256) and/or presents a client cert (mTLS); both come
+    from Vault at secret/csr-delivery-webhook/<host> when present
+    {secret, ca_cert?, client_cert?, client_key?} — the provider also works with
+    no Vault cred (a plain POST, for receivers gated by network/mTLS alone)."""
+    url = (job.get("delivery_target") or "").strip()
+    if not url.lower().startswith("https://"):
+        raise DeliveryError("webhook delivery_target must be an https:// URL")
+    host = (job.get("target_host") or "").strip()
+    cred = {}
+    try:
+        if host:
+            cred = _openbao_kv_read("csr-delivery-webhook/" + host)
+    except DeliveryError:
+        cred = {}            # no Vault / no cred -> unsigned POST
+
+    bundle = _job_bundle(job)
+    body = json.dumps({
+        "event": "cert.delivered",
+        "target_host": host,
+        "certificate": bundle["certificate"],
+        **({"private_key": bundle["private_key"]} if bundle.get("private_key") else {}),
+    })
+    headers = {"Content-Type": "application/json", "User-Agent": "csr-dashboard"}
+    secret = cred.get("secret")
+    if secret:
+        sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+        headers["X-CSR-Signature"] = "sha256=" + sig
+    status, _ = _https("POST", url, body=body, headers=headers,
+                       ca_pem=cred.get("ca_cert") or None,
+                       client_cert_pem=cred.get("client_cert") or None,
+                       client_key_pem=cred.get("client_key") or None)
+    return f"webhook:{url} (status {status}{', signed' if secret else ''})"
+
+
+# --------------------------------------------------------------------------- #
+# P3: cyberark (CyberArk Conjur set-secret) provider                           #
+# --------------------------------------------------------------------------- #
+def _cyberark_cfg():
+    return {
+        "url": (_get("delivery_cyberark_url", "") or os.environ.get("CSR_CYBERARK_URL", "")).rstrip("/"),
+        "account": _get("delivery_cyberark_account", "") or os.environ.get("CSR_CYBERARK_ACCOUNT", ""),
+        "login": _get("delivery_cyberark_login", "") or os.environ.get("CSR_CYBERARK_LOGIN", ""),
+        "api_key": os.environ.get("CSR_CYBERARK_API_KEY", ""),
+        "ca_cert": os.environ.get("CSR_CYBERARK_CA_CERT", ""),
+    }
+
+
+def _deliver_cyberark(job):
+    """Write the bundle into CyberArk Conjur as secret variable(s). The cert goes
+    to the variable named by delivery_target; the key (per key_mode) to
+    `<target>/key`. Connection config is admin-set; the API key is env-only."""
+    c = _cyberark_cfg()
+    missing = [k for k in ("url", "account", "login", "api_key") if not c[k]]
+    if missing:
+        raise DeliveryError("CyberArk not configured (missing " + ", ".join(missing) + ")")
+    var_id = (job.get("delivery_target") or "").strip().strip("/")
+    if not var_id:
+        raise DeliveryError("cyberark delivery_target must be a Conjur variable id")
+    ca = c["ca_cert"] or None
+    bundle = _job_bundle(job)
+
+    # 1) Authenticate: POST the API key, get a short-lived access token.
+    login = urllib.parse.quote(c["login"], safe="")
+    status, tok = _https(
+        "POST", f"{c['url']}/authn/{c['account']}/{login}/authenticate",
+        body=c["api_key"], ca_pem=ca,
+        headers={"Content-Type": "text/plain", "Accept-Encoding": "base64"})
+    auth = 'Token token="' + tok.strip() + '"'
+
+    # 2) Set the cert variable (and the key variable when shipped).
+    def _set(vid, value):
+        path = "/".join(urllib.parse.quote(p, safe="") for p in vid.split("/"))
+        _https("POST", f"{c['url']}/secrets/{c['account']}/variable/{path}",
+               body=value, ca_pem=ca,
+               headers={"Authorization": auth, "Content-Type": "text/plain"})
+
+    _set(var_id, bundle["certificate"])
+    shipped = "cert"
+    if bundle.get("private_key"):
+        _set(var_id + "/key", bundle["private_key"])
+        shipped = "cert+key"
+    return f"cyberark:{c['account']}:{var_id} ({shipped})"
+
+
 PROVIDERS = {
     "openbao": _deliver_openbao,
     "ssh": _deliver_ssh,
     "pull": _deliver_pull,
     "k8s": _deliver_k8s,
+    "webhook": _deliver_webhook,
+    "cyberark": _deliver_cyberark,
 }
 
 
@@ -359,6 +468,7 @@ def deliver_job(job):
 # --------------------------------------------------------------------------- #
 _JOB_SELECT = (
     "SELECT j.id, j.target_host, j.cert_pem, j.has_local_key, j.local_key_name, "
+    "       j.delivery_attempts, "
     "       t.delivery_backend, t.key_mode, t.delivery_target, t.delivery_reload "
     "FROM jobs j LEFT JOIN cert_templates t ON j.template_id = t.id "
 )
@@ -369,74 +479,119 @@ def _load_job(conn, job_id):
     return dict(r) if r else None
 
 
-def _mark(conn, job_id, status, detail=None, bump_attempt=False):
-    import time
-    if bump_attempt:
-        conn.execute(
-            "UPDATE jobs SET delivery_status=?, delivery_detail=?, "
-            "delivery_attempts = COALESCE(delivery_attempts,0)+1 WHERE id=?",
-            (status, (detail or "")[:300], job_id))
-    else:
-        conn.execute(
-            "UPDATE jobs SET delivery_status=?, delivery_detail=?, "
-            "delivered_at=?, delivery_attempts = COALESCE(delivery_attempts,0)+1 "
-            "WHERE id=?",
-            (status, (detail or "")[:300], time.time() if status == "delivered" else None,
-             job_id))
+# Retry policy for the csr-deliver timer: exponential backoff between attempts,
+# capped, then give up (status 'abandoned') and alert — a short-lived cert must
+# never lapse silently.
+MAX_DELIVERY_ATTEMPTS = 8
+_BACKOFF_BASE = 120      # seconds (doubles each attempt)
+_BACKOFF_CAP = 3600      # seconds
+
+
+def _backoff(attempts):
+    return min(_BACKOFF_CAP, _BACKOFF_BASE * (2 ** max(0, attempts - 1)))
+
+
+def _max_attempts():
+    try:
+        return max(1, int(_get("delivery_max_attempts", str(MAX_DELIVERY_ATTEMPTS))
+                          or MAX_DELIVERY_ATTEMPTS))
+    except ValueError:
+        return MAX_DELIVERY_ATTEMPTS
+
+
+def _mark(conn, job_id, status, detail=None, next_attempt=None):
+    """Record a delivery outcome. Always bumps the attempt counter; sets
+    delivered_at on success and delivery_next_attempt (backoff gate) on retryable
+    failure (None clears it)."""
+    conn.execute(
+        "UPDATE jobs SET delivery_status=?, delivery_detail=?, delivered_at=?, "
+        "delivery_next_attempt=?, delivery_attempts = COALESCE(delivery_attempts,0)+1 "
+        "WHERE id=?",
+        (status, (detail or "")[:300], time.time() if status == "delivered" else None,
+         next_attempt, job_id))
 
 
 def deliver_one(job_id):
-    """Best-effort delivery of a single issued job (called inline after issue).
-    Never raises; records the outcome on the job. Returns the status string."""
-    from app import db, log_event
+    """Best-effort delivery of a single issued job (called inline after issue and
+    by the retry timer). Never raises; records the outcome on the job. On success
+    fires job.delivered; after MAX attempts gives up (status 'abandoned') and
+    fires job.delivery_failed so the failure can't pass silently. Returns the
+    status string (delivered / failed / abandoned / n/a)."""
+    from app import db, log_event, fire_webhooks
     with db() as conn:
         job = _load_job(conn, job_id)
         if not job or (job.get("delivery_backend") or "none") in ("", "none"):
             return "n/a"
+    backend = job.get("delivery_backend")
     try:
         detail = deliver_job(job)
         with db() as conn:
             _mark(conn, job_id, "delivered", detail)
-        log_event("delivery", "ok", job_id=job_id,
-                  backend=job.get("delivery_backend"), detail=str(detail)[:120])
+        log_event("delivery", "ok", job_id=job_id, backend=backend,
+                  detail=str(detail)[:120])
+        try:
+            fire_webhooks("job.delivered", {
+                "job_id": job_id, "target_host": job.get("target_host"),
+                "backend": backend, "detail": str(detail)[:200]})
+        except Exception:  # noqa: BLE001 - notification must not undo a delivery
+            pass
         return "delivered"
     except Exception as e:  # noqa: BLE001 - delivery must never break issuance
+        attempts = (job.get("delivery_attempts") or 0) + 1
+        final = attempts >= _max_attempts()
+        status = "abandoned" if final else "failed"
+        nxt = None if final else (time.time() + _backoff(attempts))
         with db() as conn:
-            _mark(conn, job_id, "failed", str(e), bump_attempt=True)
-        log_event("delivery", "fail", job_id=job_id,
-                  backend=job.get("delivery_backend"), error=str(e)[:160])
-        return "failed"
+            _mark(conn, job_id, status, str(e), next_attempt=nxt)
+        log_event("delivery", "giveup" if final else "fail", job_id=job_id,
+                  backend=backend, attempts=attempts, error=str(e)[:160])
+        if final:
+            try:
+                fire_webhooks("job.delivery_failed", {
+                    "job_id": job_id, "target_host": job.get("target_host"),
+                    "backend": backend, "attempts": attempts, "error": str(e)[:200]})
+            except Exception:  # noqa: BLE001
+                pass
+        return status
 
 
 def mark_pending(job_id):
     """Flag an issued job for delivery if its template configures one. Called by
-    the completion path before the inline attempt."""
+    the completion path before the inline attempt; also resets the backoff gate
+    so a manual re-queue retries immediately."""
     from app import db
     with db() as conn:
         job = _load_job(conn, job_id)
         if not job or (job.get("delivery_backend") or "none") in ("", "none"):
             return False
-        conn.execute("UPDATE jobs SET delivery_status='pending' WHERE id=?", (job_id,))
+        conn.execute("UPDATE jobs SET delivery_status='pending', "
+                     "delivery_next_attempt=NULL WHERE id=?", (job_id,))
         return True
 
 
 def run_deliveries(limit=100):
-    """Retry pending/failed deliveries (the csr-deliver timer entrypoint). No
-    Flask context. Returns {delivered, failed, scanned, purged}."""
+    """Retry due pending/failed deliveries (the csr-deliver timer entrypoint).
+    Respects the per-job backoff gate and skips 'abandoned' jobs. No Flask
+    context. Returns {delivered, failed, abandoned, scanned, purged}."""
     from app import db
     purged = purge_expired_pulls()
+    now = time.time()
     with db() as conn:
         rows = conn.execute(
             _JOB_SELECT +
             "WHERE j.status='issued' AND j.delivery_status IN ('pending','failed') "
+            "AND (j.delivery_next_attempt IS NULL OR j.delivery_next_attempt <= ?) "
             "AND COALESCE(t.delivery_backend,'none') NOT IN ('','none') LIMIT ?",
-            (limit,)).fetchall()
+            (now, limit)).fetchall()
         jobs = [dict(r) for r in rows]
-    delivered = failed = 0
+    delivered = failed = abandoned = 0
     for job in jobs:
-        if deliver_one(job["id"]) == "delivered":
+        outcome = deliver_one(job["id"])
+        if outcome == "delivered":
             delivered += 1
+        elif outcome == "abandoned":
+            abandoned += 1
         else:
             failed += 1
-    return {"delivered": delivered, "failed": failed, "scanned": len(jobs),
-            "purged": purged}
+    return {"delivered": delivered, "failed": failed, "abandoned": abandoned,
+            "scanned": len(jobs), "purged": purged}

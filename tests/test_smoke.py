@@ -248,7 +248,7 @@ def test_delivery_module(client):
     """deliver.py: no-op for 'none', cert-only bundle for key_mode=destination,
     and the openbao provider is capability-gated (premium)."""
     import deliver
-    assert {"openbao", "ssh", "pull", "k8s"} <= set(deliver.PROVIDERS)
+    assert {"openbao", "ssh", "pull", "k8s", "webhook", "cyberark"} <= set(deliver.PROVIDERS)
     # a template with no delivery backend is a no-op
     assert deliver.deliver_job({"delivery_backend": "none"}) is None
     assert deliver.deliver_job({}) is None
@@ -364,6 +364,99 @@ def test_delivery_k8s_env_gated(client):
             deliver.deliver_job({"delivery_backend": "k8s", "cert_pem": "C",
                                  "target_host": "h", "key_mode": "ship",
                                  "delivery_target": "ns/sec"})
+
+
+def test_delivery_webhook_shaping(client, monkeypatch):
+    """webhook: https-only, JSON bundle body, HMAC-SHA256 signature when a shared
+    secret is present."""
+    import hashlib
+    import hmac
+    import json as _json
+    import deliver
+    with client._appmod.app.app_context():
+        with pytest.raises(deliver.DeliveryError, match="https"):
+            deliver._deliver_webhook({"delivery_target": "http://x/y", "target_host": "h",
+                                      "cert_pem": "C", "key_mode": "destination"})
+    calls = {}
+
+    def fake_https(method, url, body=None, headers=None, **kw):
+        calls.update(method=method, url=url, body=body, headers=headers)
+        return 200, "ok"
+    monkeypatch.setattr(deliver, "_https", fake_https)
+    monkeypatch.setattr(deliver, "_openbao_kv_read", lambda p: {"secret": "s3cr3t"})
+    with client._appmod.app.app_context():
+        d = deliver._deliver_webhook({"delivery_target": "https://r/hook", "target_host": "h",
+                                      "cert_pem": "CERTP", "key_mode": "destination"})
+    assert calls["method"] == "POST" and calls["url"] == "https://r/hook"
+    body = _json.loads(calls["body"])
+    assert body["certificate"] == "CERTP" and body["target_host"] == "h"
+    assert "private_key" not in body                      # key-at-destination
+    expect = "sha256=" + hmac.new(b"s3cr3t", calls["body"].encode(), hashlib.sha256).hexdigest()
+    assert calls["headers"]["X-CSR-Signature"] == expect and "signed" in d
+
+
+def test_delivery_cyberark_shaping(client, monkeypatch):
+    """cyberark: authenticate then set the cert variable (and the key variable
+    when shipped); refused when unconfigured."""
+    import deliver
+    monkeypatch.setattr(deliver, "_cyberark_cfg", lambda: {
+        "url": "https://cyber", "account": "acct", "login": "host/app",
+        "api_key": "K", "ca_cert": ""})
+    monkeypatch.setattr(deliver, "_job_bundle",
+                        lambda job: {"certificate": "C", "private_key": "K", "target_host": "h"})
+    seq = []
+
+    def fake_https(method, url, body=None, headers=None, **kw):
+        seq.append((method, url, (headers or {}).get("Authorization")))
+        return 200, "AUTHTOKEN"
+    monkeypatch.setattr(deliver, "_https", fake_https)
+    with client._appmod.app.app_context():
+        d = deliver._deliver_cyberark({"delivery_target": "csr/certs/host",
+                                       "target_host": "h", "key_mode": "ship"})
+    assert seq[0][1].endswith("/authn/acct/host%2Fapp/authenticate")
+    assert "/secrets/acct/variable/csr/certs/host" in seq[1][1]
+    assert seq[1][2] == 'Token token="AUTHTOKEN"'
+    assert seq[2][1].endswith("/key") and "cert+key" in d
+    monkeypatch.setattr(deliver, "_cyberark_cfg", lambda: {
+        "url": "", "account": "", "login": "", "api_key": "", "ca_cert": ""})
+    with client._appmod.app.app_context():
+        with pytest.raises(deliver.DeliveryError, match="not configured"):
+            deliver._deliver_cyberark({"delivery_target": "x", "target_host": "h", "key_mode": "ship"})
+
+
+def test_delivery_backoff_and_abandon(client, monkeypatch):
+    """Exponential backoff schedule; a retryable failure schedules a next attempt,
+    and the final attempt abandons + fires job.delivery_failed."""
+    import deliver
+    appmod = client._appmod
+    assert deliver._backoff(1) == 120 and deliver._backoff(2) == 240
+    assert deliver._backoff(99) == deliver._BACKOFF_CAP
+    maxa = deliver._max_attempts()
+
+    marks = []
+    monkeypatch.setattr(deliver, "_mark",
+                        lambda conn, jid, status, detail=None, next_attempt=None:
+                        marks.append((status, next_attempt)))
+    monkeypatch.setattr(deliver, "deliver_job",
+                        lambda job: (_ for _ in ()).throw(deliver.DeliveryError("boom")))
+    fired = []
+    monkeypatch.setattr(appmod, "fire_webhooks", lambda ev, data: fired.append(ev))
+
+    def job_with(attempts):
+        return {"id": "j", "delivery_backend": "webhook", "target_host": "h",
+                "delivery_attempts": attempts}
+    # not-final failure -> status failed + a future next_attempt, no alert
+    monkeypatch.setattr(deliver, "_load_job", lambda conn, jid: job_with(0))
+    with appmod.app.app_context():
+        assert deliver.deliver_one("j") == "failed"
+    assert marks[-1][0] == "failed" and marks[-1][1] is not None
+    assert "job.delivery_failed" not in fired
+    # final failure -> abandoned + alert, no further retry scheduled
+    monkeypatch.setattr(deliver, "_load_job", lambda conn, jid: job_with(maxa - 1))
+    with appmod.app.app_context():
+        assert deliver.deliver_one("j") == "abandoned"
+    assert marks[-1] == ("abandoned", None)
+    assert "job.delivery_failed" in fired
 
 
 def test_template_signing_policy(client):

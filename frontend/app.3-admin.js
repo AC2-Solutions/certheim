@@ -204,6 +204,8 @@ function editTemplateSigning(td, t) {
         <option value="ssh">Deliver → SSH host</option>
         <option value="pull">Deliver → pull token</option>
         <option value="k8s">Deliver → Kubernetes Secret</option>
+        <option value="webhook">Deliver → webhook receiver</option>
+        <option value="cyberark">Deliver → CyberArk</option>
       </select>
       <span class="sig-deliver-cfg" hidden>
         <select class="sig-keymode form-input" style="width:auto;display:inline-block" title="Private-key handling">
@@ -240,6 +242,8 @@ function editTemplateSigning(td, t) {
     openbao: "KV base (csr-certs)",
     ssh: "remote dir (/etc/ssl/delivered)",
     k8s: "namespace/secret",
+    webhook: "https://receiver/hook",
+    cyberark: "Conjur variable id",
     pull: "",
   };
   const _delToggle = () => {
