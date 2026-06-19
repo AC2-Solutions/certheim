@@ -727,7 +727,11 @@ async function refreshAuthSettings() {
   }
   const s = r.body || {};
   document.getElementById("admin-auth-mode").value = s.auth_mode || "mtls";
-  document.getElementById("admin-auth-domain").value = s.trusted_email_domain || "";
+  // Multiple trusted domains supported; show them comma-separated.
+  document.getElementById("admin-auth-domain").value =
+    (s.trusted_email_domains && s.trusted_email_domains.length)
+      ? s.trusted_email_domains.join(", ")
+      : (s.trusted_email_domain || "");
   document.getElementById("admin-auth-approval").checked = !!s.require_admin_approval;
   document.getElementById("admin-auth-allow-reg").checked = !!s.allow_registration;
   // Banner dropdown: built from the server's option list, then select current.

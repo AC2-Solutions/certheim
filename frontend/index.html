@@ -485,12 +485,14 @@
              the login page.</p>
         </div>
         <div class="form-row">
-          <label for="admin-auth-domain">Trusted email domain
+          <label for="admin-auth-domain">Trusted email domain(s)
              <span class="hint">(optional)</span></label>
           <input type="text" id="admin-auth-domain" class="form-input"
-                 maxlength="255" placeholder="(any domain)">
-          <p class="hint">Optional filter: if set, only emails at this exact
-             domain may self-register. Leave blank to allow any valid email.</p>
+                 maxlength="1024" placeholder="(any domain)">
+          <p class="hint">Optional filter: if set, only emails at these
+             domains may self-register. Separate multiple with commas
+             (e.g. <code>ac2solutions.com, mail.mil</code>). Leave blank to
+             allow any valid email.</p>
         </div>
         <div class="form-row">
           <label class="checkbox-row">
