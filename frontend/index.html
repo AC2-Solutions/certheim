@@ -114,6 +114,15 @@
   </div>
 </header>
 
+<!-- License-renewal reminder. Shown by app.js from /api/me's license_notice:
+     within 60 days on the Admin view, within 30 days on the main dashboard. -->
+<div id="license-banner" class="license-banner" role="status" hidden>
+  <span class="license-banner-icon" aria-hidden="true">⚠</span>
+  <span id="license-banner-msg" class="license-banner-msg"></span>
+  <button id="license-banner-dismiss" class="license-banner-dismiss" type="button"
+          title="Dismiss until next sign-in" aria-label="Dismiss">×</button>
+</div>
+
 <main>
 
   <div id="main-view">

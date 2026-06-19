@@ -85,6 +85,19 @@
           border-radius: 6px; padding: 16px; color: var(--fg); min-width: 0; }
   .card h2 { margin: 0 0 10px; font-size: 15px; }
   .card.warn-card { border-left: 3px solid var(--warning); }
+
+  /* License-renewal reminder strip (shown by app.js near license expiry). */
+  .license-banner { display: flex; align-items: center; gap: 10px;
+                    margin: 0 auto; max-width: 1200px; padding: 10px 16px;
+                    background: rgba(240,184,108,0.12);
+                    border: 1px solid var(--warning); border-radius: 6px;
+                    color: var(--warning); font-size: 14px; }
+  .license-banner[hidden] { display: none; }
+  .license-banner-icon { font-size: 16px; line-height: 1; flex-shrink: 0; }
+  .license-banner-msg { flex: 1; min-width: 0; }
+  .license-banner-dismiss { background: transparent; border: 0; cursor: pointer;
+                            color: var(--warning); font-size: 20px; line-height: 1;
+                            padding: 0 4px; flex-shrink: 0; }
   .card-header { display: flex; justify-content: space-between; align-items: center;
                  margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
   .card-header h2 { margin: 0; }
