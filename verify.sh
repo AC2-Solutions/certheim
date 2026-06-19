@@ -36,6 +36,7 @@ PAIRS=(
   "frontend/app.2-jobs.js|/var/www/csr/app.2-jobs.js"
   "frontend/app.3-admin.js|/var/www/csr/app.3-admin.js"
   "frontend/app.4-misc-boot.js|/var/www/csr/app.4-misc-boot.js"
+  "frontend/app.5-guide.js|/var/www/csr/app.5-guide.js"
   "helper/csr_dashboard_helper.sh|/root/sslcerts/scripts/csr_dashboard_helper.sh"
   "helper/csr_dashboard_helper.d/00-common.sh|/root/sslcerts/scripts/csr_dashboard_helper.d/00-common.sh"
   "helper/csr_dashboard_helper.d/10-certtypes.sh|/root/sslcerts/scripts/csr_dashboard_helper.d/10-certtypes.sh"
