@@ -113,12 +113,12 @@ def _job_bundle(job):
         "target_host": job["target_host"],
     }
     ships_key = (job.get("key_mode") or "destination") in ("ship", "vault")
-    if ships_key and job.get("has_local_key") and job.get("local_key_name"):
-        from app import run_helper  # lazy: avoid an import cycle at module load
-        rc, out, err = run_helper(["get-key", job["local_key_name"]])
-        if rc != 0 or not (out or "").strip():
-            raise DeliveryError(f"could not retrieve private key: {(err or '')[:120]}")
-        bundle["private_key"] = out
+    if ships_key and (job.get("has_local_key") or job.get("key_vault_path")):
+        import keystore  # lazy: avoid an import cycle at module load
+        pem = keystore.fetch_for_job(job)   # vault when stored there, else host
+        if not (pem or "").strip():
+            raise DeliveryError("could not retrieve private key for this job")
+        bundle["private_key"] = pem
     return bundle
 
 
@@ -468,7 +468,7 @@ def deliver_job(job):
 # --------------------------------------------------------------------------- #
 _JOB_SELECT = (
     "SELECT j.id, j.target_host, j.cert_pem, j.has_local_key, j.local_key_name, "
-    "       j.delivery_attempts, "
+    "       j.delivery_attempts, j.key_vault_path, j.key_storage, "
     "       t.delivery_backend, t.key_mode, t.delivery_target, t.delivery_reload "
     "FROM jobs j LEFT JOIN cert_templates t ON j.template_id = t.id "
 )

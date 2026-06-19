@@ -171,6 +171,11 @@ def generate_rhel():
                 1 if has_key else 0, local_key if has_key else None,
                 group_id, cert_type, key_algo, template_id,
             ))
+        # Apply the key-storage policy (vault by default: move the key off the
+        # host into OpenBao + shred the local copy). No-op for external CSRs.
+        if has_key:
+            import keystore
+            keystore.secure_after_generate(job_id, local_key)
         job_ids.append(job_id)
         created_targets.append(target)
         run_helper(["delete-csr", csr_name])
@@ -357,8 +362,9 @@ def fetch_key(name):
     if name not in _get_session_keys():
         log_event("fetch_key", "deny_not_in_session", name=name)
         abort(403)
-    rc, out, err = run_helper(["get-key", name])
-    if rc != 0:
+    import keystore
+    out = keystore.fetch_by_name(name)   # vault when the key moved there, else host
+    if not (out or "").strip():
         log_event("fetch_key", "not_found", name=name)
         return jsonify(error="not found"), 404
     log_event("fetch_key", "ok", name=name, bytes=len(out))

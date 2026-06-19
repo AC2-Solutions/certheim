@@ -14,6 +14,7 @@ PAIRS=(
   "backend/licensing.py|/opt/csr-dashboard/licensing.py"
   "backend/sign.py|/opt/csr-dashboard/sign.py"
   "backend/deliver.py|/opt/csr-dashboard/deliver.py"
+  "backend/keystore.py|/opt/csr-dashboard/keystore.py"
   "backend/renew.py|/opt/csr-dashboard/renew.py"
   "backend/acme_client.py|/opt/csr-dashboard/acme_client.py"
   "backend/acme_dns.py|/opt/csr-dashboard/acme_dns.py"
