@@ -50,8 +50,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
     "ca.server.acme": {"env": ["acme_server"],
                           "desc": "Expose an ACME (RFC 8555) server for external clients"},
-    "lifecycle.auto_renew": {"env": [],
-                          "desc": "Automated certificate renewal (licensed)"},
+    "scale.unlimited_certs": {"env": [],
+                          "desc": "Remove the Community active-certificate cap (licensed)"},
     "profiles.public_sector": {"env": [],
                           "desc": "Government / public-sector CSR profiles + consent banners (licensed)"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
@@ -164,19 +164,21 @@ EDITIONS = ("community", "commercial", "government")
 
 # Capability keys each PAID tier adds on top of free Community.
 #
-# The line: **Community = manual only** (generate CSRs + upload a manually-issued
-# cert + fleet/audit). **Commercial = automation** - any in-UI signing backend,
-# the ACME server, automated renewal, and connected integrations. **Government =
-# Commercial + the public-sector pack.** Every key below is already enforced at
-# its call site, so listing it here is what gates it behind a license.
+# The line: **Community = the full single-instance product, capped by SCALE**
+# (up to N active certs - see scale.unlimited_certs). The core loop is free:
+# in-UI signing via OpenBao / standalone Windows CA / ACME client, automated
+# renewal, fleet, audit, SMTP, local/CAC auth. **Commercial = remove the cap +
+# enterprise breadth:** vendor CA backends (CyberArk/EJBCA/Venafi/AWS PCA), the
+# ACME *server*, and connected integrations (chat / email APIs). **Government =
+# Commercial + the public-sector pack.** Every key is enforced at its call site,
+# so membership here is the gate (scale.unlimited_certs is enforced in the
+# issuance path - app._attach_signed_cert).
 COMMERCIAL_CAPABILITIES = {
-    # automated in-UI signing (manual upload stays free)
-    "ca.signing.openbao", "ca.signing.windows_ca", "ca.signing.cyberark",
-    "ca.signing.acme", "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
+    "scale.unlimited_certs",                       # removes the active-cert cap
+    # enterprise / vendor CA backends (basic OpenBao/Windows/ACME stay free)
+    "ca.signing.cyberark", "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
     # the dashboard as an ACME CA
     "ca.server.acme",
-    # automated certificate renewal
-    "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)
     "integrations.chat", "integrations.slack.interactive", "notify.email.api",
 }

@@ -23,6 +23,15 @@ async function loadLicense() {
   const st = document.getElementById("license-status");
   const det = document.getElementById("license-details");
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  // Active-cert usage line (capped only in Community).
+  const usageEl = document.getElementById("license-usage");
+  if (usageEl) {
+    usageEl.textContent = c.uncapped
+      ? `Active certificates: ${c.active_certs} (unlimited)`
+      : `Active certificates: ${c.active_certs} / ${c.cert_limit}` +
+        (c.active_certs >= c.cert_limit ? " — limit reached; install a license to add more" : "");
+    usageEl.className = "status" + (!c.uncapped && c.active_certs >= c.cert_limit ? " err" : "");
+  }
   if (c.valid) {
     st.innerHTML = `<span class="pill pill-ok">${escapeHtml(cap(c.edition || "commercial"))} Edition</span>`;
     det.hidden = false;
