@@ -3,6 +3,19 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.20.0 — 2026-06-19
+
+_Released 2026-06-19. 1 change since v2.19.1._
+
+### Features
+
+- admins can create users from the Users panel (`cd9d18f`)
+  POST /api/admin/users is now mode-aware: in LOCAL mode it takes first/last + email + an initial
+  password (admin-supplied or auto-generated, policy-checked) and creates a login-ready account with
+  an auto-derived first.last username; in mTLS mode it keeps the CAC-DN pre-create. A "+ Create
+  user" button + modal in Admin → Users drives it, showing the generated temp password once. Smoke:
+  mtls create + duplicate 409 + temp-password policy compliance.
+
 ## 2.19.1 — 2026-06-19
 
 _Released 2026-06-19. 1 change since v2.19.0._
