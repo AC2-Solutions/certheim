@@ -208,6 +208,39 @@ def fetch_by_name(name):
     return pem if rc == 0 else None
 
 
+def migrate_host_keys(limit=1000):
+    """Phase 4a: sweep legacy host-stored keys into the vault. For each job with a
+    host key and no vault path, read it via the helper, write it to OpenBao, shred
+    the host copy, and record the vault path. Lets the /root/sslcerts/private
+    keystore drain so it can be retired. Returns {migrated, failed, scanned}."""
+    from app import db, run_helper, log_event
+    if not vault_available():
+        return {"migrated": 0, "failed": 0, "scanned": 0, "error": "vault not configured"}
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, local_key_name FROM jobs WHERE has_local_key = 1 "
+            "AND local_key_name IS NOT NULL AND key_vault_path IS NULL LIMIT ?",
+            (limit,)).fetchall()
+        jobs = [dict(r) for r in rows]
+    migrated = failed = 0
+    for j in jobs:
+        rc, pem, _ = run_helper(["get-key", j["local_key_name"]])
+        if rc != 0 or not (pem or "").strip():
+            _set_job(j["id"], has_local_key=0)      # host file already gone; tidy the flag
+            continue
+        try:
+            _put(j["id"], pem)
+        except Exception as e:  # noqa: BLE001
+            log_event("keystore", "migrate_fail", job_id=j["id"], error=str(e)[:160])
+            failed += 1
+            continue
+        run_helper(["delete-key", j["local_key_name"]])   # shred host copy
+        _set_job(j["id"], key_vault_path="certinel-keys/" + j["id"], key_storage="vault")
+        migrated += 1
+    log_event("keystore", "migrate_sweep", migrated=migrated, failed=failed, scanned=len(jobs))
+    return {"migrated": migrated, "failed": failed, "scanned": len(jobs)}
+
+
 def purge_for_job(job):
     """Remove a job's key from wherever it lives (vault + host). Best-effort."""
     from app import run_helper

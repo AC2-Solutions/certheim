@@ -614,6 +614,18 @@ async function loadSigningConfig() {
   }
 }
 
+document.getElementById("keystore-migrate-btn")?.addEventListener("click", async () => {
+  const s = document.getElementById("keystore-migrate-status");
+  if (!confirm("Move all on-disk private keys into the credential manager and shred the host copies?")) return;
+  setStatus(s, "Migrating…");
+  const r = await jsonReq("/admin/keys/migrate-to-vault", { method: "POST" });
+  if (!r.ok) { setStatus(s, (r.body && r.body.error) || "Failed", "err"); return; }
+  const b = r.body || {};
+  setStatus(s, b.error ? b.error
+    : `migrated ${b.migrated}, failed ${b.failed} (scanned ${b.scanned})`,
+    b.error || b.failed ? "err" : "ok");
+});
+
 document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("signing-cfg-status");
   const ttlRaw = document.getElementById("signing-cfg-ttl").value.trim();

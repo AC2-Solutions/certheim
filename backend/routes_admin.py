@@ -496,6 +496,17 @@ def admin_delete_orphan_key(name):
     log_event("admin_delete_orphan_key", "ok", name=name)
     return jsonify(ok=True)
 
+@bp.post("/api/admin/keys/migrate-to-vault")
+@require_admin
+@require_csrf
+def admin_migrate_keys_to_vault():
+    """Phase 4a: sweep legacy on-disk private keys into the credential manager."""
+    import keystore
+    result = keystore.migrate_host_keys()
+    log_event("admin_migrate_keys", "ok", actor=g.identity["dn"][:128], **{
+        k: v for k, v in result.items() if isinstance(v, int)})
+    return jsonify(result)
+
 @bp.get("/api/admin/orphans/certs")
 @require_admin
 def admin_list_orphan_certs():

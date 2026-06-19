@@ -929,6 +929,10 @@
           <span class="hint">(templates capped at ≤ this many seconds don't retain keys; 0 = off)</span></label>
         <input type="number" id="signing-cfg-shortlived-ttl" class="form-input" min="0"
                style="max-width:200px" placeholder="0">
+        <div style="margin-top:8px">
+          <button id="keystore-migrate-btn" class="link-btn" type="button">Migrate existing on-disk keys to the vault →</button>
+          <span id="keystore-migrate-status" class="status"></span>
+        </div>
       </div>
 
       <div id="signing-renew-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">

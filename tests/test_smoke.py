@@ -60,6 +60,7 @@ CRITICAL_ROUTES = [
     ("PUT", "/api/admin/csr-subject"),
     ("POST", "/api/admin/run-auto-renew"),
     ("GET", "/api/deliver/pull/<token>"),
+    ("POST", "/api/admin/keys/migrate-to-vault"),
 ]
 
 
@@ -325,6 +326,45 @@ def test_keystore_effective_mode_precedence(client):
     client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                data=json.dumps({"signer_backend": "manual", "max_ttl": None,
                                 "key_storage": "default"}))
+
+
+def test_keystore_migrate_host_keys(client, monkeypatch):
+    """Phase 4a: the sweep moves a host-key job's key into the vault + shreds host;
+    the endpoint reports 'not configured' when there's no vault."""
+    import keystore
+    appmod = client._appmod
+    # endpoint, no vault -> safe 'not configured' result
+    monkeypatch.delenv("CSR_OPENBAO_ROLE_ID", raising=False)
+    monkeypatch.delenv("CSR_OPENBAO_SECRET_ID", raising=False)
+    r = client.post("/api/admin/keys/migrate-to-vault", headers=WRITE)
+    assert r.status_code == 200 and r.get_json().get("error")
+
+    # sweep with a host-key job + vault available
+    monkeypatch.setenv("CSR_OPENBAO_ROLE_ID", "r")
+    monkeypatch.setenv("CSR_OPENBAO_SECRET_ID", "s")
+    with appmod.app.app_context():
+        with appmod.db() as conn:
+            conn.execute("INSERT INTO jobs (id,created_at,requester_dn,target_host,csr_pem,"
+                         "status,has_local_key,local_key_name,source) "
+                         "VALUES (?,?,?,?,?,?,1,?,?)",
+                         ("mig-job-1", 1.0, "x", "h", "x", "issued", "h.key", "rhel"))
+    deleted, store = [], {}
+
+    def fake_helper(args, **kw):
+        if args[0] == "get-key":
+            return (0, "PEMX", "")
+        if args[0] == "delete-key":
+            deleted.append(args[1])
+        return (0, "", "")
+    monkeypatch.setattr(appmod, "run_helper", fake_helper)
+    monkeypatch.setattr(keystore, "_put", lambda jid, pem: store.__setitem__(jid, pem))
+    with appmod.app.app_context():
+        res = keystore.migrate_host_keys()
+    assert res["migrated"] >= 1 and store.get("mig-job-1") == "PEMX" and "h.key" in deleted
+    with appmod.app.app_context(), appmod.db() as conn:
+        vp = conn.execute("SELECT key_vault_path FROM jobs WHERE id=?", ("mig-job-1",)).fetchone()[0]
+        conn.execute("DELETE FROM jobs WHERE id=?", ("mig-job-1",))
+    assert vp == "certinel-keys/mig-job-1"
 
 
 def test_sign_requires_auth(client):
