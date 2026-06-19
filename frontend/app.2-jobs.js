@@ -627,31 +627,45 @@ const adminView = document.getElementById("admin-view");
 const navDashBtn = document.getElementById("nav-dashboard");
 const navAdminBtn = document.getElementById("nav-admin");
 
+// Return `name` if it's a real panel button in that nav, else the fallback.
+function _routePanel(navId, name, fallback) {
+  return (name && document.querySelector(`#${navId} button[data-panel="${name}"]`))
+    ? name : fallback;
+}
+
 function applyRoute() {
+  const raw = (location.hash || "").replace(/^#/, "");
   // Deep link from a chat notification: #job-<id> opens that job's detail.
-  if ((location.hash || "").startsWith("#job-")) {
+  if (raw.startsWith("job-")) {
     mainView.hidden = false;
     adminView.hidden = true;
     navDashBtn.classList.add("active");
     navAdminBtn.classList.remove("active");
-    const jobId = decodeURIComponent(location.hash.slice(5));
+    const jobId = decodeURIComponent(raw.slice(4));
     if (jobId) openDetailModal(jobId);
     updateLicenseBanner();
     return;
   }
-  const wantAdmin = location.hash === "#admin" && currentUser && currentUser.is_admin;
+  // Section routing so a refresh restores the same place: "#admin" /
+  // "#admin/<panel>" for the admin UI; "#<panel>" (jobs/fleet/...) for the
+  // dashboard; empty -> dashboard default.
+  const isAdminRoute = raw === "admin" || raw.startsWith("admin/");
+  const wantAdmin = isAdminRoute && currentUser && currentUser.is_admin;
   if (wantAdmin) {
+    const entering = adminView.hidden;
     mainView.hidden = true;
     adminView.hidden = false;
     navDashBtn.classList.remove("active");
     navAdminBtn.classList.add("active");
-    refreshAdminView();
+    showAdminPanel(_routePanel("admin-nav", raw.split("/")[1], "overview"));
+    if (entering) refreshAdminView();   // (re)load admin data only when entering
   } else {
     mainView.hidden = false;
     adminView.hidden = true;
     navDashBtn.classList.add("active");
     navAdminBtn.classList.remove("active");
-    if (location.hash === "#admin") location.hash = "";
+    showMainPanel(_routePanel("main-nav", isAdminRoute ? "" : raw, "create"));
+    if (isAdminRoute) location.hash = "";   // non-admin hit #admin -> bounce home
   }
   updateLicenseBanner();
 }

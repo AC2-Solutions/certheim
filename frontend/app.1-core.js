@@ -480,11 +480,13 @@ function _switchPanel(navId, panelsId, name) {
 function showAdminPanel(name) { _switchPanel("admin-nav", "admin-panels", name); }
 function showMainPanel(name)  { _switchPanel("main-nav", "main-panels", name); }
 
+// Nav clicks set the hash; applyRoute() does the actual switching, so each
+// section has its own URL and a refresh restores it.
 document.querySelectorAll("#admin-nav button").forEach(b => {
-  b.addEventListener("click", () => showAdminPanel(b.dataset.panel));
+  b.addEventListener("click", () => { location.hash = "#admin/" + b.dataset.panel; });
 });
 document.querySelectorAll("#main-nav button").forEach(b => {
-  b.addEventListener("click", () => showMainPanel(b.dataset.panel));
+  b.addEventListener("click", () => { location.hash = "#" + b.dataset.panel; });
 });
 showAdminPanel("overview");
 showMainPanel("create");
