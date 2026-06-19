@@ -22,7 +22,7 @@ and a fresh STIG offline VM.
 | `/etc/csr-dashboard/email.conf` | csrapi:csrapi 0640 | mail config (UI-managed) |
 | `/etc/csr-dashboard/integrations.conf` | csrapi:csrapi 0640 | GitLab config (UI-managed) |
 | `/etc/csr-dashboard/csr-dashboard.env` | csrapi:csrapi 0640 | app env (paths, flags) |
-| `/root/sslcerts/scripts/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
+| `/opt/certinel/helper/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
 | `/etc/systemd/system/certinel-api.service` | root:root 0644 | gunicorn unit |
 | `/etc/nginx/csr-dashboard.d/30-csr.conf` | root:root 0644 | **location fragment** |
 | `/etc/nginx/conf.d/csr-dashboard.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
@@ -32,7 +32,7 @@ and a fresh STIG offline VM.
 It runs ONLY the helper as root via a single sudoers rule
 (`/etc/sudoers.d/csr-dashboard`):
 ```
-csrapi ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh
+csrapi ALL=(root) NOPASSWD: /opt/certinel/helper/csr_dashboard_helper.sh
 ```
 
 ---
@@ -130,8 +130,8 @@ email" verifies wiring.
   traverse → `chmod -R g+rX /opt/csr-dashboard/venv` (installer does this).
 - **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
   `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
-  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome` stays **false** (the
-  sudo'd helper + keys live under `/root/sslcerts`). `deploy.sh` runs
+  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome=true` (helper under
+  `/opt/certinel`, keys in the vault — nothing under `/home` or `/root`). `deploy.sh` runs
   `systemd-analyze verify` before restart.
 - **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
   (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.

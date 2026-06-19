@@ -58,10 +58,10 @@ MANIFEST=(
   "frontend/app.3-admin.js   /var/www/csr/app.3-admin.js                       root:nginx  0640 frontend"
   "frontend/app.4-misc-boot.js /var/www/csr/app.4-misc-boot.js                 root:nginx  0640 frontend"
   "frontend/app.5-guide.js   /var/www/csr/app.5-guide.js                       root:nginx  0640 frontend"
-  "helper/csr_dashboard_helper.sh /root/sslcerts/scripts/csr_dashboard_helper.sh root:root 0750 helper"
-  "helper/csr_dashboard_helper.d/00-common.sh    /root/sslcerts/scripts/csr_dashboard_helper.d/00-common.sh    root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/10-certtypes.sh /root/sslcerts/scripts/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/20-generate.sh  /root/sslcerts/scripts/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
+  "helper/csr_dashboard_helper.sh /opt/certinel/helper/csr_dashboard_helper.sh root:root 0750 helper"
+  "helper/csr_dashboard_helper.d/00-common.sh    /opt/certinel/helper/csr_dashboard_helper.d/00-common.sh    root:root 0640 helper"
+  "helper/csr_dashboard_helper.d/10-certtypes.sh /opt/certinel/helper/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
+  "helper/csr_dashboard_helper.d/20-generate.sh  /opt/certinel/helper/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
   "systemd/certinel-expiry-warn.service /etc/systemd/system/certinel-expiry-warn.service root:root 0644 systemd"
   "systemd/certinel-expiry-warn.timer   /etc/systemd/system/certinel-expiry-warn.timer   root:root 0644 systemd"
   "systemd/certinel-auto-renew.service  /etc/systemd/system/certinel-auto-renew.service  root:root 0644 systemd"
@@ -128,6 +128,11 @@ fi
 install -d -o root   -g root   -m 0755 /var/opt/certinel
 install -d -o csrapi -g csrapi -m 0750 /var/opt/certinel/issued
 install -d -o root   -g csrapi -m 0750 /var/opt/certinel/requests
+# Helper lives under /opt (Phase 4b, off /root) so the sandbox can mask /root;
+# KEYDIR is a brief 0700 scratch for key generation (keys then go to the vault).
+install -d -o root -g root -m 0755 /opt/certinel
+install -d -o root -g root -m 0750 /opt/certinel/helper
+install -d -o root -g root -m 0700 /var/opt/certinel/private
 if command -v semanage >/dev/null 2>&1; then
     # Some RHEL variants ship an SELinux equivalency '/var/opt = /opt' (the
     # /var/opt/certinel rule is then rejected and the /opt/certinel rule applies
@@ -136,7 +141,15 @@ if command -v semanage >/dev/null 2>&1; then
     # is a harmless no-op — so the data root always relabels to var_lib_t.
     semanage fcontext -a -t var_lib_t '/opt/certinel(/.*)?'     2>/dev/null || true
     semanage fcontext -a -t var_lib_t '/var/opt/certinel(/.*)?' 2>/dev/null || true
-    command -v restorecon >/dev/null 2>&1 && restorecon -R /var/opt/certinel || true
+    # The helper is executable: a more-specific bin_t rule wins over var_lib_t.
+    semanage fcontext -a -t bin_t     '/opt/certinel/helper(/.*)?' 2>/dev/null || true
+    command -v restorecon >/dev/null 2>&1 && {
+        restorecon -R /var/opt/certinel /opt/certinel || true; }
+fi
+# fapolicyd must trust the relocated helper (exec + sourced parts).
+if [[ "$changed_tags" == *helper* ]] && command -v fapolicyd-cli >/dev/null 2>&1; then
+    fapolicyd-cli --file update /opt/certinel/helper/ || true
+    fapolicyd-cli --update || true
 fi
 
 # Pre-deploy DB/file backup (after diffing, before service restart)

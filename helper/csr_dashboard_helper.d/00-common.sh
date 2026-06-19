@@ -2,11 +2,14 @@
 # 00-common.sh - paths, audit logging, generic file operations.
 # Sourced by csr_dashboard_helper.sh; never executed directly.
 
-CERTLIST_RHEL="/root/sslcerts/scripts/certlist-rhel"
-GEN_RHEL="/root/sslcerts/scripts/csr-rhel.sh"
+# Certinel paths. The helper + its transient key scratch live off /root now
+# (Phase 4b) so the systemd sandbox can mask /home + /root. Data under /var/opt,
+# the helper under /opt; KEYDIR is a brief scratch (keys go to the vault).
+CERTLIST_RHEL="/var/opt/certinel/certlist-rhel"
+GEN_RHEL="/opt/certinel/helper/csr-rhel.sh"      # legacy generate-rhel (unused)
 # Certinel data root (FHS /var/opt). Must match the app's CSR_ISSUED_DIR.
 CSRDIR="/var/opt/certinel/requests"
-KEYDIR="/root/sslcerts/private"
+KEYDIR="/var/opt/certinel/private"
 ISSUED_DIR="/var/opt/certinel/issued"
 
 # ----- Subject DN applied to every generated CSR -----

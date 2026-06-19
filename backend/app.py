@@ -40,7 +40,7 @@ import sign
 # expansion (read with stdlib, so no python-dotenv dependency - matters for
 # the offline/air-gapped bundle).
 _ENV_DEFAULTS = {
-    "CSR_HELPER_PATH": "/root/sslcerts/scripts/csr_dashboard_helper.sh",
+    "CSR_HELPER_PATH": "/opt/certinel/helper/csr_dashboard_helper.sh",
     "CSR_DB_PATH": "/var/lib/csr-dashboard/jobs.db",
     "CSR_ISSUED_DIR": "/var/opt/certinel/issued",
     "CSR_SESSION_TTL": "28800",          # 8h in seconds

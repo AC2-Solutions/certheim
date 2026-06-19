@@ -45,7 +45,7 @@ FILES=(
     /opt/csr-dashboard/notify.py
     /var/www/csr/index.html
     /var/www/csr/app.js
-    /root/sslcerts/scripts/csr_dashboard_helper.sh
+    /opt/certinel/helper/csr_dashboard_helper.sh
     /etc/systemd/system/certinel-api.service
     /etc/sudoers.d/csr-dashboard
     /etc/csr-dashboard/email.conf
