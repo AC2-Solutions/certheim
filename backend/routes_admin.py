@@ -6,7 +6,7 @@ import capabilities
 import notify
 import csr_subject
 from app import (  # noqa: E402
-    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, _active_cert_count, _cn_from_dn, _community_cert_limit, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, db, derive_username, fire_webhooks, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper, set_setting)
+    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, _cn_from_dn, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, db, derive_username, fire_webhooks, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper, set_setting)
 bp = Blueprint("admin", __name__)
 
 # ============================================================
@@ -840,11 +840,6 @@ def _license_view():
     info["effective_entitlements"] = sorted(eff) if info.get("valid") else []
     info["gateable"] = sorted(capabilities.LICENSED_CAPABILITIES)
     info["editions"] = list(capabilities.EDITIONS)
-    # Community scale cap usage (uncapped once licensed / overridden).
-    uncapped = capabilities.available("scale.unlimited_certs")
-    info["uncapped"] = uncapped
-    info["active_certs"] = _active_cert_count()
-    info["cert_limit"] = None if uncapped else _community_cert_limit()
     return info
 
 

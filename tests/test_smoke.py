@@ -388,17 +388,17 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
     assert bad.status_code == 400
 
-    # community (no license) is capped + lacks the premium caps. Use the env-free
-    # scale cap so this isolates the *license* gate.
+    # community (no license) gates automation too (manual-only free tier).
+    # Use an env-free commercial cap so this isolates the *license* gate.
     monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
-    assert capabilities.available("scale.unlimited_certs") is False
+    assert capabilities.available("lifecycle.auto_renew") is False
 
-    # a COMMERCIAL license removes the cap + premium breadth, but NOT the gov pack
+    # a COMMERCIAL license unlocks automation but NOT the gov-only pack
     comm = _mint_license(priv, edition="commercial")
     rc = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": comm}))
     assert rc.status_code == 200 and rc.get_json()["edition"] == "commercial"
-    assert capabilities.available("scale.unlimited_certs") is True       # commercial: uncapped
-    assert capabilities.available("profiles.public_sector") is False     # but not government
+    assert capabilities.available("lifecycle.auto_renew") is True       # commercial: automation on
+    assert capabilities.available("profiles.public_sector") is False    # but not government
 
     # a GOVERNMENT license unlocks the pack (via edition expansion, no explicit entitlement)
     lic = _mint_license(priv, edition="government")
@@ -421,68 +421,6 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
         client.delete("/api/admin/license", headers=WRITE)
         licensing.reset_cache()
         assert capabilities.available("profiles.public_sector") is False
-
-
-def _csr_and_matching_cert(cn="cap.test"):
-    """A CSR + a self-signed cert from the SAME key (so pubkeys match, passing
-    _attach_signed_cert's verification)."""
-    import subprocess
-    key = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
-    csr = subprocess.run(["openssl", "req", "-new", "-key", "/dev/stdin", "-subj", f"/CN={cn}"],
-                         input=key, capture_output=True).stdout.decode()
-    cert = subprocess.run(["openssl", "req", "-x509", "-key", "/dev/stdin", "-days", "5",
-                           "-subj", f"/CN={cn}"], input=key, capture_output=True).stdout.decode()
-    return csr, cert
-
-
-def test_community_cert_cap(client):
-    """Community manages up to N active certs; over the cap a NEW issuance is
-    blocked (402), but a renewal (renewed_from) is exempt. Licensed = uncapped."""
-    import time
-    import uuid
-    appmod = client._appmod
-
-    def _new_pending(csr, renewed_from=None):
-        jid = uuid.uuid4().hex
-        with appmod.db() as c:
-            c.execute("INSERT INTO jobs (id, created_at, requester_dn, requester_serial, "
-                      "requester_ip, requester_email, target_host, sans_json, csr_pem, "
-                      "status, has_local_key, source, renewed_from) VALUES "
-                      "(?,?,?,?,?,?,?,?,?, 'pending', 0, 'external', ?)",
-                      (jid, time.time(), "CN=t", "-", "127.0.0.1", "t@t", "cap.test",
-                       "[]", csr, renewed_from))
-        return jid
-
-    baseline = appmod._active_cert_count()
-    appmod.set_setting("community_cert_limit", str(baseline + 1))   # cap = one above now
-    try:
-        # the FIRST new cert fits (fills to the cap)
-        csr, cert = _csr_and_matching_cert()
-        jid = _new_pending(csr)
-        appmod._attach_signed_cert(jid, cert, actor_dn="t", signed_via="manual")  # ok, now AT cap
-
-        # a SECOND new cert (over the cap) is refused with 402
-        csr2, cert2 = _csr_and_matching_cert()
-        try:
-            appmod._attach_signed_cert(_new_pending(csr2), cert2, actor_dn="t", signed_via="manual")
-            assert False, "expected the cap to block a new issuance"
-        except appmod.CompletionError as e:
-            assert e.status == 402 and e.payload.get("limit_reached") is True
-
-        # a RENEWAL is exempt (replaces an existing managed cert)
-        csr3, cert3 = _csr_and_matching_cert()
-        jr = _new_pending(csr3, renewed_from=jid)
-        appmod._attach_signed_cert(jr, cert3, actor_dn="t", signed_via="manual")  # no raise
-
-        # raising the limit lets a new cert through
-        appmod.set_setting("community_cert_limit", str(baseline + 50))
-        csr4, cert4 = _csr_and_matching_cert()
-        appmod._attach_signed_cert(_new_pending(csr4), cert4, actor_dn="t", signed_via="manual")
-    finally:
-        appmod.set_setting("community_cert_limit", "")
-        with appmod.db() as c:
-            c.execute("DELETE FROM jobs WHERE target_host = 'cap.test'")
-            c.execute("DELETE FROM fleet_certs WHERE host = 'cap.test'")
 
 
 def test_csr_subject_render_sanitizes():
