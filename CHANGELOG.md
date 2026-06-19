@@ -3,6 +3,18 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.11.0 — 2026-06-19
+
+_Released 2026-06-19. 2 changes since v2.10.0._
+
+### Features
+
+- **acme:** ACME server 4b - DNS-01 validation, revoke-cert, key rollover (`019a222`)
+
+### Other changes
+
+- **acme:** note 4b (DNS-01 / revoke / key rollover) is implemented (`3766dd4`)
+
 ## 2.10.0 — 2026-06-19
 
 _Released 2026-06-19. 2 changes since v2.9.0._
