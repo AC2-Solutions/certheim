@@ -11,8 +11,57 @@ async function refreshAdminView() {
     refreshAdminTemplates(),
     loadSigningConfig(),
     loadCsrSubject(),
+    loadLicense(),
   ]);
 }
+
+// ===== Admin: License / entitlements =====
+async function loadLicense() {
+  const r = await jsonReq("/admin/license");
+  if (!r.ok) return;
+  const c = r.body;
+  const st = document.getElementById("license-status");
+  const det = document.getElementById("license-details");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  if (c.valid) {
+    st.innerHTML = `<span class="pill pill-ok">${escapeHtml(cap(c.edition || "commercial"))} Edition</span>`;
+    det.hidden = false;
+    document.getElementById("license-customer").textContent = c.customer || "—";
+    document.getElementById("license-edition").textContent = cap(c.edition || "commercial");
+    document.getElementById("license-entitlements").textContent =
+      (c.effective_entitlements || []).join(", ") || "(base features only)";
+    document.getElementById("license-expires").textContent =
+      c.expires ? new Date(c.expires * 1000).toISOString().slice(0, 10) : "—";
+  } else {
+    // unlicensed = the free Community edition
+    st.innerHTML = `<span class="pill pill-mute">Community Edition</span> ` +
+      `<span class="status">${escapeHtml(c.reason || "no license")}</span>` +
+      (c.gateable && c.gateable.length
+        ? ` &middot; a license unlocks: <code>${escapeHtml(c.gateable.join(", "))}</code>` : "");
+    det.hidden = true;
+  }
+}
+
+document.getElementById("license-refresh-btn")?.addEventListener("click", loadLicense);
+document.getElementById("license-install-btn")?.addEventListener("click", async () => {
+  const msg = document.getElementById("license-msg");
+  const blob = document.getElementById("license-input").value.trim();
+  if (!blob) { setStatus(msg, "Paste a license first", "err"); return; }
+  setStatus(msg, "Installing…");
+  const r = await jsonReq("/admin/license", { method: "PUT", body: JSON.stringify({ license: blob }) });
+  if (!r.ok) { setStatus(msg, (r.body && r.body.error) || "Install failed", "err"); await loadLicense(); return; }
+  setStatus(msg, "License installed — reloading…", "ok");
+  document.getElementById("license-input").value = "";
+  await Promise.all([loadLicense(), loadCapabilities(), loadCsrSubject()]);
+});
+document.getElementById("license-remove-btn")?.addEventListener("click", async () => {
+  const msg = document.getElementById("license-msg");
+  if (!confirm("Remove the installed license? Licensed features will be hidden.")) return;
+  const r = await jsonReq("/admin/license", { method: "DELETE" });
+  if (!r.ok) { setStatus(msg, "Remove failed", "err"); return; }
+  setStatus(msg, "License removed", "ok");
+  await Promise.all([loadLicense(), loadCapabilities(), loadCsrSubject()]);
+});
 
 // ===== Capabilities (what THIS deployment can actually do) =====
 // available(cap) = entitled (license) AND env_supports (e.g. internet egress).

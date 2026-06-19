@@ -344,8 +344,83 @@ def test_csr_subject_shape(client):
     b = client.get("/api/admin/csr-subject", headers=CAC).get_json()
     assert "config" in b and "configured" in b
     pkeys = {p["key"] for p in b.get("profiles", [])}
-    assert "dod" in pkeys and "commercial" in pkeys
-    assert "USEUCOM" in b.get("suggested_ous", [])
+    # core profiles always present; the gov pack is licensed (hidden by default)
+    assert "commercial" in pkeys and "blank" in pkeys
+    assert "dod" not in pkeys
+    assert "USEUCOM" not in b.get("suggested_ous", [])
+    assert "IT" in b.get("suggested_ous", [])
+
+
+# --- licensing / entitlements (offline signed license, edition tiers) ------
+def _mint_license(privkey_path, edition="government", entitlements=None, days=365):
+    import json
+    import subprocess
+    import time
+    import licensing
+    payload = {"customer": "Test Customer", "edition": edition,
+               "entitlements": entitlements or [],
+               "issued": int(time.time()), "expires": int(time.time()) + days * 86400}
+    pb = licensing.b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", privkey_path],
+                         input=pb.encode(), capture_output=True).stdout
+    return f"{pb}.{licensing.b64u(sig)}"
+
+
+def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
+    import json
+    import subprocess
+    import capabilities
+    import licensing
+    # ephemeral vendor keypair; point the app's trust anchor at it for the test
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    licensing.reset_cache()
+
+    # no license -> not entitled, gov pack hidden
+    assert capabilities.available("profiles.public_sector") is False
+    info = client.get("/api/admin/license", headers=CAC).get_json()
+    assert info["valid"] is False and "profiles.public_sector" in info["gateable"]
+
+    # a forged/garbage license is rejected on install
+    bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
+    assert bad.status_code == 400
+
+    # community (no license) gates automation too (manual-only free tier).
+    # Use an env-free commercial cap so this isolates the *license* gate.
+    monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+    assert capabilities.available("lifecycle.auto_renew") is False
+
+    # a COMMERCIAL license unlocks automation but NOT the gov-only pack
+    comm = _mint_license(priv, edition="commercial")
+    rc = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": comm}))
+    assert rc.status_code == 200 and rc.get_json()["edition"] == "commercial"
+    assert capabilities.available("lifecycle.auto_renew") is True       # commercial: automation on
+    assert capabilities.available("profiles.public_sector") is False    # but not government
+
+    # a GOVERNMENT license unlocks the pack (via edition expansion, no explicit entitlement)
+    lic = _mint_license(priv, edition="government")
+    r = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": lic}))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()["valid"] is True and r.get_json()["edition"] == "government"
+    assert "profiles.public_sector" in r.get_json()["effective_entitlements"]
+    try:
+        assert capabilities.available("profiles.public_sector") is True
+        # gov CSR profiles + OUs now appear
+        sub = client.get("/api/admin/csr-subject", headers=CAC).get_json()
+        assert "dod" in {p["key"] for p in sub["profiles"]}
+        assert "USEUCOM" in sub["suggested_ous"]
+        # gov login banners now offered
+        opts = {o["key"] for o in client.get("/api/admin/auth-settings", headers=CAC)
+                .get_json().get("banner_options", [])}
+        assert "dod" in opts
+    finally:
+        # remove the license -> pack hidden again (don't leak state to other tests)
+        client.delete("/api/admin/license", headers=WRITE)
+        licensing.reset_cache()
+        assert capabilities.available("profiles.public_sector") is False
 
 
 def test_csr_subject_render_sanitizes():
@@ -670,7 +745,8 @@ def _jws_post(client, path, key_pem, jwk, nonce, payload, url, kid=None):
         content_type="application/jose+json")
 
 
-def test_acme_server_directory_gated(client):
+def test_acme_server_directory_gated(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "0")
     assert client.get("/acme/directory").status_code == 404      # off by default
@@ -687,7 +763,8 @@ def test_acme_server_directory_gated(client):
         appmod.set_setting("acme_server_enabled", "0")
 
 
-def test_acme_server_rejects_bad_jws(client):
+def test_acme_server_rejects_bad_jws(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
@@ -716,6 +793,7 @@ def test_acme_server_full_flow(client, monkeypatch):
     import acme_client
     import acme_server
     import sign
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
