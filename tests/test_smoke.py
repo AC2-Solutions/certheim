@@ -59,7 +59,7 @@ CRITICAL_ROUTES = [
     ("GET", "/api/admin/csr-subject"),
     ("PUT", "/api/admin/csr-subject"),
     ("POST", "/api/admin/run-auto-renew"),
-    ("GET", "/deliver/pull/<token>"),
+    ("GET", "/api/deliver/pull/<token>"),
 ]
 
 
@@ -307,17 +307,17 @@ def test_delivery_pull_lifecycle(client):
         appmod.set_setting("public_base_url", "https://csr.example")
         detail = deliver._deliver_pull({"id": None, "target_host": "pull-host.example",
                                         "cert_pem": "PULLCERT", "key_mode": "destination"})
-    assert detail.startswith("pull:https://csr.example/deliver/pull/")
+    assert detail.startswith("pull:https://csr.example/api/deliver/pull/")
     token = detail.split("/deliver/pull/")[1].split()[0]
-    r = client.get(f"/deliver/pull/{token}")
+    r = client.get(f"/api/deliver/pull/{token}")
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
     assert body["certificate"] == "PULLCERT"
     assert body["target_host"] == "pull-host.example"
     assert "private_key" not in body                 # key-at-destination -> cert only
     # single-use: reuse and unknown tokens both 404
-    assert client.get(f"/deliver/pull/{token}").status_code == 404
-    assert client.get("/deliver/pull/" + "z" * 43).status_code == 404
+    assert client.get(f"/api/deliver/pull/{token}").status_code == 404
+    assert client.get("/api/deliver/pull/" + "z" * 43).status_code == 404
 
 
 def test_delivery_pull_formats(client):
@@ -332,11 +332,11 @@ def test_delivery_pull_formats(client):
                 "INSERT INTO delivery_pulls (token,target_host,certificate,private_key,"
                 "created_at,expires_at,max_uses,uses) VALUES (?,?,?,?,?,?,?,0)",
                 (tok, "h", "CERTX", "KEYY", time.time(), time.time() + 600, 2))
-    pem = client.get(f"/deliver/pull/{tok}?format=pem")
+    pem = client.get(f"/api/deliver/pull/{tok}?format=pem")
     assert pem.status_code == 200 and b"CERTX" in pem.data and b"KEYY" in pem.data
-    cert = client.get(f"/deliver/pull/{tok}?format=cert")
+    cert = client.get(f"/api/deliver/pull/{tok}?format=cert")
     assert cert.status_code == 200 and b"CERTX" in cert.data and b"KEYY" not in cert.data
-    assert client.get(f"/deliver/pull/{tok}").status_code == 404   # 2 uses exhausted
+    assert client.get(f"/api/deliver/pull/{tok}").status_code == 404   # 2 uses exhausted
 
 
 def test_delivery_k8s_guards(client):

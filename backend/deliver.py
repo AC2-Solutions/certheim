@@ -227,7 +227,8 @@ def _deliver_pull(job):
             (token, job.get("id"), job.get("target_host"), bundle["certificate"],
              bundle.get("private_key"), now, now + ttl, max_uses))
     base = _public_base()
-    url = (base + "/deliver/pull/" + token) if base else ("/deliver/pull/" + token)
+    path = "/api/deliver/pull/" + token
+    url = (base + path) if base else path
     return f"pull:{url} (1 of {max_uses}, ttl {ttl}s)"
 
 

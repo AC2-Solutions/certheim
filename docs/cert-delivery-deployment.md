@@ -170,7 +170,7 @@ dashboard (one-way firewall), or for a human/script to grab a short-lived cert.
   `delivery_pull_max_uses` (default `1`).
 - **Per template:** Delivery = `pull token`; `key_mode` controls whether the key
   is included in the bundle. No target field.
-- **Fetch:** `GET <public_base_url>/deliver/pull/<token>` → JSON
+- **Fetch:** `GET <public_base_url>/api/deliver/pull/<token>` → JSON
   `{certificate, private_key?}`; `?format=pem` → cert(+key) PEM; `?format=cert`
   → leaf only. The token is consumed on fetch and 404s afterward.
 

@@ -18,7 +18,7 @@ def _client_ip():
     return fwd or (request.remote_addr or "")
 
 
-@bp.get("/deliver/pull/<token>")
+@bp.get("/api/deliver/pull/<token>")
 def pull(token):
     """Fetch + consume a pull bundle. ?format=pem returns cert(+key) as PEM text;
     ?format=cert returns just the leaf cert; default is JSON."""
