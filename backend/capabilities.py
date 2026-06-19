@@ -156,6 +156,24 @@ def _openssl_fips_provider():
     return None
 
 
+def _openssl_major():
+    """Major version of the system OpenSSL (3 on RHEL 9/10 = provider era / FIPS
+    140-3; 1 on RHEL 8 = OpenSSL 1.1.1 = FIPS 140-2, no provider model). None if
+    openssl is missing/unparseable."""
+    try:
+        out = subprocess.run(["openssl", "version"], capture_output=True,
+                             text=True, timeout=5).stdout.split()
+    except Exception:
+        return None
+    # "OpenSSL 3.0.7 1 Nov 2022" / "OpenSSL 1.1.1k  FIPS 25 Mar 2021"
+    if len(out) >= 2 and out[0] == "OpenSSL":
+        try:
+            return int(out[1].split(".")[0])
+        except ValueError:
+            return None
+    return None
+
+
 def _detect_env():
     caps = {}
     # cheap, reliable detections
@@ -164,6 +182,7 @@ def _detect_env():
     except OSError:
         caps["fips"] = False
     caps["openssl_fips_provider"] = _openssl_fips_provider()
+    caps["openssl_major"] = _openssl_major()
     try:
         caps["selinux_enforcing"] = \
             open("/sys/fs/selinux/enforce").read().strip() == "1"
@@ -195,19 +214,30 @@ def env_caps(refresh=False):
 
 
 def fips_status():
-    """FIPS 140-3 posture. `validated` means the crypto is actually running
-    through the platform's FIPS-validated module: the kernel is in FIPS mode AND
-    the OpenSSL FIPS provider is active (Certinel itself bundles no crypto - all
-    hashing/HMAC/TLS/RNG go through the stdlib + system openssl). `fips_required`
-    is an admin setting; `compliant` is false only when required but not validated."""
+    """FIPS posture, validated against the platform crypto module (Certinel
+    bundles no crypto - all hashing/HMAC/TLS/RNG go through the stdlib + system
+    openssl). `standard` reflects the host:
+      - OpenSSL 3.x (RHEL 9/10): the FIPS *provider* must be active -> 140-3.
+      - OpenSSL 1.x (RHEL 8): no provider model; the kernel FIPS flag indicates
+        the 1.1.1 FIPS module is in effect -> 140-2.
+    `validated` = the appropriate condition for the host is met. `fips_required`
+    is an admin policy; `compliant` is false only when required but not validated."""
     env = env_caps()
     kernel = bool(env.get("fips"))
     provider = env.get("openssl_fips_provider")          # {name, version} or None
-    validated = kernel and bool(provider)
+    major = env.get("openssl_major")
+    if provider:
+        validated, standard = True, "140-3"              # OpenSSL 3.x FIPS provider active
+    elif kernel and major is not None and major < 3:
+        validated, standard = True, "140-2"              # OpenSSL 1.x in FIPS mode (RHEL 8)
+    else:
+        validated, standard = False, None                # not FIPS (or kernel on but provider missing)
     required = str(_setting("fips_required") or "").strip().lower() in ("1", "true", "yes", "on")
     return {
         "kernel_fips": kernel,
         "openssl_provider": provider,
+        "openssl_major": major,
+        "standard": standard,
         "validated": validated,
         "required": required,
         "compliant": validated or not required,

@@ -577,8 +577,12 @@ async function loadSigningConfig() {
   if (fEl) {
     const prov = f.openssl_provider || {};
     if (f.validated) {
-      fEl.innerHTML = '<span style="color:#34d399;font-weight:600">✓ Validated module active</span> — '
-        + escapeHtml(prov.name || "OpenSSL FIPS provider") + " " + escapeHtml(prov.version || "");
+      const std = f.standard ? ("FIPS " + f.standard) : "FIPS";
+      const detail = (prov && prov.name)
+        ? (" — " + escapeHtml(prov.name) + " " + escapeHtml(prov.version || ""))
+        : (" — OpenSSL " + (f.openssl_major || "1.x") + " FIPS module (no provider model)");
+      fEl.innerHTML = '<span style="color:#34d399;font-weight:600">✓ ' + std
+        + ' validated module active</span>' + detail;
     } else if (f.kernel_fips) {
       fEl.innerHTML = '<span style="color:#fbbf24;font-weight:600">⚠ kernel FIPS on, but the OpenSSL FIPS provider was not detected</span>';
     } else {

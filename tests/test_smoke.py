@@ -388,6 +388,26 @@ def test_fips_status_and_required(client):
                data=json.dumps({"fips_required": False}))   # restore
 
 
+def test_fips_standard_detection(client, monkeypatch):
+    """One codebase reports the right standard per host: OpenSSL 3.x provider ->
+    140-3 (RHEL 9/10); OpenSSL 1.x + kernel FIPS -> 140-2 (RHEL 8); else none."""
+    import capabilities
+
+    def sim(env):
+        monkeypatch.setattr(capabilities, "env_caps", lambda *a, **k: env)
+        return capabilities.fips_status()
+
+    s = sim({"fips": True, "openssl_major": 3,
+             "openssl_fips_provider": {"name": "RHEL 9 FIPS", "version": "3.0.7"}})
+    assert s["validated"] and s["standard"] == "140-3"
+
+    s = sim({"fips": True, "openssl_major": 1, "openssl_fips_provider": None})
+    assert s["validated"] and s["standard"] == "140-2"     # RHEL 8 / OpenSSL 1.x
+
+    s = sim({"fips": False, "openssl_major": 3, "openssl_fips_provider": None})
+    assert not s["validated"] and s["standard"] is None
+
+
 def test_sign_requires_auth(client):
     # CSRF header present but no CAC identity -> 403
     assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403
