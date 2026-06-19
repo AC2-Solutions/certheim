@@ -74,7 +74,12 @@ def _put(job_id, pem):
 
 def _read(job_id):
     addr, _ = sign._openbao_addr_mount()
-    d = sign._http(_url(job_id, "data"), token=_token(addr))   # payload=None -> GET
+    try:
+        d = sign._http(_url(job_id, "data"), token=_token(addr))   # payload=None -> GET
+    except sign.SignError as e:
+        if "404" in str(e):           # no such (or destroyed) key -> not found
+            return None
+        raise
     return ((d.get("data") or {}).get("data") or {}).get("key")
 
 
