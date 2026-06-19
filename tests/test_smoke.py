@@ -206,6 +206,22 @@ def test_signing_config_put_bad_backend(client):
     assert r.status_code == 400
 
 
+def test_signing_config_key_storage(client):
+    """Key-storage policy is exposed, defaults to vault, round-trips, and the
+    enum is validated."""
+    import json
+    body = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    assert body["key_storage"] == "vault"                       # secure default
+    assert set(body["key_storage_options"]) == {"vault", "return_once", "host"}
+    r = client.put("/api/admin/signing-config", headers=WRITE,
+                   data=json.dumps({"key_storage": "return_once"}))
+    assert r.status_code == 200 and r.get_json()["key_storage"] == "return_once"
+    assert client.put("/api/admin/signing-config", headers=WRITE,
+                      data=json.dumps({"key_storage": "bogus"})).status_code == 400
+    client.put("/api/admin/signing-config", headers=WRITE,
+               data=json.dumps({"key_storage": "vault"}))        # restore
+
+
 def test_sign_requires_auth(client):
     # CSRF header present but no CAC identity -> 403
     assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403

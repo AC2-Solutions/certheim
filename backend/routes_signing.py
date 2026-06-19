@@ -30,6 +30,13 @@ CAP_OPENBAO = "ca.signing.openbao"
 # ceiling falls back to the template/global cap, else one year.
 MIN_SIGN_TTL = 1800                 # 30 minutes, in seconds
 DEFAULT_MAX_SIGN_TTL = 365 * 86400  # 1 year, when no template/global cap is set
+# How a server-generated private key is stored (admin-selectable). See
+# docs/key-handling-design.md. Default vault: never persist on the host.
+#   vault       - write the key to the credential manager; shred the host copy
+#   return_once - hand to the requester once; never persisted server-side
+#   host        - legacy on-disk keystore (air-gapped / no-vault deployments)
+KEY_STORAGE_MODES = ("vault", "return_once", "host")
+DEFAULT_KEY_STORAGE = "vault"
 # Backends that honor an arbitrary per-issuance TTL (others issue at the CA's /
 # template's own validity and ignore a requested value).
 TTL_BACKENDS = {"openbao"}
@@ -70,6 +77,10 @@ def _config_view():
         "acme_server_enabled": (get_setting("acme_server_enabled") or "0") in ("1", "true", "yes", "on"),
         "acme_server_base_url": get_setting("acme_server_base_url") or "",
         "acme_server_capability": capabilities.status("ca.server.acme"),
+        # Private-key storage policy for server-generated keys (admin-selectable;
+        # see docs/key-handling-design.md). Enforcement lands in a later phase.
+        "key_storage": (get_setting("key_storage") or DEFAULT_KEY_STORAGE),
+        "key_storage_options": list(KEY_STORAGE_MODES),
     }
 
 
@@ -267,6 +278,11 @@ def put_signing_config():
         except (TypeError, ValueError):
             return jsonify(error="auto_renew_before_days must be 1-365"), 400
         set_setting("auto_renew_before_days", str(rd))
+    if "key_storage" in payload:
+        ks = (payload.get("key_storage") or DEFAULT_KEY_STORAGE).strip()
+        if ks not in KEY_STORAGE_MODES:
+            return jsonify(error=f"key_storage must be one of {list(KEY_STORAGE_MODES)}"), 400
+        set_setting("key_storage", ks)
     if "acme_server_enabled" in payload:
         set_setting("acme_server_enabled", "1" if payload.get("acme_server_enabled") else "0")
     if "acme_server_base_url" in payload:

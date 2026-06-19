@@ -546,6 +546,18 @@ async function loadSigningConfig() {
   document.getElementById("signing-cfg-renewdays").value = c.auto_renew_before_days || 30;
   document.getElementById("signing-cfg-acmesrv").checked = !!c.acme_server_enabled;
   document.getElementById("signing-cfg-acmesrv-url").value = c.acme_server_base_url || "";
+  // Private-key storage policy dropdown (server-generated keys).
+  const ksSel = document.getElementById("signing-cfg-keystorage");
+  if (ksSel) {
+    const KS_LABELS = {
+      vault: "Vault — key never stored on host (recommended)",
+      return_once: "Return once — hand to requester, never stored",
+      host: "Host keystore — legacy on-disk",
+    };
+    ksSel.innerHTML = (c.key_storage_options || ["vault", "return_once", "host"])
+      .map(k => `<option value="${k}">${escapeHtml(KS_LABELS[k] || k)}</option>`).join("");
+    ksSel.value = c.key_storage || "vault";
+  }
   const asc = c.acme_server_capability || {};
   document.getElementById("signing-acmesrv-cap").textContent =
     asc.available === false ? "⚠ not entitled here" + (asc.reason ? " — " + asc.reason : "") : "";
@@ -607,6 +619,7 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
       auto_renew_before_days: renewDaysRaw === "" ? 30 : parseInt(renewDaysRaw, 10),
       acme_server_enabled: document.getElementById("signing-cfg-acmesrv").checked,
       acme_server_base_url: document.getElementById("signing-cfg-acmesrv-url").value.trim(),
+      key_storage: document.getElementById("signing-cfg-keystorage").value,
       fields,
     }),
   });
