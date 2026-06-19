@@ -2,7 +2,7 @@
 
 Provider seam mirroring sign.py / notify.py / ca_providers.py: one dispatch over
 a registry of delivery backends, configured per `cert_templates` row. Delivery
-runs best-effort inline right after issuance and is retried by the `csr-deliver`
+runs best-effort inline right after issuance and is retried by the `certinel-deliver`
 systemd timer (`run_deliveries`), so a short-lived cert that fails to ship keeps
 retrying instead of lapsing silently.
 
@@ -215,7 +215,7 @@ def _deliver_ssh(job):
 # --------------------------------------------------------------------------- #
 def _public_base():
     """Externally reachable base URL of the dashboard, for handing pull links to
-    a destination. Set via the `public_base_url` admin setting (the csr-deliver
+    a destination. Set via the `public_base_url` admin setting (the certinel-deliver
     timer has no request context to infer it). '' -> a relative path is used."""
     return (_get("public_base_url", "")).rstrip("/")
 
@@ -279,7 +279,7 @@ def consume_pull(token, ip=None, peek=False):
 
 
 def purge_expired_pulls():
-    """Delete expired pull rows (called by the csr-deliver timer). Returns count."""
+    """Delete expired pull rows (called by the certinel-deliver timer). Returns count."""
     from app import db
     with db() as conn:
         cur = conn.execute("DELETE FROM delivery_pulls WHERE expires_at < ?",
@@ -479,7 +479,7 @@ def _load_job(conn, job_id):
     return dict(r) if r else None
 
 
-# Retry policy for the csr-deliver timer: exponential backoff between attempts,
+# Retry policy for the certinel-deliver timer: exponential backoff between attempts,
 # capped, then give up (status 'abandoned') and alert — a short-lived cert must
 # never lapse silently.
 MAX_DELIVERY_ATTEMPTS = 8
@@ -570,7 +570,7 @@ def mark_pending(job_id):
 
 
 def run_deliveries(limit=100):
-    """Retry due pending/failed deliveries (the csr-deliver timer entrypoint).
+    """Retry due pending/failed deliveries (the certinel-deliver timer entrypoint).
     Respects the per-job backoff gate and skips 'abandoned' jobs. No Flask
     context. Returns {delivered, failed, abandoned, scanned, purged}."""
     from app import db

@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily CSR Dashboard automated certificate renewal run
+Description=Daily Certinel automated certificate renewal run
 
 [Timer]
 OnCalendar=*-*-* 07:00:00

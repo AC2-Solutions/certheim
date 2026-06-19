@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily CSR Dashboard expiry warning run
+Description=Daily Certinel expiry warning run
 
 [Timer]
 OnCalendar=*-*-* 06:30:00

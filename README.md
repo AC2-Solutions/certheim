@@ -39,7 +39,7 @@ git add -A && git commit -m "what and why" && git push
 `deploy.sh` only touches files that differ, applies correct ownership and
 SELinux contexts, refreshes the fapolicyd trust DB for `/opt/csr-dashboard/`
 (REQUIRED on this STIG baseline - untrusted files get EPERM), restarts
-`csr-api` only when backend files changed, and fails loudly if the service
+`certinel-api` only when backend files changed, and fails loudly if the service
 doesn't come back.
 
 If a hotfix was made directly on the box (it happens at 2am): run
@@ -53,6 +53,6 @@ If a hotfix was made directly on the box (it happens at 2am): run
 - Ansible tasks against this host must NOT `become_user` to unprivileged
   accounts (fapolicyd blocks AnsiballZ temp modules). `become: true` +
   `runuser -u csrapi --` instead. See `ansible/fleet-cert-scan.yml`.
-- Expiry warnings: `csr-expiry-warn.timer`, daily 06:30 UTC, runs
+- Expiry warnings: `certinel-expiry-warn.timer`, daily 06:30 UTC, runs
   `app.run_expiry_warnings()` under the venv python.
 - DB: `/var/lib/csr-dashboard/jobs.db` (WAL). `csrbackup` before risk.

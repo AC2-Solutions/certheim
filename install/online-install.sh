@@ -252,8 +252,8 @@ fi
 log "9/9  Deploy code + start services"
 # ---------------------------------------------------------------------------
 bash ./deploy.sh
-systemctl enable csr-api.service csr-expiry-warn.timer csr-auto-renew.timer >/dev/null 2>&1 || true
-systemctl start csr-expiry-warn.timer csr-auto-renew.timer 2>/dev/null || true
+systemctl enable certinel-api.service certinel-expiry-warn.timer certinel-auto-renew.timer >/dev/null 2>&1 || true
+systemctl start certinel-expiry-warn.timer certinel-auto-renew.timer 2>/dev/null || true
 
 echo ""
 echo "==================================================================="
@@ -264,5 +264,5 @@ echo " Admin:   fresh DB has no admins. After one browser/API hit, run"
 echo "          (dev box, behind proxy all non-CAC users are ip:127.0.0.1):"
 echo "            sqlite3 /var/lib/csr-dashboard/jobs.db \\"
 echo "              \"UPDATE users SET is_admin=1,is_active=1 WHERE dn='ip:127.0.0.1'\""
-echo "          systemctl restart csr-api"
+echo "          systemctl restart certinel-api"
 echo "==================================================================="

@@ -803,7 +803,7 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_at REAL")
     if "revoked_by_dn" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_by_dn TEXT")
-    # Certificate delivery (P1): per-job delivery state for the csr-deliver timer.
+    # Certificate delivery (P1): per-job delivery state for the certinel-deliver timer.
     if "delivery_status" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN delivery_status TEXT")
     if "delivery_detail" not in job_cols:
@@ -1254,7 +1254,7 @@ licensing.configure(get_setting=get_setting)
 sign.configure(get_setting=get_setting, set_setting=set_setting)
 import deliver  # noqa: E402
 deliver.configure(get_setting=get_setting)
-# Re-export the delivery-retry pass so the csr-deliver timer can call
+# Re-export the delivery-retry pass so the certinel-deliver timer can call
 # app.run_deliveries() without its own Flask context (same pattern as
 # run_auto_renew / run_expiry_warnings).
 run_deliveries = deliver.run_deliveries
@@ -2009,7 +2009,7 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
     # Certificate delivery (P1): if this job's template configures a delivery
     # backend, flag it pending and attempt an immediate ship. Best-effort and
     # fully isolated - a delivery hiccup must never fail an otherwise-good issue;
-    # the csr-deliver timer retries anything left 'pending'/'failed'.
+    # the certinel-deliver timer retries anything left 'pending'/'failed'.
     try:
         import deliver
         if deliver.mark_pending(job_id):

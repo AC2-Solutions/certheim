@@ -31,7 +31,7 @@ New module **`backend/deliver.py`** mirrors the existing provider-seam pattern
 behind one `deliver(job, bundle, cfg)` dispatch, per-template configuration,
 secrets via the server environment.
 
-A **`csr-deliver` systemd timer** (like `csr-auto-renew` / `csr-expiry-warn`)
+A **`certinel-deliver` systemd timer** (like `certinel-auto-renew` / `certinel-expiry-warn`)
 re-attempts `pending`/`failed` deliveries with backoff — the reliability spine.
 (Background passes have no Flask request context; entrypoints are re-exported
 from `app.py` and guard `g`/`request`, per the existing convention.)
@@ -93,7 +93,7 @@ secrets (SSH key path, Vault creds, CyberArk creds, kubeconfig) stay
 
 ```
 issue (any producer) → _attach_signed_cert  → job 'issued', delivery_status='pending'
-csr-deliver timer (or async)  → deliver.deliver(job, bundle, template_cfg)
+certinel-deliver timer (or async)  → deliver.deliver(job, bundle, template_cfg)
                               → provider ships cert (+ key per key_mode)
                               → delivery_status='delivered' | retry on 'failed'
                               → fire job.delivered webhook + audit; alert on final failure

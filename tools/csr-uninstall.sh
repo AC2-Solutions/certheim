@@ -8,7 +8,7 @@
 #                                      nothing.
 #
 # What it does:
-#   - stops + disables the systemd units (csr-api, csr-expiry-warn .service
+#   - stops + disables the systemd units (certinel-api, certinel-expiry-warn .service
 #     and .timer) and removes the unit files
 #   - removes the application code (/opt/csr-dashboard), frontend
 #     (/var/www/csr), helper scripts, and the installed tools
@@ -37,7 +37,7 @@ HELPER_DIR="/root/sslcerts/scripts"
 NGINX_FRAG="/etc/nginx/csr-dashboard.d/30-csr.conf"
 SUDOERS="/etc/sudoers.d/csr-dashboard"
 SVC_USER="csrapi"
-UNITS=(csr-api.service csr-expiry-warn.service csr-expiry-warn.timer)
+UNITS=(certinel-api.service certinel-expiry-warn.service certinel-expiry-warn.timer)
 TOOLS=(/usr/local/sbin/csrbackup /usr/local/sbin/csr-bootstrap-admin)
 
 DRY=false

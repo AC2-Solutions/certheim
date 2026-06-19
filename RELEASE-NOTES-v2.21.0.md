@@ -8,7 +8,7 @@ _Released 2026-06-19. 2 changes since v2.20.1._
   pull: dashboard stores the issued bundle behind a scoped, single-use, short-lived token; the
   destination fetches it at GET /deliver/pull/<token> (JSON / pem / cert). No push path, no Vault
   grant — works through a one-way firewall toward the dashboard. New delivery_pulls table;
-  routes_deliver.py public blueprint; csr-deliver timer purges expired tokens.
+  routes_deliver.py public blueprint; certinel-deliver timer purges expired tokens.
   k8s: server-side-apply a kubernetes.io/tls Secret into <ns>/<secret> (cred from Vault secret/csr-
   delivery-k8s/<cluster>); requires key_mode=ship.
   Adds delivery.pull + delivery.k8s capabilities, admin dropdown options with per-backend target

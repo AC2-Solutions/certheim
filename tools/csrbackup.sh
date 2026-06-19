@@ -46,7 +46,7 @@ FILES=(
     /var/www/csr/index.html
     /var/www/csr/app.js
     /root/sslcerts/scripts/csr_dashboard_helper.sh
-    /etc/systemd/system/csr-api.service
+    /etc/systemd/system/certinel-api.service
     /etc/sudoers.d/csr-dashboard
     /etc/csr-dashboard/email.conf
     /usr/local/sbin/csr-bootstrap-admin
@@ -106,9 +106,9 @@ echo ""
 echo "Restore an individual file:"
 echo "  cp -p $DEST/<path/to/file> /<path/to/file>"
 echo "Restore the database (stop service first):"
-echo "  systemctl stop csr-api"
+echo "  systemctl stop certinel-api"
 echo "  cp -p $DEST/var/lib/csr-dashboard/jobs.db /var/lib/csr-dashboard/jobs.db"
 echo "  rm -f /var/lib/csr-dashboard/jobs.db-wal /var/lib/csr-dashboard/jobs.db-shm"
 echo "  chown csrapi:csrapi /var/lib/csr-dashboard/jobs.db"
 echo "  chmod 0640          /var/lib/csr-dashboard/jobs.db"
-echo "  systemctl start csr-api"
+echo "  systemctl start certinel-api"

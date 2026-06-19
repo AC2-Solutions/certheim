@@ -234,7 +234,7 @@ The Conjur host/identity needs `update` on those variables.
 
 ## 5d. Retry, backoff & alerting
 
-Delivery runs inline on issue and is retried by the **`csr-deliver` timer**.
+Delivery runs inline on issue and is retried by the **`certinel-deliver` timer**.
 Failures back off exponentially (2 min → capped at 1 h) up to
 `delivery_max_attempts` (default 8); after that the job is **`abandoned`** and a
 **`job.delivery_failed`** event fires (wire it to chat/email/a webhook so a
@@ -246,7 +246,7 @@ short-lived cert can't lapse unnoticed). A successful delivery fires
 ## 6. Verify
 
 - Issue (or re-deliver) a cert under a delivery-enabled template. Delivery runs
-  inline on issue; the **`csr-deliver` timer** (every 2 min) retries
+  inline on issue; the **`certinel-deliver` timer** (every 2 min) retries
   pending/failed.
 - **openbao:** `bao kv get secret/csr-certs/<host>` shows `certificate` (+
   `private_key` per key_mode).

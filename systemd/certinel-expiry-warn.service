@@ -1,5 +1,5 @@
 [Unit]
-Description=CSR Dashboard - send certificate expiry warnings
+Description=Certinel - send certificate expiry warnings
 After=network-online.target
 
 [Service]

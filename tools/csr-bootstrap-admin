@@ -54,7 +54,7 @@ def main():
     db_path = _load_db_path()
     if not os.path.exists(db_path):
         print(f"ERROR: database not found at {db_path}", file=sys.stderr)
-        print("Start csr-api once so the schema is created, then re-run.",
+        print("Start certinel-api once so the schema is created, then re-run.",
               file=sys.stderr)
         return 1
 

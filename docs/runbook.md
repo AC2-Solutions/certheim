@@ -23,7 +23,7 @@ and a fresh STIG offline VM.
 | `/etc/csr-dashboard/integrations.conf` | csrapi:csrapi 0640 | GitLab config (UI-managed) |
 | `/etc/csr-dashboard/csr-dashboard.env` | csrapi:csrapi 0640 | app env (paths, flags) |
 | `/root/sslcerts/scripts/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
-| `/etc/systemd/system/csr-api.service` | root:root 0644 | gunicorn unit |
+| `/etc/systemd/system/certinel-api.service` | root:root 0644 | gunicorn unit |
 | `/etc/nginx/csr-dashboard.d/30-csr.conf` | root:root 0644 | **location fragment** |
 | `/etc/nginx/conf.d/csr-dashboard.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
 | `/usr/local/sbin/{csrbackup,csr-bootstrap-admin}` | root:root 0750 | tools |
@@ -152,11 +152,11 @@ email" verifies wiring.
 - **Backup before risk**: `csrbackup` (snapshots deploy files + DB to
   `/root/csr-backup-*`). `deploy.sh` runs it pre-deploy.
 - **Health**: `curl -sk https://localhost/csr/api/health` → `{"ok":true,...}`.
-- **Logs**: `journalctl -u csr-api`; audit events also land in the DB
+- **Logs**: `journalctl -u certinel-api`; audit events also land in the DB
   `audit_log` table (admin Audit panel).
-- **Expiry warnings**: `csr-expiry-warn.timer` (daily 06:30 UTC) runs
+- **Expiry warnings**: `certinel-expiry-warn.timer` (daily 06:30 UTC) runs
   `app.run_expiry_warnings()`.
-- **Automated renewal**: `csr-auto-renew.timer` (daily 07:00 UTC) runs
+- **Automated renewal**: `certinel-auto-renew.timer` (daily 07:00 UTC) runs
   `app.run_auto_renew()` — re-signs issued certs nearing expiry whose template
   opts into auto-renew, via that template's CA backend. Off by default; enable
   on Admin → Signing/CA (master switch + default window) and per template
@@ -188,8 +188,8 @@ email" verifies wiring.
 
 | Symptom | Likely cause / fix |
 |---|---|
-| 502 on every request | `httpd_can_network_connect` off, or gunicorn down (`journalctl -u csr-api`) |
-| UI shows old version | stale process — `deploy.sh` version check warns; `systemctl restart csr-api` |
+| 502 on every request | `httpd_can_network_connect` off, or gunicorn down (`journalctl -u certinel-api`) |
+| UI shows old version | stale process — `deploy.sh` version check warns; `systemctl restart certinel-api` |
 | Admin email save 500 "read-only" | `/etc/csr-dashboard` not in unit `ReadWritePaths` |
 | App logs `ip=` under mTLS | server-level `ssl_verify_client`/DoD bundle, not the app |
 | `/csr/` 404s to default docroot | fragment used `alias` instead of `root /var/www` |

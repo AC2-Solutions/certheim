@@ -1,5 +1,5 @@
 [Unit]
-Description=CSR Dashboard API
+Description=Certinel API
 After=network.target
 
 [Service]
