@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""csr-issue-license - mint a signed CSR Dashboard license (VENDOR-side tool).
+
+Run ONLY on the machine that holds the vendor RSA private signing key - never on
+a customer/product box. The matching public key is embedded in the app
+(backend/licensing.py), which verifies the license offline.
+
+  ./tools/csr-issue-license --key vendor-private.pem \
+      --customer "Acme Gov Agency" --edition government \
+      --entitlements profiles.public_sector --days 365
+
+Prints the license blob (base64url(payload).base64url(signature)) to stdout.
+Deliver that string to the customer; they install it via Admin -> License (or
+drop it at the path named by CSR_LICENSE_FILE).
+"""
+import argparse
+import base64
+import json
+import subprocess
+import sys
+import time
+
+
+def b64u(b):
+    if isinstance(b, str):
+        b = b.encode()
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Mint a signed CSR Dashboard license.")
+    ap.add_argument("--key", required=True, help="vendor RSA private key (PEM)")
+    ap.add_argument("--customer", required=True, help="customer name (recorded in the license)")
+    ap.add_argument("--edition", default="government", help="edition label (e.g. government)")
+    ap.add_argument("--entitlements", default="profiles.public_sector",
+                    help="comma-separated capability keys to grant")
+    ap.add_argument("--days", type=int, default=365, help="validity in days (default 365)")
+    ap.add_argument("--issued", type=float, default=None,
+                    help="issue epoch (default: now)")
+    a = ap.parse_args()
+
+    issued = int(a.issued if a.issued is not None else time.time())
+    payload = {
+        "customer": a.customer,
+        "edition": a.edition,
+        "entitlements": [e.strip() for e in a.entitlements.split(",") if e.strip()],
+        "issued": issued,
+        "expires": issued + a.days * 86400,
+    }
+    payload_b64 = b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", a.key],
+                         input=payload_b64.encode(), capture_output=True)
+    if sig.returncode != 0:
+        sys.stderr.write("signing failed: " + sig.stderr.decode("utf-8", "replace"))
+        sys.exit(1)
+    print(f"{payload_b64}.{b64u(sig.stdout)}")
+
+
+if __name__ == "__main__":
+    main()

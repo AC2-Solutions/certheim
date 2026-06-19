@@ -20,7 +20,19 @@ MAX_LEN = 128
 # Org profiles seeded during initial setup. A profile sets country/org and a
 # starter set of OUs; the admin then adds more OU tags (e.g. a combatant
 # command) on top. DoD => O="U.S. Government" + OU=[DoD], NOT USEUCOM.
-ORG_PROFILES = [
+# Core OOBE profiles - always available in every edition.
+CORE_PROFILES = [
+    {"key": "commercial", "label": "Commercial / Enterprise",
+     "country": "", "state": "", "locality": "", "org": "", "ous": [],
+     "domain_suffix": ""},
+    {"key": "blank", "label": "Start blank (configure manually)",
+     "country": "", "state": "", "locality": "", "org": "", "ous": [],
+     "domain_suffix": ""},
+]
+
+# Government / public-sector profiles - shown ONLY when the "Public Sector" pack
+# is licensed (capability profiles.public_sector). See backend/licensing.py.
+PUBLIC_SECTOR_PROFILES = [
     {"key": "dod", "label": "U.S. Department of Defense (DoD)",
      "country": "US", "state": "", "locality": "", "org": "U.S. Government",
      "ous": ["DoD"], "domain_suffix": ""},
@@ -42,22 +54,31 @@ ORG_PROFILES = [
     {"key": "fed_civilian", "label": "U.S. Federal Civilian Agency",
      "country": "US", "state": "", "locality": "", "org": "U.S. Government",
      "ous": [], "domain_suffix": ""},
-    {"key": "commercial", "label": "Commercial / Enterprise",
-     "country": "", "state": "", "locality": "", "org": "", "ous": [],
-     "domain_suffix": ""},
-    {"key": "blank", "label": "Start blank (configure manually)",
-     "country": "", "state": "", "locality": "", "org": "", "ous": [],
-     "domain_suffix": ""},
 ]
 
-# Common OU "tags" offered in the UI for quick add (combatant commands, services,
-# agencies). Purely suggestions; the admin can type any value.
-SUGGESTED_OUS = [
+# Full list kept for internal profile-by-key lookup + back-compat.
+ORG_PROFILES = CORE_PROFILES + PUBLIC_SECTOR_PROFILES
+
+# Quick-add OU "tags". Core ones are generic; the public-sector set (services,
+# combatant commands, agencies) is licensed.
+CORE_SUGGESTED_OUS = ["IT", "Security", "Engineering", "Operations", "PKI"]
+PUBLIC_SECTOR_OUS = [
     "DoD", "USA", "USAF", "USN", "USMC", "USSF", "USCG",
     "USEUCOM", "USAFRICOM", "USCENTCOM", "USINDOPACOM", "USNORTHCOM",
     "USSOUTHCOM", "USSPACECOM", "USSOCOM", "USSTRATCOM", "USTRANSCOM",
-    "USCYBERCOM", "DISA", "PKI",
+    "USCYBERCOM", "DISA",
 ]
+SUGGESTED_OUS = CORE_SUGGESTED_OUS + PUBLIC_SECTOR_OUS
+
+
+def org_profiles(public_sector=False):
+    """Selectable org profiles; the public-sector pack only when licensed."""
+    return CORE_PROFILES + (PUBLIC_SECTOR_PROFILES if public_sector else [])
+
+
+def suggested_ous(public_sector=False):
+    """Suggested OU tags; the public-sector set only when licensed."""
+    return CORE_SUGGESTED_OUS + (PUBLIC_SECTOR_OUS if public_sector else [])
 
 
 def sanitize(value, domain=False):

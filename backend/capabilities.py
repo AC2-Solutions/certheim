@@ -50,6 +50,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
     "ca.server.acme": {"env": ["acme_server"],
                           "desc": "Expose an ACME (RFC 8555) server for external clients"},
+    "profiles.public_sector": {"env": [],
+                          "desc": "Government / public-sector CSR profiles + consent banners (licensed)"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
 }
 
@@ -153,7 +155,19 @@ def _entitlements():
     return None
 
 
+# Capabilities that are PREMIUM: never granted by the default grant-all - only
+# by a valid signed license listing them (licensing.entitlements()). Everything
+# else keeps the license-agnostic grant-all default below.
+LICENSED_CAPABILITIES = {"profiles.public_sector"}
+
+
 def is_entitled(key):
+    if key in LICENSED_CAPABILITIES:
+        try:
+            import licensing
+            return key in licensing.entitlements()
+        except Exception:
+            return False
     ent = _entitlements()
     return ent is None or "*" in ent or key in ent
 

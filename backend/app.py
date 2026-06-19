@@ -1177,6 +1177,8 @@ def set_setting(key, value):
 
 # Let the capability resolver read admin-declared env flags (cap_*).
 capabilities.configure(get_setting=get_setting)
+import licensing  # noqa: E402
+licensing.configure(get_setting=get_setting)
 sign.configure(get_setting=get_setting, set_setting=set_setting)
 
 def auth_mode():
@@ -1203,14 +1205,23 @@ def current_banner():
     b = LOGIN_BANNERS.get(key)
     if not b:
         return None
+    if key in GOV_BANNERS and not capabilities.available("profiles.public_sector"):
+        return None      # licensed pack: don't render without entitlement
     return {"key": key, "label": b["label"], "link": b["link"],
             "title": b["title"], "paragraphs": list(b["paragraphs"]),
             "items": list(b["items"])}
 
+# Government/public-sector consent banners - gated by the profiles.public_sector
+# license (hipaa stays available for commercial healthcare customers).
+GOV_BANNERS = {"dod", "nsa"}
+
 def banner_options():
-    """Admin dropdown choices: built-in presets + none + custom."""
+    """Admin dropdown choices: built-in presets + none + custom. Government
+    presets appear only when the public-sector pack is licensed."""
+    gov_ok = capabilities.available("profiles.public_sector")
     opts = [{"key": "none", "label": "No banner"}]
-    opts += [{"key": k, "label": v["label"]} for k, v in LOGIN_BANNERS.items()]
+    opts += [{"key": k, "label": v["label"]} for k, v in LOGIN_BANNERS.items()
+             if k not in GOV_BANNERS or gov_ok]
     opts.append({"key": "custom", "label": "Custom message…"})
     return opts
 

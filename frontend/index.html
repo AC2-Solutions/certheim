@@ -409,6 +409,7 @@
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
       <button type="button" data-panel="audit">Audit log</button>
+      <button type="button" data-panel="license">License</button>
     </nav>
     <div id="admin-panels" class="panel-body">
 
@@ -1000,6 +1001,31 @@
       <div class="row" style="margin-top:8px">
         <button id="audit-more-btn" class="secondary" type="button" hidden>Load more</button>
         <span id="audit-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="license" hidden>
+      <div class="card-header">
+        <h2>License</h2>
+        <button id="license-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Premium editions (e.g. the government / public-sector pack) are
+        unlocked by a signed license verified offline — no internet required. Without
+        a license, those features stay hidden.</p>
+      <div id="license-status" class="status" style="margin:8px 0"></div>
+      <dl id="license-details" class="kv" hidden style="margin:8px 0">
+        <dt>Customer</dt><dd id="license-customer">—</dd>
+        <dt>Edition</dt><dd id="license-edition">—</dd>
+        <dt>Entitlements</dt><dd id="license-entitlements">—</dd>
+        <dt>Expires</dt><dd id="license-expires">—</dd>
+      </dl>
+      <label for="license-input" class="textarea-label">Install / replace license</label>
+      <textarea id="license-input" class="form-input" rows="4" style="width:100%;font-family:monospace"
+                placeholder="Paste the license string here…"></textarea>
+      <div class="bulk-row" style="margin-top:10px">
+        <button id="license-install-btn" type="button">Install license</button>
+        <button id="license-remove-btn" class="secondary" type="button">Remove license</button>
+        <span id="license-msg" class="status"></span>
       </div>
     </section>
 

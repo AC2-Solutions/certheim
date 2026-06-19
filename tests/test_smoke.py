@@ -344,8 +344,70 @@ def test_csr_subject_shape(client):
     b = client.get("/api/admin/csr-subject", headers=CAC).get_json()
     assert "config" in b and "configured" in b
     pkeys = {p["key"] for p in b.get("profiles", [])}
-    assert "dod" in pkeys and "commercial" in pkeys
-    assert "USEUCOM" in b.get("suggested_ous", [])
+    # core profiles always present; the gov pack is licensed (hidden by default)
+    assert "commercial" in pkeys and "blank" in pkeys
+    assert "dod" not in pkeys
+    assert "USEUCOM" not in b.get("suggested_ous", [])
+    assert "IT" in b.get("suggested_ous", [])
+
+
+# --- licensing / entitlements (offline signed license) ---------------------
+def _mint_license(privkey_path, entitlements="profiles.public_sector", days=365):
+    import json
+    import subprocess
+    import time
+    import licensing
+    payload = {"customer": "Test Gov", "edition": "government",
+               "entitlements": [entitlements] if isinstance(entitlements, str) else entitlements,
+               "issued": int(time.time()), "expires": int(time.time()) + days * 86400}
+    pb = licensing.b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", privkey_path],
+                         input=pb.encode(), capture_output=True).stdout
+    return f"{pb}.{licensing.b64u(sig)}"
+
+
+def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
+    import json
+    import subprocess
+    import capabilities
+    import licensing
+    # ephemeral vendor keypair; point the app's trust anchor at it for the test
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    licensing.reset_cache()
+
+    # no license -> not entitled, gov pack hidden
+    assert capabilities.available("profiles.public_sector") is False
+    info = client.get("/api/admin/license", headers=CAC).get_json()
+    assert info["valid"] is False and "profiles.public_sector" in info["gateable"]
+
+    # a forged/garbage license is rejected on install
+    bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
+    assert bad.status_code == 400
+
+    # a properly-signed license unlocks the pack
+    lic = _mint_license(priv)
+    r = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": lic}))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()["valid"] is True and r.get_json()["edition"] == "government"
+    try:
+        assert capabilities.available("profiles.public_sector") is True
+        # gov CSR profiles + OUs now appear
+        sub = client.get("/api/admin/csr-subject", headers=CAC).get_json()
+        assert "dod" in {p["key"] for p in sub["profiles"]}
+        assert "USEUCOM" in sub["suggested_ous"]
+        # gov login banners now offered
+        opts = {o["key"] for o in client.get("/api/admin/auth-settings", headers=CAC)
+                .get_json().get("banner_options", [])}
+        assert "dod" in opts
+    finally:
+        # remove the license -> pack hidden again (don't leak state to other tests)
+        client.delete("/api/admin/license", headers=WRITE)
+        licensing.reset_cache()
+        assert capabilities.available("profiles.public_sector") is False
 
 
 def test_csr_subject_render_sanitizes():

@@ -793,11 +793,13 @@ def get_csr_subject():
     """Current subject DN config + org-profile presets + suggested OU tags.
     `configured` drives the first-run (OOBE) setup prompt."""
     cfg = _subject_config()
+    import capabilities
+    gov = capabilities.available("profiles.public_sector")
     return jsonify(
         config=cfg,
         configured=(get_setting("subject_configured") == "1"),
-        profiles=csr_subject.ORG_PROFILES,
-        suggested_ous=csr_subject.SUGGESTED_OUS,
+        profiles=csr_subject.org_profiles(public_sector=gov),
+        suggested_ous=csr_subject.suggested_ous(public_sector=gov),
         preview=csr_subject.preview_dn(cfg),
     )
 
@@ -826,6 +828,54 @@ def put_csr_subject():
               org=cfg["org"][:64], ous=len(cfg["ous"]))
     return jsonify(ok=True, config=cfg, configured=True,
                    preview=csr_subject.preview_dn(cfg))
+
+
+# ----- License / entitlements (premium editions, offline-verifiable) -----
+def _license_view():
+    import licensing
+    import capabilities
+    info = licensing.info()
+    info["gateable"] = sorted(capabilities.LICENSED_CAPABILITIES)
+    return info
+
+
+@bp.get("/api/admin/license")
+@require_admin
+def get_license():
+    return jsonify(**_license_view())
+
+
+@bp.put("/api/admin/license")
+@require_admin
+@require_csrf
+def put_license():
+    """Install a signed license blob. Rejected if it doesn't verify against the
+    embedded vendor key (so a bad paste can't silently do nothing)."""
+    import licensing
+    blob = ((request.get_json(silent=True) or {}).get("license") or "").strip()
+    if not blob:
+        return jsonify(error="no license provided"), 400
+    set_setting("license_blob", blob)
+    licensing.reset_cache()
+    info = licensing.info()
+    if not info["valid"]:
+        # leave it stored so the admin can see the reason, but report failure
+        log_event("license", "install_invalid", reason=info["reason"][:120])
+        return jsonify(error=f"license not valid: {info['reason']}", **_license_view()), 400
+    log_event("license", "installed", customer=str(info.get("customer"))[:64],
+              edition=str(info.get("edition"))[:32], actor=g.identity["dn"][:128])
+    return jsonify(ok=True, **_license_view())
+
+
+@bp.delete("/api/admin/license")
+@require_admin
+@require_csrf
+def delete_license():
+    import licensing
+    set_setting("license_blob", "")
+    licensing.reset_cache()
+    log_event("license", "removed", actor=g.identity["dn"][:128])
+    return jsonify(ok=True, **_license_view())
 
 
 @bp.delete("/api/templates/<int:template_id>")

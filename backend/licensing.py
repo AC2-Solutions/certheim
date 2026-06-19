@@ -1,0 +1,156 @@
+"""licensing.py - offline-verifiable license + entitlements.
+
+Premium/edition features (starting with the government "Public Sector" pack) are
+gated by a signed license the app verifies LOCALLY with an embedded vendor public
+key - no activation server, so it works fully air-gapped. A license is:
+
+    <base64url(payload_json)>.<base64url(signature)>
+
+  payload    = {"customer","edition","entitlements":[...],"issued","expires"}
+  signature  = RSA-SHA256 over the base64url(payload) bytes, signed by the
+               vendor PRIVATE key (held only by the vendor; mint a license with
+               tools/csr-issue-license).
+
+Source order: env CSR_LICENSE_FILE (a path on disk) wins, else the admin-uploaded
+blob in app_settings ('license_blob'). No valid license -> no premium
+entitlements -> the gated features simply don't appear in the UI.
+
+Verification is done with `openssl dgst -verify` (no crypto dependency, matching
+the rest of the app); the verified payload is cached per blob so we don't shell
+out on every request.
+"""
+import base64
+import json
+import os
+import subprocess
+import tempfile
+import time
+
+# The vendor's PUBLIC key. The matching PRIVATE key never ships - it lives only
+# on the vendor's issuing machine and signs customer licenses. Rotating it means
+# re-issuing licenses, so treat it as long-lived.
+VENDOR_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApBorenlxBbgY0JcyQQKC
+8Oncsh0mlldHa5pYDZxSMaOoRCrUaWehUjvMXagZxxIoJjtPybrUbdzcrpFKqrhu
+M5ygrR4Z4o8ey0+2cokOUBMXDGji6M1YjaXC3UctJn26dQZBLC3mKNDaq7Kuobtz
+VQojVKxsRFFSfHKPpxK853CeSmucIactvJmPEnTKmncU6GEi/8oDS2VaUcVufou4
+twpnGhsa9C8Kzmcq6vbHpQEsljcePUVTiI16Xg8dUIikUdiSYpcdw2U8BFkjY8a2
+o7H3SlNMK5o5b5ADUzVwjOefspENBk2HhK+DUpaOm+GmJkQb/lYpFO9LR4VzyHFI
+TQIDAQAB
+-----END PUBLIC KEY-----
+"""
+
+_get_setting = None
+# blob -> verified payload dict, or {"__error__": reason}. Bounded.
+_verify_cache = {}
+
+
+def configure(get_setting=None):
+    global _get_setting
+    if get_setting is not None:
+        _get_setting = get_setting
+
+
+def _pubkey():
+    # An env override lets a test (or a customer running their own key) swap the
+    # trust anchor without editing code; defaults to the embedded vendor key.
+    return os.environ.get("CSR_LICENSE_PUBKEY") or VENDOR_PUBLIC_KEY
+
+
+def _b64u_decode(s):
+    if isinstance(s, str):
+        s = s.encode()
+    return base64.urlsafe_b64decode(s + b"=" * (-len(s) % 4))
+
+
+def b64u(data):
+    if isinstance(data, str):
+        data = data.encode()
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _raw_license():
+    """The license blob from the env-pointed file, else the stored setting."""
+    path = os.environ.get("CSR_LICENSE_FILE", "").strip()
+    if path and os.path.isfile(path):
+        try:
+            return open(path).read().strip()
+        except OSError:
+            pass
+    if _get_setting:
+        return (_get_setting("license_blob") or "").strip()
+    return ""
+
+
+def _verify(blob, pubkey_pem):
+    """Return the payload dict if the signature is valid, else raise ValueError."""
+    try:
+        payload_b64, sig_b64 = blob.split(".", 1)
+    except ValueError:
+        raise ValueError("malformed license (expected payload.signature)")
+    sig = _b64u_decode(sig_b64)
+    with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False) as pf:
+        pf.write(pubkey_pem); pub_file = pf.name
+    with tempfile.NamedTemporaryFile("wb", suffix=".sig", delete=False) as sf:
+        sf.write(sig); sig_file = sf.name
+    try:
+        p = subprocess.run(
+            ["openssl", "dgst", "-sha256", "-verify", pub_file, "-signature", sig_file],
+            input=payload_b64.encode(), capture_output=True)
+        if p.returncode != 0:
+            raise ValueError("signature does not verify against the vendor key")
+    finally:
+        for fn in (pub_file, sig_file):
+            try:
+                os.remove(fn)
+            except OSError:
+                pass
+    try:
+        return json.loads(_b64u_decode(payload_b64))
+    except Exception:
+        raise ValueError("license payload is not valid JSON")
+
+
+def _payload_for(blob):
+    """Verified payload for a blob (cached), or {'__error__': reason}."""
+    cached = _verify_cache.get(blob)
+    if cached is None:
+        try:
+            cached = _verify(blob, _pubkey())
+        except Exception as e:  # noqa: BLE001
+            cached = {"__error__": str(e)}
+        if len(_verify_cache) > 16:
+            _verify_cache.clear()
+        _verify_cache[blob] = cached
+    return cached
+
+
+def info():
+    """License status for the admin UI / gating.
+    {valid, reason, customer, edition, entitlements[], issued, expires, expired}."""
+    blob = _raw_license()
+    if not blob:
+        return {"valid": False, "reason": "no license installed", "entitlements": []}
+    p = _payload_for(blob)
+    if "__error__" in p:
+        return {"valid": False, "reason": f"invalid license: {p['__error__']}",
+                "entitlements": []}
+    now = time.time()
+    exp = p.get("expires")
+    expired = bool(exp and now > float(exp))
+    valid = not expired
+    return {
+        "valid": valid, "reason": "expired" if expired else "ok",
+        "customer": p.get("customer"), "edition": p.get("edition"),
+        "entitlements": list(p.get("entitlements", [])) if valid else [],
+        "issued": p.get("issued"), "expires": exp, "expired": expired,
+    }
+
+
+def entitlements():
+    """The set of entitlement keys granted by a currently-valid license."""
+    return set(info().get("entitlements", []))
+
+
+def reset_cache():
+    _verify_cache.clear()
