@@ -1,0 +1,12 @@
+[Unit]
+Description=CSR Dashboard certificate-delivery retry (pending/failed deliveries)
+
+[Timer]
+# Frequent: short-lived certs must reach their destination quickly, and a failed
+# delivery should retry within minutes, not hours.
+OnBootSec=2min
+OnUnitActiveSec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -197,6 +197,21 @@ function editTemplateSigning(td, t) {
       <input class="sig-renew-days form-input" type="number" min="1" max="365" style="width:70px;display:inline-block"
              placeholder="days" title="Days before expiry to renew (blank = global default)" value="${t.renew_before_days || ""}">
     </span>
+    <span class="sig-deliver-wrap" style="margin-left:8px">
+      <select class="sig-deliver form-input" style="width:auto;display:inline-block" title="Deliver the issued certificate to a destination">
+        <option value="none">No delivery</option>
+        <option value="openbao">Deliver → OpenBao KV</option>
+      </select>
+      <span class="sig-deliver-cfg" hidden>
+        <select class="sig-keymode form-input" style="width:auto;display:inline-block" title="Private-key handling">
+          <option value="destination">key: at destination</option>
+          <option value="ship">key: ship</option>
+          <option value="vault">key: vault</option>
+        </select>
+        <input class="sig-deliver-target form-input" style="width:150px;display:inline-block"
+               placeholder="KV path / target" value="${escapeHtml(t.delivery_target || "")}">
+      </span>
+    </span>
     <button class="btn sig-save" style="padding:2px 10px">Save</button>
     <button class="link-btn sig-cancel">Cancel</button>
     <span class="sig-status status"></span>`;
@@ -207,6 +222,13 @@ function editTemplateSigning(td, t) {
     obWrap.hidden = backSel.value === "manual";        // auto-sign/renew for any automated backend
     obFields.hidden = backSel.value !== "openbao";     // role/TTL are OpenBao-specific
   });
+  // Delivery: where the issued cert (and per key_mode, the key) is shipped.
+  const delSel = td.querySelector(".sig-deliver");
+  const delCfg = td.querySelector(".sig-deliver-cfg");
+  delSel.value = t.delivery_backend || "none";
+  td.querySelector(".sig-keymode").value = t.key_mode || "destination";
+  delCfg.hidden = delSel.value === "none";
+  delSel.addEventListener("change", () => { delCfg.hidden = delSel.value === "none"; });
   td.querySelector(".sig-cancel").addEventListener("click", () => {
     td.innerHTML = `${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button>`;
     td.querySelector(".admin-template-sign").addEventListener("click", () => editTemplateSigning(td, t));
@@ -223,6 +245,9 @@ function editTemplateSigning(td, t) {
       auto_sign: td.querySelector(".sig-auto").checked,
       auto_renew: td.querySelector(".sig-renew").checked,
       renew_before_days: renewRaw === "" ? null : parseInt(renewRaw, 10),
+      delivery_backend: delSel.value,
+      key_mode: td.querySelector(".sig-keymode").value,
+      delivery_target: td.querySelector(".sig-deliver-target").value.trim(),
     };
     setStatus(td.querySelector(".sig-status"), "Saving…");
     const r = await jsonReq(`/admin/templates/${t.id}/signing`, {

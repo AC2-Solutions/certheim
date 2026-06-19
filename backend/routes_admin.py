@@ -754,21 +754,37 @@ def admin_set_template_signing(template_id):
             renew_days = max(1, min(int(renew_days), 365))
         except (TypeError, ValueError):
             return jsonify(error="renew_before_days must be 1-365"), 400
+    # Certificate delivery (P1): per-template destination + key handling.
+    import deliver
+    dbackend = (payload.get("delivery_backend") or "none").strip()
+    if dbackend not in ({"none"} | set(deliver.PROVIDERS)):
+        return jsonify(error="delivery_backend must be one of "
+                             f"{['none'] + list(deliver.PROVIDERS)}"), 400
+    key_mode = (payload.get("key_mode") or "destination").strip()
+    if key_mode not in deliver.KEY_MODES:
+        return jsonify(error=f"key_mode must be one of {list(deliver.KEY_MODES)}"), 400
+    dtarget = (payload.get("delivery_target") or "").strip() or None
+    dreload = (payload.get("delivery_reload") or "").strip() or None
     with db() as conn:
         if not conn.execute("SELECT 1 FROM cert_templates WHERE id = ?",
                             (template_id,)).fetchone():
             return jsonify(error="template not found"), 404
         conn.execute(
             "UPDATE cert_templates SET signer_backend = ?, openbao_role = ?, "
-            "max_ttl = ?, auto_sign = ?, auto_renew = ?, renew_before_days = ? "
-            "WHERE id = ?",
-            (backend, role, ttl, auto_sign, auto_renew, renew_days, template_id))
+            "max_ttl = ?, auto_sign = ?, auto_renew = ?, renew_before_days = ?, "
+            "delivery_backend = ?, key_mode = ?, delivery_target = ?, "
+            "delivery_reload = ? WHERE id = ?",
+            (backend, role, ttl, auto_sign, auto_renew, renew_days,
+             dbackend, key_mode, dtarget, dreload, template_id))
     log_event("template_signing", "update", template_id=template_id,
               backend=backend, auto_sign=auto_sign, auto_renew=auto_renew,
+              delivery=dbackend, key_mode=key_mode,
               actor=g.identity["dn"][:128])
     return jsonify(ok=True, template_id=template_id, signer_backend=backend,
                    openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign),
-                   auto_renew=bool(auto_renew), renew_before_days=renew_days)
+                   auto_renew=bool(auto_renew), renew_before_days=renew_days,
+                   delivery_backend=dbackend, key_mode=key_mode,
+                   delivery_target=dtarget, delivery_reload=dreload)
 
 
 # ----- CSR subject / organization identity (configurable, not hardcoded) -----

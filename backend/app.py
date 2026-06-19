@@ -691,6 +691,16 @@ def init_db():
         conn.execute("ALTER TABLE cert_templates ADD COLUMN auto_renew INTEGER NOT NULL DEFAULT 0")
     if "renew_before_days" not in tmpl_cols:
         conn.execute("ALTER TABLE cert_templates ADD COLUMN renew_before_days INTEGER")
+    # Certificate delivery (P1): ship the issued cert (and per key_mode, the key)
+    # to its destination. Per-template; off ('none') by default.
+    if "delivery_backend" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN delivery_backend TEXT NOT NULL DEFAULT 'none'")
+    if "key_mode" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN key_mode TEXT NOT NULL DEFAULT 'destination'")
+    if "delivery_target" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN delivery_target TEXT")
+    if "delivery_reload" not in tmpl_cols:
+        conn.execute("ALTER TABLE cert_templates ADD COLUMN delivery_reload TEXT")
 
     # Seed the Windows-style built-in templates once (first run only, so
     # admin deletions stick across restarts).
@@ -791,6 +801,15 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_at REAL")
     if "revoked_by_dn" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_by_dn TEXT")
+    # Certificate delivery (P1): per-job delivery state for the csr-deliver timer.
+    if "delivery_status" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delivery_status TEXT")
+    if "delivery_detail" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delivery_detail TEXT")
+    if "delivered_at" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delivered_at REAL")
+    if "delivery_attempts" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -1208,6 +1227,12 @@ capabilities.configure(get_setting=get_setting)
 import licensing  # noqa: E402
 licensing.configure(get_setting=get_setting)
 sign.configure(get_setting=get_setting, set_setting=set_setting)
+import deliver  # noqa: E402
+deliver.configure(get_setting=get_setting)
+# Re-export the delivery-retry pass so the csr-deliver timer can call
+# app.run_deliveries() without its own Flask context (same pattern as
+# run_auto_renew / run_expiry_warnings).
+run_deliveries = deliver.run_deliveries
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
@@ -1955,6 +1980,17 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
                   reason=reason[:96])
     except Exception as e:
         log_event("email_notify", "exception", job_id=job_id, error=str(e)[:128])
+
+    # Certificate delivery (P1): if this job's template configures a delivery
+    # backend, flag it pending and attempt an immediate ship. Best-effort and
+    # fully isolated - a delivery hiccup must never fail an otherwise-good issue;
+    # the csr-deliver timer retries anything left 'pending'/'failed'.
+    try:
+        import deliver
+        if deliver.mark_pending(job_id):
+            deliver.deliver_one(job_id)
+    except Exception as e:  # noqa: BLE001
+        log_event("delivery", "hook_exception", job_id=job_id, error=str(e)[:128])
 
     return {"expires_at": expires_at, "warnings": warnings,
             "target_host": row["target_host"]}

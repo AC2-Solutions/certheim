@@ -243,6 +243,53 @@ def test_sign_options_missing_job_404(client):
     assert r.status_code == 404
 
 
+def test_delivery_module(client):
+    """deliver.py: no-op for 'none', cert-only bundle for key_mode=destination,
+    and the openbao provider is capability-gated (premium)."""
+    import deliver
+    # a template with no delivery backend is a no-op
+    assert deliver.deliver_job({"delivery_backend": "none"}) is None
+    assert deliver.deliver_job({}) is None
+    # key-at-destination -> certificate only, no private key shipped
+    b = deliver._job_bundle({"cert_pem": "CERTPEM", "target_host": "h1",
+                             "key_mode": "destination"})
+    assert b == {"certificate": "CERTPEM", "target_host": "h1"}
+    # openbao delivery is gated (Community test box -> not entitled -> refused)
+    with client._appmod.app.app_context():
+        try:
+            deliver.deliver_job({"delivery_backend": "openbao",
+                                "cert_pem": "C", "target_host": "h1"})
+            assert False, "expected DeliveryError (capability-gated)"
+        except deliver.DeliveryError:
+            pass
+
+
+def test_template_delivery_config(client):
+    """Per-template delivery + key_mode round-trip through the signing endpoint,
+    with validation of the enum fields."""
+    import json
+    tid = client.get("/api/templates", headers=CAC).get_json()["templates"][0]["id"]
+    ok = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE, data=json.dumps({
+        "signer_backend": "manual",
+        "delivery_backend": "openbao", "key_mode": "vault",
+        "delivery_target": "csr-certs/test"}))
+    assert ok.status_code == 200, ok.get_data(as_text=True)
+    j = ok.get_json()
+    assert j["delivery_backend"] == "openbao" and j["key_mode"] == "vault"
+    # reflected in the templates list
+    t = [x for x in client.get("/api/templates", headers=CAC).get_json()["templates"]
+         if x["id"] == tid][0]
+    assert t["delivery_backend"] == "openbao" and t["delivery_target"] == "csr-certs/test"
+    # invalid enums rejected
+    assert client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                      data=json.dumps({"delivery_backend": "bogus"})).status_code == 400
+    assert client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+                      data=json.dumps({"key_mode": "bogus"})).status_code == 400
+    # restore
+    client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
+               data=json.dumps({"signer_backend": "manual", "delivery_backend": "none"}))
+
+
 def test_template_signing_policy(client):
     import json
     # a built-in template exists after first-run seeding
