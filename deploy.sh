@@ -128,7 +128,10 @@ install -d -o root   -g root   -m 0755 /var/opt/certinel
 install -d -o csrapi -g csrapi -m 0750 /var/opt/certinel/issued
 install -d -o root   -g csrapi -m 0750 /var/opt/certinel/requests
 if command -v semanage >/dev/null 2>&1; then
-    semanage fcontext -a -t var_lib_t '/var/opt/certinel(/.*)?' 2>/dev/null || true
+    # RHEL ships an SELinux equivalency '/var/opt = /opt', so the fcontext rule
+    # must be registered against /opt/certinel (it applies to /var/opt/certinel
+    # via the equivalency). Registering /var/opt/certinel directly is rejected.
+    semanage fcontext -a -t var_lib_t '/opt/certinel(/.*)?' 2>/dev/null || true
     command -v restorecon >/dev/null 2>&1 && restorecon -R /var/opt/certinel || true
 fi
 
