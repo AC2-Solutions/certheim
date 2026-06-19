@@ -50,6 +50,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
     "ca.server.acme": {"env": ["acme_server"],
                           "desc": "Expose an ACME (RFC 8555) server for external clients"},
+    "delivery.openbao": {"env": ["openbao"],
+                          "desc": "Deliver issued certs to OpenBao / Vault KV"},
     "lifecycle.auto_renew": {"env": [],
                           "desc": "Automated certificate renewal (licensed)"},
     "profiles.public_sector": {"env": [],
@@ -179,6 +181,8 @@ COMMERCIAL_CAPABILITIES = {
     "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
     # the dashboard as an ACME CA
     "ca.server.acme",
+    # automated delivery of issued certs to destinations
+    "delivery.openbao",
     # background automated renewal (on-demand renew via OpenBao stays free)
     "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)
