@@ -835,7 +835,11 @@ def _license_view():
     import licensing
     import capabilities
     info = licensing.info()
+    # Effective entitlements = the edition's bundle + any explicit extras.
+    eff = capabilities.edition_capabilities(info.get("edition", "")) | set(info.get("entitlements") or [])
+    info["effective_entitlements"] = sorted(eff) if info.get("valid") else []
     info["gateable"] = sorted(capabilities.LICENSED_CAPABILITIES)
+    info["editions"] = list(capabilities.EDITIONS)
     return info
 
 

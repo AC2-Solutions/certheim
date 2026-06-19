@@ -31,9 +31,13 @@ def main():
     ap = argparse.ArgumentParser(description="Mint a signed CSR Dashboard license.")
     ap.add_argument("--key", required=True, help="vendor RSA private key (PEM)")
     ap.add_argument("--customer", required=True, help="customer name (recorded in the license)")
-    ap.add_argument("--edition", default="government", help="edition label (e.g. government)")
-    ap.add_argument("--entitlements", default="profiles.public_sector",
-                    help="comma-separated capability keys to grant")
+    ap.add_argument("--edition", default="commercial",
+                    choices=["community", "commercial", "government"],
+                    help="edition tier (community<commercial<government); the app "
+                         "expands it to capabilities (default commercial)")
+    ap.add_argument("--entitlements", default="",
+                    help="optional EXTRA capability keys (comma-separated) on top "
+                         "of the edition's bundle")
     ap.add_argument("--days", type=int, default=365, help="validity in days (default 365)")
     ap.add_argument("--issued", type=float, default=None,
                     help="issue epoch (default: now)")

@@ -351,14 +351,14 @@ def test_csr_subject_shape(client):
     assert "IT" in b.get("suggested_ous", [])
 
 
-# --- licensing / entitlements (offline signed license) ---------------------
-def _mint_license(privkey_path, entitlements="profiles.public_sector", days=365):
+# --- licensing / entitlements (offline signed license, edition tiers) ------
+def _mint_license(privkey_path, edition="government", entitlements=None, days=365):
     import json
     import subprocess
     import time
     import licensing
-    payload = {"customer": "Test Gov", "edition": "government",
-               "entitlements": [entitlements] if isinstance(entitlements, str) else entitlements,
+    payload = {"customer": "Test Customer", "edition": edition,
+               "entitlements": entitlements or [],
                "issued": int(time.time()), "expires": int(time.time()) + days * 86400}
     pb = licensing.b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
     sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", privkey_path],
@@ -388,11 +388,18 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
     assert bad.status_code == 400
 
-    # a properly-signed license unlocks the pack
-    lic = _mint_license(priv)
+    # a COMMERCIAL license must NOT unlock the government-only pack
+    comm = _mint_license(priv, edition="commercial")
+    rc = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": comm}))
+    assert rc.status_code == 200 and rc.get_json()["edition"] == "commercial"
+    assert capabilities.available("profiles.public_sector") is False
+
+    # a GOVERNMENT license unlocks the pack (via edition expansion, no explicit entitlement)
+    lic = _mint_license(priv, edition="government")
     r = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": lic}))
     assert r.status_code == 200, r.get_data(as_text=True)
     assert r.get_json()["valid"] is True and r.get_json()["edition"] == "government"
+    assert "profiles.public_sector" in r.get_json()["effective_entitlements"]
     try:
         assert capabilities.available("profiles.public_sector") is True
         # gov CSR profiles + OUs now appear

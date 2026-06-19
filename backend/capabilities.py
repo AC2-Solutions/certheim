@@ -155,17 +155,41 @@ def _entitlements():
     return None
 
 
-# Capabilities that are PREMIUM: never granted by the default grant-all - only
-# by a valid signed license listing them (licensing.entitlements()). Everything
-# else keeps the license-agnostic grant-all default below.
-LICENSED_CAPABILITIES = {"profiles.public_sector"}
+# Edition tiers. Community is the free, unlicensed baseline; Commercial and
+# Government are paid editions unlocked by a signed license (see licensing.py).
+# Higher tiers are supersets: government = commercial + the public-sector pack.
+EDITIONS = ("community", "commercial", "government")
+
+# Capability keys each PAID tier adds on top of free Community. Populate
+# COMMERCIAL_CAPABILITIES as the commercial/community line is drawn.
+COMMERCIAL_CAPABILITIES = set()
+GOVERNMENT_CAPABILITIES = {"profiles.public_sector"}
+
+# Premium capabilities: never granted by the grant-all default - only by a valid
+# license whose edition (or explicit entitlements) covers them. Everything else
+# keeps the license-agnostic grant-all default below.
+LICENSED_CAPABILITIES = COMMERCIAL_CAPABILITIES | GOVERNMENT_CAPABILITIES
+
+
+def edition_capabilities(edition):
+    """Licensed capability keys an edition grants (tiers stack)."""
+    caps = set()
+    if edition in ("commercial", "government"):
+        caps |= COMMERCIAL_CAPABILITIES
+    if edition == "government":
+        caps |= GOVERNMENT_CAPABILITIES
+    return caps
 
 
 def is_entitled(key):
     if key in LICENSED_CAPABILITIES:
         try:
             import licensing
-            return key in licensing.entitlements()
+            info = licensing.info()
+            if not info.get("valid"):
+                return False
+            granted = edition_capabilities(info.get("edition", "")) | set(info.get("entitlements") or [])
+            return key in granted
         except Exception:
             return False
     ent = _entitlements()

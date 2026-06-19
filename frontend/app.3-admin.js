@@ -22,19 +22,22 @@ async function loadLicense() {
   const c = r.body;
   const st = document.getElementById("license-status");
   const det = document.getElementById("license-details");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   if (c.valid) {
-    st.innerHTML = `<span class="pill pill-ok">licensed</span> ${escapeHtml(c.edition || "")} edition`;
+    st.innerHTML = `<span class="pill pill-ok">${escapeHtml(cap(c.edition || "commercial"))} Edition</span>`;
     det.hidden = false;
     document.getElementById("license-customer").textContent = c.customer || "—";
-    document.getElementById("license-edition").textContent = c.edition || "—";
-    document.getElementById("license-entitlements").textContent = (c.entitlements || []).join(", ") || "—";
+    document.getElementById("license-edition").textContent = cap(c.edition || "commercial");
+    document.getElementById("license-entitlements").textContent =
+      (c.effective_entitlements || []).join(", ") || "(base features only)";
     document.getElementById("license-expires").textContent =
       c.expires ? new Date(c.expires * 1000).toISOString().slice(0, 10) : "—";
   } else {
-    st.innerHTML = `<span class="pill pill-mute">unlicensed</span> ` +
+    // unlicensed = the free Community edition
+    st.innerHTML = `<span class="pill pill-mute">Community Edition</span> ` +
       `<span class="status">${escapeHtml(c.reason || "no license")}</span>` +
       (c.gateable && c.gateable.length
-        ? ` &middot; gates: <code>${escapeHtml(c.gateable.join(", "))}</code>` : "");
+        ? ` &middot; a license unlocks: <code>${escapeHtml(c.gateable.join(", "))}</code>` : "");
     det.hidden = true;
   }
 }

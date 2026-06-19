@@ -125,30 +125,38 @@ def _payload_for(blob):
     return cached
 
 
+def _community(reason):
+    # The unlicensed baseline is the free Community edition.
+    return {"valid": False, "licensed": False, "edition": "community",
+            "reason": reason, "entitlements": [], "expired": False}
+
+
 def info():
     """License status for the admin UI / gating.
-    {valid, reason, customer, edition, entitlements[], issued, expires, expired}."""
+    {valid, licensed, reason, customer, edition, entitlements[], issued,
+    expires, expired}. No/invalid license => Community edition."""
     blob = _raw_license()
     if not blob:
-        return {"valid": False, "reason": "no license installed", "entitlements": []}
+        return _community("Community Edition (no license installed)")
     p = _payload_for(blob)
     if "__error__" in p:
-        return {"valid": False, "reason": f"invalid license: {p['__error__']}",
-                "entitlements": []}
+        return _community(f"invalid license: {p['__error__']}")
     now = time.time()
     exp = p.get("expires")
     expired = bool(exp and now > float(exp))
-    valid = not expired
+    if expired:
+        return _community("license expired")
     return {
-        "valid": valid, "reason": "expired" if expired else "ok",
-        "customer": p.get("customer"), "edition": p.get("edition"),
-        "entitlements": list(p.get("entitlements", [])) if valid else [],
-        "issued": p.get("issued"), "expires": exp, "expired": expired,
+        "valid": True, "licensed": True, "reason": "ok",
+        "customer": p.get("customer"), "edition": p.get("edition") or "commercial",
+        "entitlements": list(p.get("entitlements", [])),
+        "issued": p.get("issued"), "expires": exp, "expired": False,
     }
 
 
 def entitlements():
-    """The set of entitlement keys granted by a currently-valid license."""
+    """Explicit entitlement keys from a currently-valid license (edition-derived
+    grants are expanded by capabilities.edition_capabilities)."""
     return set(info().get("entitlements", []))
 
 
