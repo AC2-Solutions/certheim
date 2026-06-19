@@ -14,9 +14,9 @@ RestartSec=5
 
 # Filesystem - NoNewPrivileges must remain false because the app uses sudo.
 ProtectSystem=full
-ProtectHome=false
+ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /home/ansible/issued /etc/csr-dashboard
+ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /var/opt/certinel /etc/csr-dashboard
 NoNewPrivileges=false
 
 # Resource limits
