@@ -201,6 +201,7 @@ function editTemplateSigning(td, t) {
       <select class="sig-deliver form-input" style="width:auto;display:inline-block" title="Deliver the issued certificate to a destination">
         <option value="none">No delivery</option>
         <option value="openbao">Deliver → OpenBao KV</option>
+        <option value="ssh">Deliver → SSH host</option>
       </select>
       <span class="sig-deliver-cfg" hidden>
         <select class="sig-keymode form-input" style="width:auto;display:inline-block" title="Private-key handling">
@@ -209,7 +210,10 @@ function editTemplateSigning(td, t) {
           <option value="vault">key: vault</option>
         </select>
         <input class="sig-deliver-target form-input" style="width:150px;display:inline-block"
-               placeholder="KV path / target" value="${escapeHtml(t.delivery_target || "")}">
+               placeholder="KV path / remote dir" value="${escapeHtml(t.delivery_target || "")}">
+        <input class="sig-deliver-reload form-input sig-ssh-only" style="width:150px;display:inline-block"
+               placeholder="reload cmd (ssh)" title="Optional: run on the host after delivery (ssh only)"
+               value="${escapeHtml(t.delivery_reload || "")}">
       </span>
     </span>
     <button class="btn sig-save" style="padding:2px 10px">Save</button>
@@ -227,8 +231,13 @@ function editTemplateSigning(td, t) {
   const delCfg = td.querySelector(".sig-deliver-cfg");
   delSel.value = t.delivery_backend || "none";
   td.querySelector(".sig-keymode").value = t.key_mode || "destination";
-  delCfg.hidden = delSel.value === "none";
-  delSel.addEventListener("change", () => { delCfg.hidden = delSel.value === "none"; });
+  const sshOnly = td.querySelector(".sig-ssh-only");
+  const _delToggle = () => {
+    delCfg.hidden = delSel.value === "none";
+    if (sshOnly) sshOnly.hidden = delSel.value !== "ssh";   // reload cmd is ssh-only
+  };
+  _delToggle();
+  delSel.addEventListener("change", _delToggle);
   td.querySelector(".sig-cancel").addEventListener("click", () => {
     td.innerHTML = `${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button>`;
     td.querySelector(".admin-template-sign").addEventListener("click", () => editTemplateSigning(td, t));
@@ -248,6 +257,7 @@ function editTemplateSigning(td, t) {
       delivery_backend: delSel.value,
       key_mode: td.querySelector(".sig-keymode").value,
       delivery_target: td.querySelector(".sig-deliver-target").value.trim(),
+      delivery_reload: td.querySelector(".sig-deliver-reload").value.trim(),
     };
     setStatus(td.querySelector(".sig-status"), "Saving…");
     const r = await jsonReq(`/admin/templates/${t.id}/signing`, {
