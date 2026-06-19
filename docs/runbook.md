@@ -130,8 +130,8 @@ email" verifies wiring.
   traverse → `chmod -R g+rX /opt/csr-dashboard/venv` (installer does this).
 - **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
   `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
-  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome` stays **false** (the
-  sudo'd helper + keys live under `/root/sslcerts`). `deploy.sh` runs
+  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome=true` (helper under
+  `/opt/certinel`, keys in the vault — nothing under `/home` or `/root`). `deploy.sh` runs
   `systemd-analyze verify` before restart.
 - **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
   (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.
