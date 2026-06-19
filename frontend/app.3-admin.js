@@ -2161,7 +2161,6 @@ document.getElementById("nav-tour").addEventListener("click", () => {
 
 // ===== Admin: CSR Subject / Organization (configurable, OOBE) =====
 let _csrSubjectProfiles = [];
-let _csrSubjectOobePrompted = false;
 
 function _csrSubjectCfg() {
   return {
@@ -2218,13 +2217,12 @@ async function loadCsrSubject() {
   _csrSubjectPreview();
   const oobe = document.getElementById("csrsubject-oobe");
   if (!b.configured) {
+    // Show the setup banner on the CSR Subject tab, but never auto-navigate
+    // there: loadCsrSubject() runs on every admin entry/refresh, so a jump here
+    // would hijack whatever section the admin is actually on. The banner is the
+    // nudge; the admin opens the tab when ready.
     oobe.textContent = "⚙ Initial setup: choose your organization profile, adjust the fields, and Save so new CSRs carry the correct subject.";
     oobe.hidden = false;
-    // First-run prompt: bring the admin to this tab once.
-    if (!_csrSubjectOobePrompted) {
-      _csrSubjectOobePrompted = true;
-      document.querySelector('#admin-nav button[data-panel="csrsubject"]')?.click();
-    }
   } else {
     oobe.hidden = true;
   }
