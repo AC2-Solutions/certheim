@@ -24,10 +24,10 @@ cd "$REPO_ROOT"
 
 PYBIN="${PYBIN:-python3.12}"
 SVC_USER="csrapi"
-SMG_HOST="${SMG_HOST:-smtp.ac2.lan}"
+SMG_HOST="${SMG_HOST:-smtp.example.com}"
 SMG_PORT="${SMG_PORT:-25}"
-FROM_ADDRESS="${FROM_ADDRESS:-noreply-csr@ac2.lan}"
-DASHBOARD_URL="${DASHBOARD_URL:-https://csr-dev.ac2.lan/csr/}"
+FROM_ADDRESS="${FROM_ADDRESS:-noreply-csr@example.com}"
+DASHBOARD_URL="${DASHBOARD_URL:-https://csr.example.com/csr/}"
 GLOBAL_CC="${GLOBAL_CC:-}"
 CERT_DIR=/etc/pki/csr-dashboard
 NGINX_INCLUDE_DIR=/etc/nginx/csr-dashboard.d
