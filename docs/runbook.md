@@ -22,7 +22,7 @@ and a fresh STIG offline VM.
 | `/etc/csr-dashboard/email.conf` | csrapi:csrapi 0640 | mail config (UI-managed) |
 | `/etc/csr-dashboard/integrations.conf` | csrapi:csrapi 0640 | GitLab config (UI-managed) |
 | `/etc/csr-dashboard/csr-dashboard.env` | csrapi:csrapi 0640 | app env (paths, flags) |
-| `/root/sslcerts/scripts/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
+| `/opt/certinel/helper/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
 | `/etc/systemd/system/certinel-api.service` | root:root 0644 | gunicorn unit |
 | `/etc/nginx/csr-dashboard.d/30-csr.conf` | root:root 0644 | **location fragment** |
 | `/etc/nginx/conf.d/csr-dashboard.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
@@ -32,7 +32,7 @@ and a fresh STIG offline VM.
 It runs ONLY the helper as root via a single sudoers rule
 (`/etc/sudoers.d/csr-dashboard`):
 ```
-csrapi ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh
+csrapi ALL=(root) NOPASSWD: /opt/certinel/helper/csr_dashboard_helper.sh
 ```
 
 ---
