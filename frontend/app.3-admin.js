@@ -2010,7 +2010,7 @@ refreshAdminView = async function () {
 const TUTORIAL_STEPS = [
   {
     target: null,
-    title: "Welcome to the CSR Dashboard",
+    title: "Welcome to the Certinel",
     body: "This quick tour shows you the key parts of the page — creating requests with templates, tracking jobs, and where to get help. Replay it anytime from the Tour link in the header.",
   },
   {

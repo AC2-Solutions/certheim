@@ -1,4 +1,4 @@
-# CSR Dashboard — Architecture & Repo Map
+# Certinel — Architecture & Repo Map
 
 A guide for orienting quickly in the codebase. The app is a Flask + SQLite
 service (gunicorn behind nginx) that manages certificate-request jobs through

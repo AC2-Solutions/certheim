@@ -1,4 +1,4 @@
-# CSR Dashboard — Certificate Delivery (shipping issued certs to destinations)
+# Certinel — Certificate Delivery (shipping issued certs to destinations)
 
 Status: **design** (proposed; no code yet). Companion to the v2 in-UI signing
 work and the issuance-time validity control (short-lived certs). The driver:

@@ -229,7 +229,7 @@ def admin_test_webhook(webhook_id):
 
     wtype = (row["type"] if "type" in row.keys() else "generic") or "generic"
     payload = _format_webhook(wtype, "test", {
-        "message": "This is a test from the CSR Dashboard admin panel.",
+        "message": "This is a test from the Certinel admin panel.",
         "triggered_by": _cn_from_dn(g.identity["dn"]),
         "target_host": "example.test",
     })
