@@ -828,8 +828,10 @@ def test_acme_server_full_flow(client, monkeypatch):
         az_path = az_url[az_url.index("/acme/"):]
         r = _jws_post(client, az_path, key, jwk, _acme_nonce(client), None, az_url, kid=kid)
         authz = r.get_json()
-        ch = authz["challenges"][0]
-        assert ch["type"] == "http-01" and ch["token"]
+        offered = {c["type"] for c in authz["challenges"]}
+        assert {"http-01", "dns-01"} <= offered           # 4b: both offered
+        ch = next(c for c in authz["challenges"] if c["type"] == "http-01")
+        assert ch["token"]
 
         ch_path = ch["url"][ch["url"].index("/acme/"):]
         r = _jws_post(client, ch_path, key, jwk, _acme_nonce(client), {}, ch["url"], kid=kid)
@@ -855,6 +857,118 @@ def test_acme_server_full_flow(client, monkeypatch):
                       issued["certificate"], kid=kid)
         assert r.status_code == 200
         assert "FAKELEAF" in r.get_data(as_text=True) and "FAKECHAIN" in r.get_data(as_text=True)
+    finally:
+        appmod.set_setting("acme_server_enabled", "0")
+        appmod.set_setting("signing_default_backend", "manual")
+
+
+# --- Phase 4b: DNS-01 validation + key rollover + revoke -------------------
+def _inner_jws(key_pem, jwk, payload, url):
+    """A nonce-less inner JWS (for key-change), signed with `key_pem`."""
+    import os
+    import subprocess
+    import tempfile
+    prot = _b64u(_json.dumps({"alg": "RS256", "jwk": jwk, "url": url}).encode())
+    pay = _b64u(_json.dumps(payload).encode())
+    kf = tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False)
+    kf.write(key_pem); kf.close()
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", kf.name],
+                         input=f"{prot}.{pay}".encode(), capture_output=True).stdout
+    os.remove(kf.name)
+    return {"protected": prot, "payload": pay, "signature": _b64u(sig)}
+
+
+def test_acme_dns01_value():
+    import acme_server
+    v = acme_server.dns01_txt_value("token.thumbprint")
+    assert v == acme_server.dns01_txt_value("token.thumbprint") and len(v) == 43
+    ok, _d = acme_server.validate_dns01("nonexistent-acme-test.invalid", "token.thumbprint")
+    assert ok is False
+
+
+def test_acme_server_key_change(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
+    import acme_client
+    appmod = client._appmod
+    appmod.set_setting("acme_server_enabled", "1")
+    appmod.set_setting("acme_server_base_url", "http://localhost/acme")
+    base = "http://localhost/acme"
+    try:
+        old = acme_client.new_account_key_pem(); old_jwk = acme_client._rsa_jwk(old)
+        kid = _jws_post(client, "/acme/new-account", old, old_jwk, _acme_nonce(client),
+                        {"termsOfServiceAgreed": True}, base + "/new-account").headers["Location"]
+        new = acme_client.new_account_key_pem(); new_jwk = acme_client._rsa_jwk(new)
+        inner = _inner_jws(new, new_jwk, {"account": kid, "oldKey": old_jwk}, base + "/key-change")
+        r = _jws_post(client, "/acme/key-change", old, old_jwk, _acme_nonce(client),
+                      inner, base + "/key-change", kid=kid)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        # the NEW key now works...
+        r = _jws_post(client, "/acme/new-order", new, new_jwk, _acme_nonce(client),
+                      {"identifiers": [{"type": "dns", "value": "z.example.com"}]},
+                      base + "/new-order", kid=kid)
+        assert r.status_code == 201, r.get_data(as_text=True)
+        # ...and the OLD key no longer verifies against the account
+        r = _jws_post(client, "/acme/new-order", old, old_jwk, _acme_nonce(client),
+                      {"identifiers": [{"type": "dns", "value": "q.example.com"}]},
+                      base + "/new-order", kid=kid)
+        assert r.status_code in (400, 401)
+    finally:
+        appmod.set_setting("acme_server_enabled", "0")
+
+
+def test_acme_server_revoke(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
+    import subprocess
+    import acme_client
+    import acme_server
+    import sign
+    appmod = client._appmod
+    appmod.set_setting("acme_server_enabled", "1")
+    appmod.set_setting("acme_server_base_url", "http://localhost/acme")
+    appmod.set_setting("signing_default_backend", "openbao")
+    monkeypatch.setattr(acme_server, "validate_http01", lambda *a, **k: (True, "valid"))
+    # mock signing -> a REAL self-signed cert so the serial parses
+    ckey = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
+    realcert = subprocess.run(
+        ["openssl", "req", "-new", "-x509", "-key", "/dev/stdin", "-subj",
+         "/CN=rev.example.com", "-days", "1", "-addext", "subjectAltName=DNS:rev.example.com"],
+        input=ckey, capture_output=True).stdout.decode()
+    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol: sign.SignResult(realcert, ""))
+    seen = {}
+    monkeypatch.setattr(sign, "revoke_cert",
+                        lambda serial, backend="openbao": seen.update(serial=serial))
+    base = "http://localhost/acme"
+    try:
+        key = acme_client.new_account_key_pem(); jwk = acme_client._rsa_jwk(key)
+        kid = _jws_post(client, "/acme/new-account", key, jwk, _acme_nonce(client),
+                        {"termsOfServiceAgreed": True}, base + "/new-account").headers["Location"]
+        order = _jws_post(client, "/acme/new-order", key, jwk, _acme_nonce(client),
+                          {"identifiers": [{"type": "dns", "value": "rev.example.com"}]},
+                          base + "/new-order", kid=kid).get_json()
+        az = order["authorizations"][0]
+        authz = _jws_post(client, az[az.index("/acme/"):], key, jwk, _acme_nonce(client),
+                          None, az, kid=kid).get_json()
+        ch = next(c for c in authz["challenges"] if c["type"] == "http-01")
+        _jws_post(client, ch["url"][ch["url"].index("/acme/"):], key, jwk,
+                  _acme_nonce(client), {}, ch["url"], kid=kid)
+        kb = subprocess.run(["openssl", "genrsa", "2048"], capture_output=True).stdout
+        csr = subprocess.run(["openssl", "req", "-new", "-key", "/dev/stdin", "-subj",
+                              "/CN=rev.example.com", "-addext", "subjectAltName=DNS:rev.example.com"],
+                             input=kb, capture_output=True).stdout.decode()
+        fin = order["finalize"]
+        iss = _jws_post(client, fin[fin.index("/acme/"):], key, jwk, _acme_nonce(client),
+                        {"csr": acme_client.csr_pem_to_der_b64u(csr)}, fin, kid=kid).get_json()
+        assert iss.get("certificate")
+        der = subprocess.run(["openssl", "x509", "-outform", "DER"],
+                             input=realcert.encode(), capture_output=True).stdout
+        r = _jws_post(client, "/acme/revoke-cert", key, jwk, _acme_nonce(client),
+                      {"certificate": acme_server.b64u(der)}, base + "/revoke-cert", kid=kid)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert seen.get("serial")                       # backend revoke was called
+        # idempotent
+        r2 = _jws_post(client, "/acme/revoke-cert", key, jwk, _acme_nonce(client),
+                       {"certificate": acme_server.b64u(der)}, base + "/revoke-cert", kid=kid)
+        assert r2.status_code == 200
     finally:
         appmod.set_setting("acme_server_enabled", "0")
         appmod.set_setting("signing_default_backend", "manual")

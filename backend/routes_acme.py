@@ -25,7 +25,7 @@ import capabilities
 import sign
 from acme_server import AcmeServerError
 from app import (db, get_setting, log_event, resolve_signing_policy,
-                 _dashboard_base)
+                 _dashboard_base, _cert_serial_colons)
 
 bp = Blueprint("acme", __name__, url_prefix="/acme")
 
@@ -240,9 +240,12 @@ def new_order():
                 azid = acme_server.new_id()
                 c.execute("INSERT INTO acme_authzs (id, order_id, identifier, status) "
                           "VALUES (?,?,?, 'pending')", (azid, oid, d))
-                c.execute("INSERT INTO acme_challenges (id, authz_id, token, status) "
-                          "VALUES (?,?,?, 'pending')",
-                          (acme_server.new_id(), azid, acme_server.b64u(os.urandom(24))))
+                # Offer both http-01 and dns-01; the client satisfies one.
+                for ctype in ("http-01", "dns-01"):
+                    c.execute("INSERT INTO acme_challenges (id, authz_id, token, "
+                              "type, status) VALUES (?,?,?,?, 'pending')",
+                              (acme_server.new_id(), azid,
+                               acme_server.b64u(os.urandom(24)), ctype))
         with db() as c:
             order = c.execute("SELECT * FROM acme_orders WHERE id = ?", (oid,)).fetchone()
         log_event("acme_server", "new_order", order=oid, identifiers=",".join(dns))
@@ -276,7 +279,7 @@ def _authz_view(authz):
     return {
         "status": authz["status"],
         "identifier": {"type": "dns", "value": authz["identifier"]},
-        "challenges": [{"type": "http-01", "url": _u("challenge", ch["id"]),
+        "challenges": [{"type": ch["type"], "url": _u("challenge", ch["id"]),
                         "token": ch["token"], "status": ch["status"]}
                        for ch in chals],
     }
@@ -314,20 +317,24 @@ def respond_challenge(chid):
                 "WHERE o.id = ?", (authz["order_id"],)).fetchone()
         jwk = json.loads(acct["jwk_json"])
         key_auth = acme_server.key_authorization(ch["token"], jwk)
-        ok, detail = acme_server.validate_http01(authz["identifier"], ch["token"], key_auth)
+        if ch["type"] == "dns-01":
+            ok, detail = acme_server.validate_dns01(authz["identifier"], key_auth)
+        else:
+            ok, detail = acme_server.validate_http01(authz["identifier"], ch["token"], key_auth)
         with db() as c:
             if ok:
+                # one valid challenge authorizes the identifier
                 c.execute("UPDATE acme_challenges SET status='valid' WHERE id=?", (chid,))
                 c.execute("UPDATE acme_authzs SET status='valid' WHERE id=?", (authz["id"],))
             else:
+                # only this challenge fails; the client may still try another
                 c.execute("UPDATE acme_challenges SET status='invalid', error=? WHERE id=?",
                           (detail, chid))
-                c.execute("UPDATE acme_authzs SET status='invalid' WHERE id=?", (authz["id"],))
         log_event("acme_server", "valid" if ok else "invalid", challenge=chid,
-                  identifier=authz["identifier"])
+                  type=ch["type"], identifier=authz["identifier"])
         with db() as c:
             ch = c.execute("SELECT * FROM acme_challenges WHERE id = ?", (chid,)).fetchone()
-        view = {"type": "http-01", "url": _u("challenge", chid),
+        view = {"type": ch["type"], "url": _u("challenge", chid),
                 "token": ch["token"], "status": ch["status"]}
         if ch["error"]:
             view["error"] = {"type": "urn:ietf:params:acme:error:unauthorized",
@@ -378,12 +385,12 @@ def finalize(oid):
             raise AcmeServerError(f"signing failed: {e}", "serverInternal", 500)
 
         cid = acme_server.new_id()
-        pem = result.cert_pem if result.cert_pem.endswith("\n") else result.cert_pem + "\n"
-        if result.chain_pem:
-            pem += result.chain_pem
+        leaf = result.cert_pem if result.cert_pem.endswith("\n") else result.cert_pem + "\n"
+        pem = leaf + (result.chain_pem or "")
+        serial = _cert_serial_colons(leaf)      # for revoke + tracking
         with db() as c:
-            c.execute("INSERT INTO acme_certs (id, account_id, pem) VALUES (?,?,?)",
-                      (cid, order["account_id"], pem))
+            c.execute("INSERT INTO acme_certs (id, account_id, pem, serial) VALUES (?,?,?,?)",
+                      (cid, order["account_id"], pem, serial))
             c.execute("UPDATE acme_orders SET status='valid', cert_id=? WHERE id=?", (cid, oid))
             order = c.execute("SELECT * FROM acme_orders WHERE id = ?", (oid,)).fetchone()
         log_event("acme_server", "issued", order=oid,
@@ -406,6 +413,90 @@ def get_cert(cid):
         r = _resp(row["pem"])
         r.headers["Content-Type"] = "application/pem-certificate-chain"
         return r
+    except AcmeServerError as e:
+        return _problem(e)
+
+
+# --------------------------------------------------------------------------
+# revoke-cert (RFC 8555 §7.6) - revoke at the backing CA
+# --------------------------------------------------------------------------
+@bp.post("/revoke-cert")
+def revoke_cert():
+    if not _enabled():
+        abort(404)
+    try:
+        payload, _jwk, account = _parse_jws("/acme/revoke-cert")
+        if not account:
+            raise AcmeServerError("revocation must be signed by the account key",
+                                  "unauthorized", 401)
+        cert_b64 = (payload or {}).get("certificate")
+        if not cert_b64:
+            raise AcmeServerError("no 'certificate' in revoke request")
+        leaf_pem = acme_server.cert_der_to_pem(acme_server.b64u_decode(cert_b64))
+        serial = _cert_serial_colons(leaf_pem)
+        with db() as c:
+            cert = c.execute("SELECT * FROM acme_certs WHERE serial = ?", (serial,)).fetchone()
+        if not cert:
+            raise AcmeServerError("certificate was not issued by this server", "malformed", 404)
+        # Authorization: the account that ordered the cert (cert-key signing is a
+        # follow-on).
+        if account["id"] != cert["account_id"]:
+            raise AcmeServerError("account is not authorized to revoke this certificate",
+                                  "unauthorized", 403)
+        if cert["revoked"]:
+            return _resp("", 200)         # idempotent
+        backend = (resolve_signing_policy(None).get("signer_backend") or "manual")
+        try:
+            sign.revoke_cert(serial, backend)
+        except sign.SignError as e:
+            raise AcmeServerError(f"backend revocation failed: {e}", "serverInternal", 500)
+        with db() as c:
+            c.execute("UPDATE acme_certs SET revoked=1 WHERE id=?", (cert["id"],))
+        log_event("acme_server", "revoked", cert=cert["id"], serial=serial, backend=backend)
+        return _resp("", 200)
+    except AcmeServerError as e:
+        return _problem(e)
+
+
+# --------------------------------------------------------------------------
+# key-change (RFC 8555 §7.3.5) - rotate the account key
+# --------------------------------------------------------------------------
+@bp.post("/key-change")
+def key_change():
+    if not _enabled():
+        abort(404)
+    try:
+        outer_payload, _jwk, account = _parse_jws("/acme/key-change")
+        if not account:
+            raise AcmeServerError("key-change must be signed by the (old) account key",
+                                  "unauthorized", 401)
+        inner = outer_payload or {}
+        for k in ("protected", "payload", "signature"):
+            if k not in inner:
+                raise AcmeServerError(f"inner JWS missing '{k}'")
+        inner_prot = json.loads(acme_server.b64u_decode(inner["protected"]))
+        new_jwk = inner_prot.get("jwk")
+        if not new_jwk:
+            raise AcmeServerError("inner JWS must carry the new key as 'jwk'")
+        # The inner JWS proves possession of the NEW key.
+        acme_server.verify_jws(inner["protected"], inner["payload"], inner["signature"],
+                               new_jwk, inner_prot.get("alg"))
+        inner_payload = json.loads(acme_server.b64u_decode(inner["payload"]))
+        if (inner_payload.get("account") or "").rstrip("/").split("/")[-1] != account["id"]:
+            raise AcmeServerError("inner 'account' does not match the signer", "malformed")
+        if acme_server.jwk_thumbprint(inner_payload.get("oldKey") or {}) != account["thumbprint"]:
+            raise AcmeServerError("inner 'oldKey' does not match the account key", "malformed")
+        new_thumb = acme_server.jwk_thumbprint(new_jwk)
+        with db() as c:
+            clash = c.execute("SELECT id FROM acme_accounts WHERE thumbprint=? AND id<>?",
+                              (new_thumb, account["id"])).fetchone()
+            if clash:
+                raise AcmeServerError("new key is already in use by another account",
+                                      "malformed", 409)
+            c.execute("UPDATE acme_accounts SET jwk_json=?, thumbprint=? WHERE id=?",
+                      (json.dumps(new_jwk), new_thumb, account["id"]))
+        log_event("acme_server", "key_change", account=account["id"])
+        return _resp({"status": "valid"}, 200, {"Location": _u("account", account["id"])})
     except AcmeServerError as e:
         return _problem(e)
 

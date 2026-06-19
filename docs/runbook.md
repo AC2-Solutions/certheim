@@ -172,7 +172,9 @@ email" verifies wiring.
   - **Validation reachability**: the app must reach `http://<requested-host>/`
     on port 80 to read `/.well-known/acme-challenge/<token>`.
   - Client points `--server` at `<base-url>/directory`. State lives in the
-    `acme_*` tables. Revoke / DNS-01 validation / key-rollover are follow-ons.
+    `acme_*` tables. Supports **HTTP-01 and DNS-01** validation (DNS-01 via
+    `dig` on `_acme-challenge.<host>`), **revoke-cert** (account-signed; revokes
+    at the backing CA), and account **key rollover** (`key-change`).
 
 ---
 

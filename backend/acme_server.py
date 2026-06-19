@@ -187,9 +187,42 @@ def validate_http01(domain, token, expected_key_auth, timeout=10):
     return False, "key authorization mismatch"
 
 
+def dns01_txt_value(key_authorization):
+    """The DNS-01 TXT value for a key authorization (RFC 8555 §8.4)."""
+    return b64u(hashlib.sha256(key_authorization.encode()).digest())
+
+
+def validate_dns01(domain, expected_key_auth, timeout=10):
+    """Query _acme-challenge.<domain> TXT and confirm a record equals
+    base64url(sha256(keyAuth)). Returns (ok, detail). Uses `dig` (bind-utils)."""
+    expected = dns01_txt_value(expected_key_auth)
+    name = f"_acme-challenge.{domain}"
+    try:
+        out = subprocess.run(["dig", "+short", "TXT", name],
+                             capture_output=True, text=True, timeout=timeout)
+    except Exception as e:  # noqa: BLE001
+        return False, f"DNS query failed: {e}"
+    if out.returncode != 0:
+        return False, "DNS query error"
+    # `dig +short TXT` returns quoted values, one per line (possibly split into
+    # quoted chunks that concatenate); strip quotes/whitespace and compare.
+    values = [ln.replace('" "', '').strip().strip('"')
+              for ln in out.stdout.splitlines() if ln.strip()]
+    if expected in values:
+        return True, "valid"
+    return False, "no matching _acme-challenge TXT record"
+
+
 # --------------------------------------------------------------------------
-# CSR helpers (validate the finalize CSR matches the order's identifiers)
+# CSR / cert helpers
 # --------------------------------------------------------------------------
+def cert_der_to_pem(der):
+    """A DER certificate (e.g. an ACME revoke request's base64url cert) -> PEM."""
+    out = subprocess.run(["openssl", "x509", "-inform", "DER", "-outform", "PEM"],
+                         input=der, capture_output=True)
+    if out.returncode != 0:
+        raise AcmeServerError("could not parse certificate (DER->PEM)", "malformed")
+    return out.stdout.decode()
 def csr_der_b64u_to_pem(csr_b64u):
     """ACME finalize sends the CSR as base64url DER; convert to PEM."""
     der = b64u_decode(csr_b64u)
