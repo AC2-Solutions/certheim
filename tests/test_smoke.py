@@ -388,9 +388,13 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
     assert bad.status_code == 400
 
-    # community (no license) gates automation too (manual-only free tier).
-    # Use an env-free commercial cap so this isolates the *license* gate.
+    # community (no license): OpenBao signing is FREE; everything else is gated.
     monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+    assert "ca.signing.openbao" not in capabilities.LICENSED_CAPABILITIES
+    assert capabilities.is_entitled("ca.signing.openbao") is True       # free CA
+    assert capabilities.is_entitled("ca.signing.windows_ca") is False   # paid CA
+    assert capabilities.is_entitled("ca.server.acme") is False          # paid
+    # an env-free commercial cap to isolate the license gate
     assert capabilities.available("lifecycle.auto_renew") is False
 
     # a COMMERCIAL license unlocks automation but NOT the gov-only pack

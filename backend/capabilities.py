@@ -164,18 +164,22 @@ EDITIONS = ("community", "commercial", "government")
 
 # Capability keys each PAID tier adds on top of free Community.
 #
-# The line: **Community = manual only** (generate CSRs + upload a manually-issued
-# cert + fleet/audit). **Commercial = automation** - any in-UI signing backend,
-# the ACME server, automated renewal, and connected integrations. **Government =
-# Commercial + the public-sector pack.** Every key below is already enforced at
-# its call site, so listing it here is what gates it behind a license.
+# The line: **Community (free) = the core request -> sign -> issue loop with the
+# open-source CA.** It can generate CSRs, sign in-UI via **OpenBao** (and renew
+# on demand by re-signing through it), upload manually-issued certs, and use
+# fleet/audit/SMTP/local+CAC auth. No usage caps. **Commercial = breadth +
+# automation:** every *other* signing backend (Windows/CyberArk/EJBCA/Venafi/
+# AWS PCA, ACME client), the ACME *server*, background automated renewal, and
+# connected integrations (chat / Slack-interactive / email APIs). **Government =
+# Commercial + the public-sector pack.** Every key is enforced at its call site,
+# so membership here is the gate. (OpenBao is deliberately NOT here -> free.)
 COMMERCIAL_CAPABILITIES = {
-    # automated in-UI signing (manual upload stays free)
-    "ca.signing.openbao", "ca.signing.windows_ca", "ca.signing.cyberark",
-    "ca.signing.acme", "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
+    # in-UI signing beyond the free OpenBao backend
+    "ca.signing.windows_ca", "ca.signing.cyberark", "ca.signing.acme",
+    "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
     # the dashboard as an ACME CA
     "ca.server.acme",
-    # automated certificate renewal
+    # background automated renewal (on-demand renew via OpenBao stays free)
     "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)
     "integrations.chat", "integrations.slack.interactive", "notify.email.api",
