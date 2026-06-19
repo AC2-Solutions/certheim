@@ -892,6 +892,15 @@ def init_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_authz_order ON acme_authzs(order_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_chal_authz ON acme_challenges(authz_id)")
+    # 4b migrations: per-challenge type (http-01/dns-01); cert serial + revoked.
+    chal_cols = {row[1] for row in conn.execute("PRAGMA table_info(acme_challenges)").fetchall()}
+    if "type" not in chal_cols:
+        conn.execute("ALTER TABLE acme_challenges ADD COLUMN type TEXT NOT NULL DEFAULT 'http-01'")
+    cert_cols = {row[1] for row in conn.execute("PRAGMA table_info(acme_certs)").fetchall()}
+    if "serial" not in cert_cols:
+        conn.execute("ALTER TABLE acme_certs ADD COLUMN serial TEXT")
+    if "revoked" not in cert_cols:
+        conn.execute("ALTER TABLE acme_certs ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0")
 
     # One-time backfill: parse notAfter from already-issued certs that
     # pre-date the expires_at column. Best-effort.
