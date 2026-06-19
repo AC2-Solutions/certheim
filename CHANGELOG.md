@@ -32,7 +32,7 @@ _Released 2026-06-19. 2 changes since v2.20.1._
   pull: dashboard stores the issued bundle behind a scoped, single-use, short-lived token; the
   destination fetches it at GET /deliver/pull/<token> (JSON / pem / cert). No push path, no Vault
   grant — works through a one-way firewall toward the dashboard. New delivery_pulls table;
-  routes_deliver.py public blueprint; csr-deliver timer purges expired tokens.
+  routes_deliver.py public blueprint; certinel-deliver timer purges expired tokens.
   k8s: server-side-apply a kubernetes.io/tls Secret into <ns>/<secret> (cred from Vault secret/csr-
   delivery-k8s/<cluster>); requires key_mode=ship.
   Adds delivery.pull + delivery.k8s capabilities, admin dropdown options with per-backend target
@@ -139,7 +139,7 @@ _Released 2026-06-19. 2 changes since v2.16.0._
   Ship issued certs to their destinations automatically — the follow-on to short-lived certs
   (docs/cert-delivery-design.md).
   - deliver.py: provider seam (mirrors sign.py/notify.py). deliver_one runs best-effort inline
-    from _attach_signed_cert on issue; run_deliveries is the csr-deliver timer's retry pass.
+    from _attach_signed_cert on issue; run_deliveries is the certinel-deliver timer's retry pass.
     `openbao` provider writes the bundle to Vault KV v2. Bundle = certificate (always) + private
     key when key_mode ships it and the job has a server-side key (Generate jobs, via helper get-
     key). Capability-gated (delivery.openbao, Commercial).
@@ -147,7 +147,7 @@ _Released 2026-06-19. 2 changes since v2.16.0._
     jobs.{delivery_status,delivery_detail,delivered_at, delivery_attempts} (additive).
   - _attach_signed_cert hook: mark pending + immediate best-effort ship, isolated so delivery
     never fails an issue.
-  - csr-deliver systemd service+timer (every 2 min) retries pending/failed; run_deliveries re-
+  - certinel-deliver systemd service+timer (every 2 min) retries pending/failed; run_deliveries re-
     exported from app.py; deploy.sh/verify.sh wired.
   - admin Template editor: per-template delivery backend + key_mode + target.
   - capabilities: delivery.openbao (Commercial). tests: bundle/gating + config.
@@ -493,7 +493,7 @@ internal restructure. See `RELEASE-NOTES-v2.0.0.md` for the narrative.
 - **Orphan-certs 500** — the admin orphan-certs listing read
   `/home/ansible/issued` directly, which 500s when csrapi can't read it on a
   STIG box. Now routed through a root helper subcommand `list-issued`.
-- **`csr-api.service`** — `/etc/csr-dashboard` added to `ReadWritePaths` so
+- **`certinel-api.service`** — `/etc/csr-dashboard` added to `ReadWritePaths` so
   the admin UI can persist `email.conf` / `integrations.conf` under
   `ProtectSystem=full` (every save previously 500'd "read-only file system").
 - **`/home/ansible/issued`** is created csrapi-writable by the installers (the

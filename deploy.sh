@@ -4,7 +4,7 @@
 # Usage:
 #   ./deploy.sh --diff     show what would change, touch nothing
 #   ./deploy.sh            backup, install changed files, fapolicyd, restart
-#   ./deploy.sh --no-restart   install but skip the csr-api restart
+#   ./deploy.sh --no-restart   install but skip the certinel-api restart
 #
 # Run as root from the repo root on the dashboard host.
 
@@ -61,13 +61,13 @@ MANIFEST=(
   "helper/csr_dashboard_helper.d/00-common.sh    /root/sslcerts/scripts/csr_dashboard_helper.d/00-common.sh    root:root 0640 helper"
   "helper/csr_dashboard_helper.d/10-certtypes.sh /root/sslcerts/scripts/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
   "helper/csr_dashboard_helper.d/20-generate.sh  /root/sslcerts/scripts/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
-  "systemd/csr-expiry-warn.service /etc/systemd/system/csr-expiry-warn.service root:root 0644 systemd"
-  "systemd/csr-expiry-warn.timer   /etc/systemd/system/csr-expiry-warn.timer   root:root 0644 systemd"
-  "systemd/csr-auto-renew.service  /etc/systemd/system/csr-auto-renew.service  root:root 0644 systemd"
-  "systemd/csr-auto-renew.timer    /etc/systemd/system/csr-auto-renew.timer    root:root 0644 systemd"
-  "systemd/csr-deliver.service     /etc/systemd/system/csr-deliver.service     root:root 0644 systemd"
-  "systemd/csr-deliver.timer       /etc/systemd/system/csr-deliver.timer       root:root 0644 systemd"
-  "systemd/csr-api.service          /etc/systemd/system/csr-api.service          root:root 0644 systemd"
+  "systemd/certinel-expiry-warn.service /etc/systemd/system/certinel-expiry-warn.service root:root 0644 systemd"
+  "systemd/certinel-expiry-warn.timer   /etc/systemd/system/certinel-expiry-warn.timer   root:root 0644 systemd"
+  "systemd/certinel-auto-renew.service  /etc/systemd/system/certinel-auto-renew.service  root:root 0644 systemd"
+  "systemd/certinel-auto-renew.timer    /etc/systemd/system/certinel-auto-renew.timer    root:root 0644 systemd"
+  "systemd/certinel-deliver.service     /etc/systemd/system/certinel-deliver.service     root:root 0644 systemd"
+  "systemd/certinel-deliver.timer       /etc/systemd/system/certinel-deliver.timer       root:root 0644 systemd"
+  "systemd/certinel-api.service          /etc/systemd/system/certinel-api.service          root:root 0644 systemd"
   "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
   "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
   "tools/csr-uninstall.sh    /usr/local/sbin/csr-uninstall                      root:root 0750 tools"
@@ -123,7 +123,7 @@ fi
 # Certinel data root (FHS /var/opt for add-on app data). issued/ holds signed
 # certs (written by the app as csrapi + chowned by the helper); requests/ holds
 # generated CSRs (written by the helper as root). var_lib_t lets the confined
-# csr-api service write here, matching the DB dir's context.
+# certinel-api service write here, matching the DB dir's context.
 install -d -o root   -g root   -m 0755 /var/opt/certinel
 install -d -o csrapi -g csrapi -m 0750 /var/opt/certinel/issued
 install -d -o root   -g csrapi -m 0750 /var/opt/certinel/requests
@@ -149,16 +149,30 @@ if [[ "$changed_tags" == *backend* ]]; then
     fapolicyd-cli --update || true
 fi
 if [[ "$changed_tags" == *systemd* ]]; then
+    # One-time migration: retire the legacy csr-* unit names (renamed to
+    # certinel-*). Stop + disable + remove them so the old csr-api releases
+    # 127.0.0.1:5002 before certinel-api binds, and the old timers stop firing.
+    # Idempotent: no-ops once the legacy files are gone. NOTE: csr-slack-listener
+    # is intentionally excluded - it's an opt-in Socket-Mode service installed
+    # manually (not in MANIFEST), so deploy must not retire it without a
+    # replacement; swap it by hand when reconfiguring Slack Socket Mode.
+    for legacy in csr-api csr-expiry-warn csr-auto-renew csr-deliver; do
+        if [[ -f "/etc/systemd/system/$legacy.service" || -f "/etc/systemd/system/$legacy.timer" ]]; then
+            systemctl disable --now "$legacy.timer" "$legacy.service" 2>/dev/null || true
+            rm -f "/etc/systemd/system/$legacy.service" "/etc/systemd/system/$legacy.timer"
+            echo "retired legacy unit: $legacy"
+        fi
+    done
     # Validate every installed unit BEFORE reloading - a malformed unit must
     # not reach a restart (a bad ExecStart line once left the service unable
     # to restart). Same fail-loud gate as nginx -t below.
-    for unit in /etc/systemd/system/csr-api.service \
-                /etc/systemd/system/csr-expiry-warn.service \
-                /etc/systemd/system/csr-expiry-warn.timer \
-                /etc/systemd/system/csr-auto-renew.service \
-                /etc/systemd/system/csr-auto-renew.timer \
-                /etc/systemd/system/csr-deliver.service \
-                /etc/systemd/system/csr-deliver.timer; do
+    for unit in /etc/systemd/system/certinel-api.service \
+                /etc/systemd/system/certinel-expiry-warn.service \
+                /etc/systemd/system/certinel-expiry-warn.timer \
+                /etc/systemd/system/certinel-auto-renew.service \
+                /etc/systemd/system/certinel-auto-renew.timer \
+                /etc/systemd/system/certinel-deliver.service \
+                /etc/systemd/system/certinel-deliver.timer; do
         [[ -f "$unit" ]] || continue
         if ! systemd-analyze verify "$unit" 2>&1; then
             echo "systemd unit FAILED validation: $unit" >&2
@@ -170,7 +184,7 @@ if [[ "$changed_tags" == *systemd* ]]; then
     systemctl daemon-reload
     # Enable the periodic timers (idempotent). The .service units are oneshot,
     # triggered by their timers; we enable the timers, not the services.
-    systemctl enable --now csr-expiry-warn.timer csr-auto-renew.timer csr-deliver.timer 2>/dev/null || true
+    systemctl enable --now certinel-expiry-warn.timer certinel-auto-renew.timer certinel-deliver.timer 2>/dev/null || true
 fi
 if [[ "$changed_tags" == *nginx* ]]; then
     # Validate before (re)loading - a bad config must not take nginx down.
@@ -189,13 +203,13 @@ if [[ "$changed_tags" == *nginx* ]]; then
     fi
 fi
 if $RESTART && [[ "$changed_tags" == *backend* || "$changed_tags" == *systemd* ]]; then
-    systemctl restart csr-api
+    systemctl restart certinel-api
     sleep 1
-    if ! systemctl is-active csr-api >/dev/null; then
-        echo "csr-api FAILED to start - check journalctl -u csr-api" >&2
+    if ! systemctl is-active certinel-api >/dev/null; then
+        echo "certinel-api FAILED to start - check journalctl -u certinel-api" >&2
         exit 1
     fi
-    echo "csr-api: active (restarted)"
+    echo "certinel-api: active (restarted)"
 
     # Verify the running app reports the deployed VERSION. app.py reads VERSION
     # once at startup, so a stale process is the classic "UI shows old version"
@@ -213,9 +227,9 @@ if $RESTART && [[ "$changed_tags" == *backend* || "$changed_tags" == *systemd* ]
         if [[ -n "$got" && "$got" != "$want" ]]; then
             echo "WARN: running version ($got) != deployed VERSION ($want)." >&2
             echo "      The service may not have fully reloaded; try:" >&2
-            echo "      systemctl restart csr-api" >&2
+            echo "      systemctl restart certinel-api" >&2
         elif [[ "$got" == "$want" ]]; then
-            echo "csr-api: serving v$got"
+            echo "certinel-api: serving v$got"
         fi
         # (empty $got just means health wasn't reachable over loopback TLS here;
         #  not fatal - mTLS/cert setup can make local curl fail. Skip silently.)

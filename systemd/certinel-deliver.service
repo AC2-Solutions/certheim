@@ -1,5 +1,5 @@
 [Unit]
-Description=CSR Dashboard - deliver issued certificates to their destinations (retry pass)
+Description=Certinel - deliver issued certificates to their destinations (retry pass)
 After=network-online.target
 
 [Service]

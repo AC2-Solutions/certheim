@@ -74,7 +74,7 @@ Slack — on `feat/configurable-login-banner`) vs the "production v1.4.0" tree.
 - Optional runtime deps (e.g. `slack_sdk` for Socket Mode) become **declared
   optional extras**, present in the connected wheelhouse, absent (and cleanly
   inert) in the air-gapped one. No hand-installs.
-- Optional services (e.g. `csr-slack-listener`) ship in the systemd manifest +
+- Optional services (e.g. `certinel-slack-listener`) ship in the systemd manifest +
   installer as **toggled components**, not manual scp.
 
 ## 5. Architecture pillars

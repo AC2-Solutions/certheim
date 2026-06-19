@@ -664,7 +664,7 @@
                Turn on <strong>Socket Mode</strong> in your Slack app and paste its
                <strong>app-level token</strong> (<code>xapp-…</code>, scope
                <code>connections:write</code>). Handled by the
-               <code>csr-slack-listener</code> service.</p>
+               <code>certinel-slack-listener</code> service.</p>
             <label for="slack-app-token" class="textarea-label">App-level token (xapp-)
               <span class="hint" id="slack-apptoken-hint"></span></label>
             <input type="password" id="slack-app-token" class="form-input" autocomplete="new-password">
@@ -931,7 +931,7 @@
         </label>
         <p class="hint" style="margin:2px 0 6px">
           When on, issued certs nearing expiry whose template opts into auto-renew are
-          re-signed automatically by the daily <code>csr-auto-renew</code> timer.
+          re-signed automatically by the daily <code>certinel-auto-renew</code> timer.
           Templates control which certs participate.</p>
         <label for="signing-cfg-renewdays" class="textarea-label">Default renewal window
           <span class="hint">(days before expiry; templates may override)</span></label>

@@ -3,7 +3,7 @@
 `run_auto_renew()` is the background pass that closes the certificate lifecycle
 loop: an issued cert nearing expiry, whose template opts into auto-renewal, is
 re-signed through that template's configured CA backend and recorded as a linked
-renewal job (`renewed_from`). It is driven by the `csr-auto-renew` systemd timer
+renewal job (`renewed_from`). It is driven by the `certinel-auto-renew` systemd timer
 (via `app.run_auto_renew()`) and by the admin trigger
 `POST /api/admin/run-auto-renew`.
 

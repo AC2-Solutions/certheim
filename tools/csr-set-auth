@@ -10,7 +10,7 @@ Usage:
   csr-set-auth --mode mtls
   csr-set-auth --show
 
-The DB must already exist (start csr-api once so the schema is created).
+The DB must already exist (start certinel-api once so the schema is created).
 """
 import argparse
 import os
@@ -59,7 +59,7 @@ def main():
     db = _db_path()
     if not os.path.exists(db):
         print(f"ERROR: database not found at {db}", file=sys.stderr)
-        print("Start csr-api once so the schema is created, then re-run.",
+        print("Start certinel-api once so the schema is created, then re-run.",
               file=sys.stderr)
         return 1
 

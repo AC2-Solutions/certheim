@@ -6,7 +6,7 @@ exposure (no Request URL / tunnel). It activates only when the admin selects
 "Socket Mode" in the dashboard (Integrations -> Slack interactivity) and stores
 an app-level token (xapp-...). Otherwise it idles.
 
-Run as a systemd service under the venv python (csr-slack-listener.service).
+Run as a systemd service under the venv python (certinel-slack-listener.service).
 Requires slack_sdk in the venv (`pip install slack_sdk`); if absent it logs and
 idles so the rest of the app is unaffected. Homelab-only: air-gapped prod has
 no outbound path to Slack, so leave this disabled there.

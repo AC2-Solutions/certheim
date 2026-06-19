@@ -14,9 +14,9 @@ cp -v /var/www/csr/index.html              frontend/
 cp -v /var/www/csr/app.js                  frontend/
 cp -v /root/sslcerts/scripts/csr_dashboard_helper.sh helper/
 cp -v /root/sslcerts/scripts/csr_dashboard_helper.d/*.sh helper/csr_dashboard_helper.d/
-cp -v /etc/systemd/system/csr-expiry-warn.service systemd/
-cp -v /etc/systemd/system/csr-expiry-warn.timer   systemd/
-cp -v /etc/systemd/system/csr-api.service         systemd/
+cp -v /etc/systemd/system/certinel-expiry-warn.service systemd/
+cp -v /etc/systemd/system/certinel-expiry-warn.timer   systemd/
+cp -v /etc/systemd/system/certinel-api.service         systemd/
 cp -v /usr/local/sbin/csrbackup            tools/csrbackup.sh
 cp -v /usr/local/sbin/csr-bootstrap-admin  tools/csr-bootstrap-admin 2>/dev/null || true
 cp -v /usr/local/sbin/csr-uninstall        tools/csr-uninstall.sh 2>/dev/null || true

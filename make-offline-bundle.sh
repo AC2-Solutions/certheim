@@ -566,7 +566,7 @@ bash ./deploy.sh
 # ---------------------------------------------------------------------------
 log "7.5/8  Authentication mode"
 # ---------------------------------------------------------------------------
-# deploy.sh started csr-api, which created the schema (incl. app_settings).
+# deploy.sh started certinel-api, which created the schema (incl. app_settings).
 # Now write the auth settings into the DB via the helper. Default mtls needs
 # nothing (app default), but we set it explicitly so `csr-set-auth --show`
 # always reflects the install choice.
@@ -623,7 +623,7 @@ MAN
 fi
 cat <<MAN
  Verify:
-   systemctl status csr-api nginx
+   systemctl status certinel-api nginx
    curl -sk https://localhost/csr/api/health      # expect ok:true + version
 ===================================================================
 MAN
@@ -740,7 +740,7 @@ authenticate once over mTLS (so your DN row exists), promote yourself:
 \`\`\`bash
 sqlite3 /var/lib/csr-dashboard/jobs.db \\
   "UPDATE users SET is_admin=1 WHERE dn='<YOUR CAC DN>';"
-systemctl restart csr-api
+systemctl restart certinel-api
 \`\`\`
 Preferred: the bundled tool does this for you (no prior login needed):
 \`\`\`bash
@@ -749,7 +749,7 @@ csr-bootstrap-admin "<YOUR CAC DN>"
 
 ## Verify
 \`\`\`bash
-systemctl status csr-api nginx
+systemctl status certinel-api nginx
 curl -sk https://localhost/csr/api/health        # {"ok":true,"version":"${VERSION}"}
 \`\`\`
 The admin Overview tile should show v${VERSION}.

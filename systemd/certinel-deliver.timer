@@ -1,5 +1,5 @@
 [Unit]
-Description=CSR Dashboard certificate-delivery retry (pending/failed deliveries)
+Description=Certinel certificate-delivery retry (pending/failed deliveries)
 
 [Timer]
 # Frequent: short-lived certs must reach their destination quickly, and a failed

@@ -1128,7 +1128,7 @@ def admin_run_expiry_warnings():
 @require_csrf
 def admin_run_auto_renew():
     """Manually trigger the automated-renewal pass (also runs on the
-    csr-auto-renew timer). No-op unless the master switch is on and templates
+    certinel-auto-renew timer). No-op unless the master switch is on and templates
     opt in. Imported lazily to avoid an import cycle with app."""
     from renew import run_auto_renew
     renewed, skipped, errors = run_auto_renew()
