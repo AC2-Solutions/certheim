@@ -751,6 +751,49 @@ async function denyPendingUser(dn, name) {
 }
 document.getElementById("admin-users-refresh").addEventListener("click", refreshAdminUsers);
 
+// --- Admin: create a user (local mode = name+email+password; mtls = CAC DN) ---
+allModalIds.push("user-create-modal");
+document.getElementById("admin-users-create")?.addEventListener("click", () => {
+  const local = !!(authInfo && authInfo.auth_mode === "local");
+  document.getElementById("uc-local").hidden = !local;
+  document.getElementById("uc-pw-row").hidden = !local;
+  document.getElementById("uc-mtls").hidden = local;
+  ["uc-first", "uc-last", "uc-email", "uc-password", "uc-dn"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = "";
+  });
+  document.getElementById("uc-admin").checked = false;
+  setStatus(document.getElementById("uc-status"), "");
+  openModal("user-create-modal");
+});
+document.getElementById("uc-submit")?.addEventListener("click", async () => {
+  const local = !!(authInfo && authInfo.auth_mode === "local");
+  const st = document.getElementById("uc-status");
+  const body = {
+    is_admin: document.getElementById("uc-admin").checked,
+    email: document.getElementById("uc-email").value.trim(),
+  };
+  if (local) {
+    body.first_name = document.getElementById("uc-first").value.trim();
+    body.last_name = document.getElementById("uc-last").value.trim();
+    const pw = document.getElementById("uc-password").value.trim();
+    if (pw) body.password = pw;
+  } else {
+    body.dn = document.getElementById("uc-dn").value.trim();
+  }
+  setStatus(st, "Creating…");
+  const r = await jsonReq("/admin/users", { method: "POST", body: JSON.stringify(body) });
+  if (!r.ok || !(r.body && r.body.ok)) {
+    setStatus(st, (r.body && r.body.error) || "Create failed", "err");
+    return;
+  }
+  let msg = "Created" + (r.body.username ? ` ${r.body.username}` : "") + ".";
+  if (r.body.temp_password) {
+    msg += ` Temporary password: ${r.body.temp_password} — copy it now (shown once).`;
+  }
+  setStatus(st, msg, "ok");
+  refreshAdminUsers();   // modal stays open so a generated password can be copied
+});
+
 // --- Authentication settings panel -----------------------------------------
 async function refreshAuthSettings() {
   const status = document.getElementById("admin-auth-status");

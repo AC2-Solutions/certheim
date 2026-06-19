@@ -438,9 +438,12 @@
     <section class="card admin-panel" data-panel="users">
       <div class="card-header">
         <h2>Users</h2>
-        <button id="admin-users-refresh" class="secondary" type="button">Refresh</button>
+        <div class="row">
+          <button id="admin-users-create" type="button">+ Create user</button>
+          <button id="admin-users-refresh" class="secondary" type="button">Refresh</button>
+        </div>
       </div>
-      <p class="hint">Users are auto-created on first CAC login, or self-register in username/password mode. Pending registrations show an Approve / Deny action.</p>
+      <p class="hint">Users are auto-created on first CAC login, self-register in username/password mode, or are created here by an admin. Pending registrations show an Approve / Deny action.</p>
       <table>
         <thead>
           <tr>
@@ -1221,6 +1224,43 @@
       </div>
     </div>
     <div id="user-edit-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Admin: create a user -->
+  <div class="modal" id="user-create-modal" hidden>
+    <h2>Create user</h2>
+    <div id="uc-local" hidden>
+      <div class="row" style="gap:10px">
+        <div style="flex:1">
+          <label class="textarea-label" for="uc-first">First name</label>
+          <input type="text" id="uc-first" maxlength="64">
+        </div>
+        <div style="flex:1">
+          <label class="textarea-label" for="uc-last">Last name</label>
+          <input type="text" id="uc-last" maxlength="64">
+        </div>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Username is auto-generated as <code>first.last</code>.</p>
+    </div>
+    <div id="uc-mtls" hidden>
+      <label class="textarea-label" for="uc-dn">CAC certificate DN</label>
+      <input type="text" id="uc-dn" placeholder="CN=DOE.JANE.A.1234567890,OU=PKI,OU=DoD,O=U.S. Government,C=US">
+    </div>
+    <label class="textarea-label" for="uc-email">Email</label>
+    <input type="email" id="uc-email">
+    <div id="uc-pw-row" hidden>
+      <label class="textarea-label" for="uc-password">Initial password</label>
+      <input type="text" id="uc-password" autocomplete="new-password"
+             placeholder="leave blank to auto-generate a temporary one">
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label><input type="checkbox" id="uc-admin"> Administrator</label>
+    </div>
+    <div class="row" style="justify-content:flex-end; margin-top:14px; gap:8px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="uc-submit" type="button">Create user</button>
+    </div>
+    <div id="uc-status" class="status" style="margin-top:8px"></div>
   </div>
 
   <div class="modal modal-wide" id="group-edit-modal" hidden>

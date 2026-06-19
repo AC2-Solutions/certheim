@@ -593,6 +593,22 @@ def test_multi_trusted_domains_registration(client):
                 appmod.set_setting(k, v or "")
 
 
+def test_admin_create_user(client):
+    """Admin user creation: the temp-password generator is policy-compliant, and
+    the mTLS (default-mode) create-by-DN path works + rejects duplicates."""
+    import json
+    import routes_admin
+    import app as appmod
+    assert appmod.password_policy_errors(routes_admin._gen_temp_password()) == []
+    dn = "CN=NEWLY.CREATED.0000000099,OU=PKI,O=Example,C=US"
+    r = client.post("/api/admin/users", headers=WRITE,
+                    data=json.dumps({"dn": dn, "email": "newuser@example.com"}))
+    assert r.status_code == 200 and r.get_json().get("mode") == "mtls", r.get_data(as_text=True)
+    dup = client.post("/api/admin/users", headers=WRITE,
+                      data=json.dumps({"dn": dn, "email": "newuser@example.com"}))
+    assert dup.status_code == 409
+
+
 def test_csr_subject_render_sanitizes():
     import csr_subject as s
     out = s.render_conf({"org": "X$(id)`whoami`;rm", "ous": ["DoD", "DoD", "A;B"],

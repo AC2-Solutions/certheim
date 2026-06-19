@@ -1,12 +1,12 @@
 """routes_admin blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, abort, g, jsonify, request, session
-import json, re, sqlite3, string, time, uuid
+import json, re, secrets, sqlite3, string, time, uuid
 from pathlib import Path
 import capabilities
 import notify
 import csr_subject
 from app import (  # noqa: E402
-    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, _cn_from_dn, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, db, derive_username, fire_webhooks, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper, set_setting)
+    DB_PATH, EMAIL_RE, GROUP_NAME_RE, ISSUED_DIR, JOB_ID_RE, KEY_NAME_RE, NAME_RE, _cn_from_dn, _group_by_id, _group_email, _group_owner_emails, _group_role, _normalize_cert_types, _normalize_name_part, _parse_helper_listing, _signer_recipients, _user_group_ids, _user_groups, _validate_email, audit, auth_mode, db, derive_username, fire_webhooks, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, run_helper, set_setting)
 bp = Blueprint("admin", __name__)
 
 # ============================================================
@@ -189,39 +189,80 @@ def admin_set_password():
     log_event("admin_set_password", "ok", target_dn=target_dn[:128])
     return jsonify(ok=True)
 
+def _gen_temp_password(n=16):
+    """A random initial password that satisfies the password policy."""
+    pool = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
+    for _ in range(50):
+        pw = "".join(secrets.choice(pool) for _ in range(n))
+        if not password_policy_errors(pw):
+            return pw
+    return "Aa1!" + secrets.token_urlsafe(14)   # belt-and-suspenders fallback
+
+
 @bp.post("/api/admin/users")
 @require_admin
 @require_csrf
 def admin_create_user():
-    """Manually pre-create a user before they first log in (rare)."""
+    """Admin-create a user. In LOCAL mode: first/last + email + an initial
+    password (admin-supplied or auto-generated) -> a login-ready account with an
+    auto-derived first.last username. In mTLS mode: pre-create by CAC DN (the
+    user fills in on first login; no password)."""
     payload = request.get_json(silent=True) or {}
+    is_admin = 1 if payload.get("is_admin") else 0
+    now = time.time()
+
+    if auth_mode() == "local":
+        first = (payload.get("first_name") or "").strip()
+        last = (payload.get("last_name") or "").strip()
+        if not NAME_RE.match(first) or not NAME_RE.match(last):
+            return jsonify(error="a valid first and last name are required"), 400
+        ok, email, err = _validate_email(payload.get("email"))
+        if not ok:
+            return jsonify(error=f"email: {err}"), 400
+        password = (payload.get("password") or "").strip()
+        generated = not password
+        if generated:
+            password = _gen_temp_password()
+        pol = password_policy_errors(password)
+        if pol:
+            return jsonify(error="password needs " + ", ".join(pol)), 400
+        pwhash = hash_password(password)
+        display = (first + " " + last).strip()[:128]
+        try:
+            with db() as conn:
+                username = derive_username(first, last, conn)
+                conn.execute(
+                    "INSERT INTO users (dn, cn, email, username, password_hash, "
+                    "first_name, last_name, is_admin, is_active, auth_status, "
+                    "created_at, last_seen_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
+                    ("local:" + username, display, email, username, pwhash,
+                     first, last, is_admin, now, now))
+        except sqlite3.IntegrityError:
+            return jsonify(error="a user with that name already exists"), 409
+        log_event("admin_user_create", "ok", username=username, is_admin=is_admin)
+        out = {"ok": True, "mode": "local", "username": username}
+        if generated:
+            out["temp_password"] = password   # shown once so the admin can share it
+        return jsonify(**out)
+
+    # mTLS: pre-create by CAC DN (no password).
     target_dn = (payload.get("dn") or "").strip()
     if not target_dn or len(target_dn) > 512:
         return jsonify(error="invalid dn"), 400
-
     ok, email, err = _validate_email(payload.get("email"))
     if not ok:
         return jsonify(error=f"email: {err}"), 400
-
-    is_admin = 1 if payload.get("is_admin") else 0
     cn = _cn_from_dn(target_dn)
-    now = time.time()
-
     with db() as conn:
-        existing = conn.execute(
-            "SELECT dn FROM users WHERE dn = ?", (target_dn,)
-        ).fetchone()
-        if existing:
+        if conn.execute("SELECT dn FROM users WHERE dn = ?", (target_dn,)).fetchone():
             return jsonify(error="user already exists"), 409
-        conn.execute("""
-            INSERT INTO users (dn, cn, email, is_admin, is_active,
-                               created_at, last_seen_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?)
-        """, (target_dn, cn, email, is_admin, now, now))
-
-    log_event("admin_user_create", "ok",
-              target_dn=target_dn[:128], is_admin=is_admin)
-    return jsonify(ok=True)
+        conn.execute(
+            "INSERT INTO users (dn, cn, email, is_admin, is_active, "
+            "created_at, last_seen_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+            (target_dn, cn, email, is_admin, now, now))
+    log_event("admin_user_create", "ok", target_dn=target_dn[:128], is_admin=is_admin)
+    return jsonify(ok=True, mode="mtls")
 
 @bp.delete("/api/admin/users")
 @require_admin
