@@ -1,4 +1,4 @@
-# CSR Dashboard — Operations Runbook
+# Certinel — Operations Runbook
 
 Flask/SQLite certificate request + lifecycle dashboard for a RHEL fleet.
 Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `csrapi` service

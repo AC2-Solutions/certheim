@@ -1,4 +1,4 @@
-# CSR Dashboard — Product Architecture Sketch
+# Certinel — Product Architecture Sketch
 
 Status: **draft / north-star**. Not a commitment to dates or pricing; a frame so
 feature work slots into a deliberate plan.
