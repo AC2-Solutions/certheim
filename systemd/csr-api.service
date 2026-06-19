@@ -14,9 +14,12 @@ RestartSec=5
 
 # Filesystem - NoNewPrivileges must remain false because the app uses sudo.
 ProtectSystem=full
+# ProtectHome stays false: the app invokes the helper via sudo, and the helper
+# + private keys live under /root/sslcerts (ProtectHome=true would mask /root and
+# break the sudo'd helper). The app's own data is under /var/opt/certinel.
 ProtectHome=false
 PrivateTmp=true
-ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /home/ansible/issued /etc/csr-dashboard
+ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /var/opt/certinel /etc/csr-dashboard
 NoNewPrivileges=false
 
 # Resource limits

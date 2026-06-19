@@ -120,6 +120,24 @@ if [[ ! -f /etc/csr-dashboard/email.conf && -f config/email.conf.example ]]; the
     echo "seeded /etc/csr-dashboard/email.conf from example - set the SMG host"
 fi
 
+# Certinel data root (FHS /var/opt for add-on app data). issued/ holds signed
+# certs (written by the app as csrapi + chowned by the helper); requests/ holds
+# generated CSRs (written by the helper as root). var_lib_t lets the confined
+# csr-api service write here, matching the DB dir's context.
+install -d -o root   -g root   -m 0755 /var/opt/certinel
+install -d -o csrapi -g csrapi -m 0750 /var/opt/certinel/issued
+install -d -o root   -g csrapi -m 0750 /var/opt/certinel/requests
+if command -v semanage >/dev/null 2>&1; then
+    # Some RHEL variants ship an SELinux equivalency '/var/opt = /opt' (the
+    # /var/opt/certinel rule is then rejected and the /opt/certinel rule applies
+    # via the equivalency); others don't (the /var/opt/certinel rule applies
+    # directly). Register both — whichever is valid on this host wins, the other
+    # is a harmless no-op — so the data root always relabels to var_lib_t.
+    semanage fcontext -a -t var_lib_t '/opt/certinel(/.*)?'     2>/dev/null || true
+    semanage fcontext -a -t var_lib_t '/var/opt/certinel(/.*)?' 2>/dev/null || true
+    command -v restorecon >/dev/null 2>&1 && restorecon -R /var/opt/certinel || true
+fi
+
 # Pre-deploy DB/file backup (after diffing, before service restart)
 command -v csrbackup >/dev/null && csrbackup || echo "WARN: csrbackup not found"
 

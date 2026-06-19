@@ -130,10 +130,16 @@ email" verifies wiring.
   traverse → `chmod -R g+rX /opt/csr-dashboard/venv` (installer does this).
 - **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
   `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
-  /home/ansible/issued /etc/csr-dashboard`. `deploy.sh` runs
+  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome` stays **false** (the
+  sudo'd helper + keys live under `/root/sslcerts`). `deploy.sh` runs
   `systemd-analyze verify` before restart.
+- **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
+  (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.
+  `deploy.sh` creates them and sets `var_lib_t` so the confined service can
+  write (matches the DB dir). The helper's `ISSUED_DIR`/`CSRDIR`
+  (`csr_dashboard_helper.d/00-common.sh`) must match `CSR_ISSUED_DIR`.
 - **SELinux**: `setsebool -P httpd_can_network_connect 1` (else nginx→backend
-  502s); `restorecon` on `/var/www/csr` (deploy.sh does this).
+  502s); `restorecon` on `/var/www/csr` + `/var/opt/certinel` (deploy.sh does this).
 - **firewalld**: open 443 (`firewall-cmd --permanent --add-service=https`).
 - **nginx**: the fragment must stay location-only; mTLS at server level.
 - **VERSION**: read once at startup → bump VERSION, restart, confirm via

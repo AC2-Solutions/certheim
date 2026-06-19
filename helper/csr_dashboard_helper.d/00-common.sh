@@ -4,9 +4,10 @@
 
 CERTLIST_RHEL="/root/sslcerts/scripts/certlist-rhel"
 GEN_RHEL="/root/sslcerts/scripts/csr-rhel.sh"
-CSRDIR="/home/ansible/new_request"
+# Certinel data root (FHS /var/opt). Must match the app's CSR_ISSUED_DIR.
+CSRDIR="/var/opt/certinel/requests"
 KEYDIR="/root/sslcerts/private"
-ISSUED_DIR="/home/ansible/issued"
+ISSUED_DIR="/var/opt/certinel/issued"
 
 # ----- Subject DN applied to every generated CSR -----
 # Rendered in this order (C, ST, L, O, OUs...), then CN last. These are
