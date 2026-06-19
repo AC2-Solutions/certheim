@@ -94,7 +94,36 @@
     return mp ? mp.dataset.panel : "welcome";
   }
 
+  // Drop a small "?" next to each panel's title that deep-links the guide to
+  // that page. Injected (not hand-placed in markup) so it stays in sync with
+  // the pages above and never collides with a card-header's right-side controls.
+  function injectPanelHelp() {
+    const ids = new Set(pages.map((p) => p.getAttribute("data-page")));
+    [["#main-panels", (dp) => dp], ["#admin-panels", (dp) => "admin-" + dp]]
+      .forEach(([container, toId]) => {
+        const host = document.querySelector(container);
+        if (!host) return;
+        host.querySelectorAll(":scope > [data-panel]").forEach((panel) => {
+          const pid = toId(panel.getAttribute("data-panel"));
+          if (!ids.has(pid)) return;
+          const head = panel.querySelector("h2, h3");
+          if (!head || head.querySelector(".panel-help-btn")) return;
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "panel-help-btn";
+          b.textContent = "?";
+          b.title = "Open the guide for this page";
+          b.setAttribute("aria-label", "Open the guide for this page");
+          b.addEventListener("click", (e) => {
+            e.preventDefault(); e.stopPropagation(); open(pid);
+          });
+          head.appendChild(b);
+        });
+      });
+  }
+
   buildToc();
+  injectPanelHelp();
   show(0);
 
   if (prevBtn) prevBtn.addEventListener("click", () => show(idx - 1));
