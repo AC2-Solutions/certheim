@@ -1853,24 +1853,6 @@ def _fleet_track_issued(conn, host, cert_pem, notify_email=None, job_id=None):
         sys.stderr.write(f"fleet track failed for {host}: {e}\n")
 
 
-COMMUNITY_CERT_LIMIT_DEFAULT = 25
-
-
-def _community_cert_limit():
-    """Max active certs the free Community edition manages (admin-tunable)."""
-    try:
-        return max(1, int(get_setting("community_cert_limit") or COMMUNITY_CERT_LIMIT_DEFAULT))
-    except (TypeError, ValueError):
-        return COMMUNITY_CERT_LIMIT_DEFAULT
-
-
-def _active_cert_count():
-    with db() as conn:
-        return conn.execute(
-            "SELECT COUNT(*) FROM jobs WHERE status='issued' AND "
-            "(expires_at IS NULL OR expires_at > ?)", (time.time(),)).fetchone()[0]
-
-
 def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
                         approver_dn=None, log_action="attach_signed_cert"):
     """Shared completion path for an issued certificate. Verifies the signed
@@ -1886,8 +1868,8 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
     now = time.time()
     with db() as conn:
         row = conn.execute(
-            "SELECT csr_pem, target_host, status, requester_email, group_id, "
-            "renewed_from FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            "SELECT csr_pem, target_host, status, requester_email, group_id "
+            "FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if not row:
             raise CompletionError(404, {"error": "job not found"})
         if row["status"] != "pending":
@@ -1899,22 +1881,6 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
             raise CompletionError(400, {"error":
                 "cert public key does not match this job's CSR. "
                 "Verify you uploaded the cert for the correct job."})
-        # Community scale cap: free tier manages up to N active certs. A renewal
-        # (renewed_from set) replaces an existing managed cert, so it's exempt.
-        is_renewal = bool("renewed_from" in row.keys() and row["renewed_from"])
-        if not is_renewal and not capabilities.available("scale.unlimited_certs"):
-            active = conn.execute(
-                "SELECT COUNT(*) FROM jobs WHERE status='issued' AND "
-                "(expires_at IS NULL OR expires_at > ?)", (now,)).fetchone()[0]
-            limit = _community_cert_limit()
-            if active >= limit:
-                log_event(log_action, "deny_cert_cap", job_id=job_id,
-                          active=active, limit=limit)
-                raise CompletionError(402, {
-                    "error": f"Community edition manages up to {limit} active "
-                             f"certificates ({active} in use). Install a license "
-                             f"to remove the limit.",
-                    "limit_reached": True, "active": active, "limit": limit})
         expires_at = _cert_expiry(cert_pem)
         conn.execute(
             "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
