@@ -77,17 +77,18 @@ DIRS=(
   "/var/lib/csr-dashboard|${SVC_USER}:${SVC_USER}|0750"
   "/var/www/csr|root:nginx|0750"
   "/etc/csr-dashboard|root:${SVC_USER}|0750"
-  "/root/sslcerts/scripts|root:root|0750"
-  "/root/sslcerts/scripts/csr_dashboard_helper.d|root:root|0750"
-  "/root/sslcerts/private|root:root|0700"
-  "/home/ansible/new_request|root:root|0755"
-  "/home/ansible/issued|${SVC_USER}:${SVC_USER}|0750"
+  "/opt/certinel|root:root|0755"
+  "/opt/certinel/helper|root:root|0750"
+  "/opt/certinel/helper/csr_dashboard_helper.d|root:root|0750"
+  "/var/opt/certinel|root:root|0755"
+  "/var/opt/certinel/private|root:root|0700"
+  "/var/opt/certinel/requests|root:${SVC_USER}|0750"
+  "/var/opt/certinel/issued|${SVC_USER}:${SVC_USER}|0750"
 )
 for entry in "${DIRS[@]}"; do
     IFS='|' read -r d og mode <<< "$entry"
     install -d -o "${og%%:*}" -g "${og##*:}" -m "$mode" "$d"
 done
-chmod o+x /home/ansible 2>/dev/null || true
 echo "  ok"
 
 # ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ log "4/9  Sudoers drop-in (service account runs only the helper as root)"
 # ---------------------------------------------------------------------------
 SUDOERS=/etc/sudoers.d/csr-dashboard
 if [[ ! -f "$SUDOERS" ]]; then
-    printf '# CSR Dashboard: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh\n' \
+    printf '# Certinel: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /opt/certinel/helper/csr_dashboard_helper.sh\n' \
         "$SVC_USER" > "$SUDOERS"
     chmod 0440 "$SUDOERS"
     visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
