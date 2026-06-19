@@ -12,14 +12,29 @@ Delivered material:
   server-side key (Generate jobs; retrieved via the helper `get-key`). External-
   submit jobs have no server-side key -> certificate only.
 
-P1 provider: `openbao` (write the bundle to OpenBao/Vault KV v2). The `ssh`
-host-push provider lands in P1-B. Connection secrets come from the environment /
-sign.py's OpenBao login; this module stores no secrets.
+Providers:
+- P1 `openbao` — write the bundle to OpenBao/Vault KV v2.
+- P1-B `ssh` — scp the cert/key to a host (per-destination cred from Vault).
+- P2 `pull` — store the bundle behind a scoped, single-use token; the
+  destination fetches it at GET /deliver/pull/<token> (no push path needed,
+  works through a one-way firewall toward the dashboard).
+- P2 `k8s` — server-side-apply a kubernetes.io/tls Secret into a cluster
+  namespace (cluster API + token from Vault secret/csr-delivery-k8s/<cluster>).
+
+Connection secrets come from the environment / sign.py's OpenBao login or from
+Vault KV; this module stores no long-lived secrets of its own.
 """
+import base64
+import json
 import os
 import re
+import secrets
+import ssl
 import subprocess
 import tempfile
+import time
+import urllib.error
+import urllib.request
 
 import sign
 
@@ -27,6 +42,31 @@ _get_setting = None
 # A destination hostname must be a plain host/FQDN - it's interpolated into the
 # remote scp path, so reject anything with shell-significant characters.
 _HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,253}$")
+# A Kubernetes namespace / secret name / cluster label (DNS-1123 subdomain-ish).
+_K8S_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")
+
+
+def _https(method, url, body=None, headers=None, ca_pem=None, timeout=15):
+    """Arbitrary-method HTTPS to a non-OpenBao endpoint (the Kubernetes API),
+    verifying TLS against an optional CA bundle. Returns (status, text)."""
+    data = body.encode() if isinstance(body, str) else body
+    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+    if ca_pem:
+        ctx = ssl.create_default_context(cadata=ca_pem)
+    else:
+        ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        raise DeliveryError(f"HTTP {e.code} from {url.split('?')[0]}: {detail}")
+    except urllib.error.URLError as e:
+        raise DeliveryError(f"unreachable {url.split('?')[0]}: {e.reason}")
 
 
 def configure(get_setting=None):
@@ -152,9 +192,146 @@ def _deliver_ssh(job):
             pass
 
 
+# --------------------------------------------------------------------------- #
+# P2: pull (token-bundle) provider                                             #
+# --------------------------------------------------------------------------- #
+def _public_base():
+    """Externally reachable base URL of the dashboard, for handing pull links to
+    a destination. Set via the `public_base_url` admin setting (the csr-deliver
+    timer has no request context to infer it). '' -> a relative path is used."""
+    return (_get("public_base_url", "")).rstrip("/")
+
+
+def _deliver_pull(job):
+    """Stash the issued bundle behind a scoped, single-use token; the destination
+    pulls it from GET /deliver/pull/<token>. The token is the credential, so it's
+    random, short-lived (delivery_pull_ttl, default 1h) and consumed on fetch
+    (delivery_pull_max_uses, default 1)."""
+    from app import db  # lazy: avoid an import cycle at module load
+    bundle = _job_bundle(job)
+    try:
+        ttl = max(60, int(_get("delivery_pull_ttl", "3600") or 3600))
+    except ValueError:
+        ttl = 3600
+    try:
+        max_uses = max(1, int(_get("delivery_pull_max_uses", "1") or 1))
+    except ValueError:
+        max_uses = 1
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO delivery_pulls (token, job_id, target_host, certificate, "
+            "private_key, created_at, expires_at, max_uses, uses) "
+            "VALUES (?,?,?,?,?,?,?,?,0)",
+            (token, job.get("id"), job.get("target_host"), bundle["certificate"],
+             bundle.get("private_key"), now, now + ttl, max_uses))
+    base = _public_base()
+    url = (base + "/deliver/pull/" + token) if base else ("/deliver/pull/" + token)
+    return f"pull:{url} (1 of {max_uses}, ttl {ttl}s)"
+
+
+def consume_pull(token, ip=None, peek=False):
+    """Fetch + consume a pull bundle. Returns the bundle dict or None if the
+    token is unknown/expired/exhausted (callers must not distinguish, to avoid
+    an oracle). Deletes the row once uses reach max_uses."""
+    from app import db
+    now = time.time()
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM delivery_pulls WHERE token = ?", (token,)).fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if now >= row["expires_at"] or row["uses"] >= row["max_uses"]:
+            conn.execute("DELETE FROM delivery_pulls WHERE token = ?", (token,))
+            return None
+        if not peek:
+            uses = row["uses"] + 1
+            if uses >= row["max_uses"]:
+                conn.execute("DELETE FROM delivery_pulls WHERE token = ?", (token,))
+            else:
+                conn.execute(
+                    "UPDATE delivery_pulls SET uses=?, last_pull_at=?, last_pull_ip=? "
+                    "WHERE token=?", (uses, now, (ip or "")[:64], token))
+    return {"certificate": row["certificate"],
+            "private_key": row.get("private_key"),
+            "target_host": row.get("target_host")}
+
+
+def purge_expired_pulls():
+    """Delete expired pull rows (called by the csr-deliver timer). Returns count."""
+    from app import db
+    with db() as conn:
+        cur = conn.execute("DELETE FROM delivery_pulls WHERE expires_at < ?",
+                           (time.time(),))
+        return cur.rowcount or 0
+
+
+# --------------------------------------------------------------------------- #
+# P2: k8s (TLS Secret) provider                                                #
+# --------------------------------------------------------------------------- #
+def _deliver_k8s(job):
+    """Server-side-apply a kubernetes.io/tls Secret into a cluster namespace.
+    delivery_target is `[<cluster>/]<namespace>/<secret-name>`; the cluster API
+    address + bearer token (+ optional CA) come from Vault KV at
+    secret/csr-delivery-k8s/<cluster> {api_server, token, ca_cert?}."""
+    target = (job.get("delivery_target") or "").strip().strip("/")
+    parts = target.split("/")
+    if len(parts) == 2:
+        cluster = _get("delivery_k8s_cluster", "default")
+        namespace, name = parts
+    elif len(parts) == 3:
+        cluster, namespace, name = parts
+    else:
+        raise DeliveryError(
+            "k8s delivery_target must be '<namespace>/<secret>' "
+            "or '<cluster>/<namespace>/<secret>'")
+    for label, val in (("cluster", cluster), ("namespace", namespace), ("secret", name)):
+        if not _K8S_NAME_RE.match(val):
+            raise DeliveryError(f"invalid k8s {label} name: {val!r}")
+
+    bundle = _job_bundle(job)
+    if not bundle.get("private_key"):
+        raise DeliveryError(
+            "k8s delivery needs the private key (set the template's key mode to "
+            "'ship'); a kubernetes.io/tls Secret requires tls.key")
+
+    cred = _openbao_kv_read("csr-delivery-k8s/" + cluster)
+    api = (cred.get("api_server") or "").rstrip("/")
+    tok = cred.get("token")
+    if not (api and tok):
+        raise DeliveryError(
+            f"no k8s credential at secret/csr-delivery-k8s/{cluster} "
+            "(need api_server + token)")
+    ca_pem = cred.get("ca_cert") or None
+
+    body = json.dumps({
+        "apiVersion": "v1", "kind": "Secret",
+        "metadata": {"name": name, "namespace": namespace},
+        "type": "kubernetes.io/tls",
+        "data": {
+            "tls.crt": base64.b64encode(bundle["certificate"].encode()).decode(),
+            "tls.key": base64.b64encode(bundle["private_key"].encode()).decode(),
+        },
+    })
+    # Server-side apply is idempotent (create or update) and needs no
+    # resourceVersion; force=true claims fields from any prior manager.
+    url = (f"{api}/api/v1/namespaces/{namespace}/secrets/{name}"
+           "?fieldManager=csr-dashboard&force=true")
+    status, _ = _https(
+        "PATCH", url, body=body, ca_pem=ca_pem,
+        headers={"Authorization": "Bearer " + tok,
+                 "Content-Type": "application/apply-patch+yaml",
+                 "Accept": "application/json"})
+    return f"k8s:{cluster}/{namespace}/{name} (status {status})"
+
+
 PROVIDERS = {
     "openbao": _deliver_openbao,
     "ssh": _deliver_ssh,
+    "pull": _deliver_pull,
+    "k8s": _deliver_k8s,
 }
 
 
@@ -244,8 +421,9 @@ def mark_pending(job_id):
 
 def run_deliveries(limit=100):
     """Retry pending/failed deliveries (the csr-deliver timer entrypoint). No
-    Flask context. Returns {delivered, failed, scanned}."""
+    Flask context. Returns {delivered, failed, scanned, purged}."""
     from app import db
+    purged = purge_expired_pulls()
     with db() as conn:
         rows = conn.execute(
             _JOB_SELECT +
@@ -259,4 +437,5 @@ def run_deliveries(limit=100):
             delivered += 1
         else:
             failed += 1
-    return {"delivered": delivered, "failed": failed, "scanned": len(jobs)}
+    return {"delivered": delivered, "failed": failed, "scanned": len(jobs),
+            "purged": purged}

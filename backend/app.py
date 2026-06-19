@@ -815,6 +815,27 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_renewed_from ON jobs(renewed_from)")
 
+    # Pull-delivery tokens (delivery_backend='pull'): the dashboard stores the
+    # issued bundle and the destination fetches it once with a scoped, short-
+    # lived token at GET /deliver/pull/<token>. Rows are deleted on the final
+    # pull and purged when expired (deliver.purge_expired_pulls).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS delivery_pulls (
+            token        TEXT PRIMARY KEY,
+            job_id       INTEGER,
+            target_host  TEXT,
+            certificate  TEXT NOT NULL,
+            private_key  TEXT,
+            created_at   REAL NOT NULL,
+            expires_at   REAL NOT NULL,
+            max_uses     INTEGER NOT NULL DEFAULT 1,
+            uses         INTEGER NOT NULL DEFAULT 0,
+            last_pull_at REAL,
+            last_pull_ip TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_delivery_pulls_exp ON delivery_pulls(expires_at)")
+
     # In-database audit trail (mirrors the syslog audit stream, searchable
     # from the admin UI)
     conn.execute("""
@@ -2086,6 +2107,8 @@ from routes_signing import bp as signing_bp  # noqa: E402
 app.register_blueprint(signing_bp)
 from routes_acme import bp as acme_bp  # noqa: E402
 app.register_blueprint(acme_bp)
+from routes_deliver import bp as deliver_bp  # noqa: E402
+app.register_blueprint(deliver_bp)
 
 # Background-pass entrypoints for the systemd timers, re-exported onto the `app`
 # module so the units can call `app.run_expiry_warnings()` / `app.run_auto_renew()`.
