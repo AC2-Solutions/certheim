@@ -64,8 +64,6 @@ def run_auto_renew():
     now = time.time()
     if not _truthy(app.get_setting("auto_renew_enabled")):
         return (0, 0, 0)  # master switch off — nothing to do
-    if not capabilities.available("lifecycle.auto_renew"):
-        return (0, 0, 0)  # commercial feature — not licensed here
 
     try:
         global_window = int(app.get_setting("auto_renew_before_days") or 30)
