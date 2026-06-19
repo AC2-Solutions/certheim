@@ -299,22 +299,103 @@ function renderDetailModal(job) {
 // The button is shown only when the server says job.can_sign (this user may
 // sign + an automated backend is configured/usable). POST /jobs/<id>/sign
 // issues the cert via the CA backend, then we re-render and offer the chain.
+allModalIds.push("sign-modal");
+
+// Issuance-time validity control (short-lived certs). _signCtx holds the
+// current job + its TTL bounds (seconds); the unit/number/slider stay in sync.
+let _signCtx = null;
+
+function _humanizeDur(s) {
+  if (s % 86400 === 0) return (s / 86400) + (s / 86400 === 1 ? " day" : " days");
+  if (s % 3600 === 0) return (s / 3600) + (s / 3600 === 1 ? " hour" : " hours");
+  return Math.round(s / 60) + " minutes";
+}
+
+// Reflect _signCtx.secs into the unit/number/slider + the expiry preview.
+function _signSync() {
+  const ctx = _signCtx; if (!ctx) return;
+  const unit = Number(document.getElementById("sign-ttl-unit").value) || 60;
+  const range = document.getElementById("sign-ttl-range");
+  const num = document.getElementById("sign-ttl-num");
+  const umin = Math.max(1, Math.ceil(ctx.min / unit));
+  const umax = Math.max(umin, Math.floor(ctx.max / unit));
+  let uval = Math.max(umin, Math.min(umax, Math.round(ctx.secs / unit)));
+  ctx.secs = Math.max(ctx.min, Math.min(ctx.max, uval * unit));
+  range.min = num.min = String(umin);
+  range.max = num.max = String(umax);
+  range.value = num.value = String(uval);
+  const exp = new Date(Date.now() + ctx.secs * 1000);
+  document.getElementById("sign-ttl-preview").textContent =
+    `Valid for ${_humanizeDur(ctx.secs)} · expires ${exp.toLocaleString()}`;
+}
+function _signSetSecs(secs) {
+  if (!_signCtx) return;
+  _signCtx.secs = Math.max(_signCtx.min, Math.min(_signCtx.max, Math.round(secs)));
+  _signSync();
+}
+
+(function () {
+  const unit = document.getElementById("sign-ttl-unit");
+  const num = document.getElementById("sign-ttl-num");
+  const range = document.getElementById("sign-ttl-range");
+  if (!unit || !num || !range) return;
+  unit.addEventListener("change", _signSync);
+  num.addEventListener("input", () => _signSetSecs((Number(num.value) || 0) * (Number(unit.value) || 60)));
+  range.addEventListener("input", () => _signSetSecs((Number(range.value) || 0) * (Number(unit.value) || 60)));
+  const cbtn = document.getElementById("sign-confirm-btn");
+  if (cbtn) cbtn.addEventListener("click", _doSignConfirm);
+})();
+
 async function signJob(jobId, targetHost) {
-  if (!confirm(`Approve and sign the request for ${targetHost}?\n\n`
-             + "This issues the certificate via the configured CA backend "
-             + "and marks the job issued.")) return;
-  const r = await jsonReq(`/jobs/${jobId}/sign`, { method: "POST", body: "{}" });
+  const opt = await jsonReq(`/jobs/${jobId}/sign-options`);
+  const o = (opt.ok && opt.body) ? opt.body : null;
+  if (!o || !o.supports_ttl) {
+    // This backend issues at its own/template validity — keep the simple confirm.
+    if (!confirm(`Approve and sign the request for ${targetHost}?\n\n`
+               + "This issues the certificate via the configured CA backend "
+               + "and marks the job issued.")) return;
+    return _postSign(jobId, targetHost, null);
+  }
+  _signCtx = { jobId, host: targetHost, min: o.ttl_min, max: o.ttl_max, secs: o.ttl_default };
+  document.getElementById("sign-modal-host").textContent = targetHost;
+  setStatus(document.getElementById("sign-modal-status"), "");
+  document.getElementById("sign-ttl-unit").value =
+    (o.ttl_default % 86400 === 0 && o.ttl_default >= 86400) ? "86400"
+      : (o.ttl_default % 3600 === 0 && o.ttl_default >= 3600) ? "3600" : "60";
+  document.getElementById("sign-ttl-bounds").textContent =
+    `Allowed range: ${_humanizeDur(o.ttl_min)} to ${_humanizeDur(o.ttl_max)}.`;
+  _signSync();
+  openModal("sign-modal");
+}
+
+async function _doSignConfirm() {
+  const ctx = _signCtx; if (!ctx) return;
+  const btn = document.getElementById("sign-confirm-btn");
+  btn.disabled = true;
+  setStatus(document.getElementById("sign-modal-status"), "Issuing…");
+  // On success _postSign swaps to the detail modal; on failure we stay here.
+  await _postSign(ctx.jobId, ctx.host, ctx.secs, document.getElementById("sign-modal-status"));
+  btn.disabled = false;
+}
+
+async function _postSign(jobId, targetHost, ttlSecs, statusEl) {
+  const body = ttlSecs ? JSON.stringify({ ttl: ttlSecs }) : "{}";
+  const r = await jsonReq(`/jobs/${jobId}/sign`, { method: "POST", body });
   if (!r.ok || !(r.body && r.body.ok)) {
-    alert("Sign failed: " + ((r.body && r.body.error) || "unknown"));
-    return;
+    const msg = "Sign failed: " + ((r.body && r.body.error) || "unknown");
+    if (statusEl) setStatus(statusEl, msg, "err"); else alert(msg);
+    return false;
   }
   const warns = r.body.warnings || [];
-  let msg = `Issued for ${r.body.target_host} via ${r.body.signed_via}.`;
+  let msg = `Issued for ${r.body.target_host} via ${r.body.signed_via}`;
+  if (r.body.validity_seconds) msg += ` · valid ${_humanizeDur(r.body.validity_seconds)}`;
+  msg += ".";
   if (warns.length) msg += "\n\nWarnings:\n• " + warns.join("\n• ");
   alert(msg);
   if (r.body.chain_pem) downloadChainPem(r.body.target_host || jobId, r.body.chain_pem);
-  await openDetailModal(jobId);   // re-render: it's now "issued"
+  await openDetailModal(jobId);   // re-render: it's now "issued" (swaps modal)
   refreshJobs();
+  return true;
 }
 
 // Revoke an issued cert via its CA backend (signer/admin; shown when can_revoke).

@@ -221,6 +221,28 @@ def test_sign_nonexistent_job_404(client):
     assert r.status_code == 404
 
 
+def test_signing_ttl_bounds(client):
+    """Issuance-time validity bounds: 30-min floor, template/global cap, sane
+    default. Drives the Approve-&-sign short-lived-cert control."""
+    import routes_signing as rs
+    assert rs.MIN_SIGN_TTL == 1800                       # 30 minutes
+    # explicit template cap: default falls back to the cap; floor is 30 min
+    lo, hi, dflt = rs._ttl_bounds({"max_ttl": 7200})
+    assert (lo, hi, dflt) == (1800, 7200, 7200)
+    # a cap below the floor is raised to the floor (never sub-30-min ceiling)
+    lo, hi, dflt = rs._ttl_bounds({"max_ttl": 600})
+    assert hi == 1800 and dflt == 1800
+    # no template cap -> global/default cap (get_setting needs app context)
+    with client._appmod.app.app_context():
+        lo, hi, dflt = rs._ttl_bounds({})
+    assert lo == 1800 and hi >= 1800 and dflt == hi      # default = cap
+
+
+def test_sign_options_missing_job_404(client):
+    r = client.get("/api/jobs/" + "a" * 32 + "/sign-options", headers=CAC)
+    assert r.status_code == 404
+
+
 def test_template_signing_policy(client):
     import json
     # a built-in template exists after first-run seeding
