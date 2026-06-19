@@ -1112,6 +1112,33 @@
     <div id="cancel-status" class="status" style="margin-top:8px"></div>
   </div>
 
+  <!-- Approve & sign: choose validity (short-lived certs) -->
+  <div class="modal" id="sign-modal" hidden>
+    <h2>Approve &amp; sign</h2>
+    <p class="hint">Issue the certificate for <code id="sign-modal-host"></code>
+       via the configured CA backend.</p>
+    <div id="sign-ttl-block">
+      <label for="sign-ttl-num">Certificate validity</label>
+      <div class="row" style="margin:4px 0 8px">
+        <input type="number" id="sign-ttl-num" class="form-input" min="1" step="1"
+               style="max-width:120px">
+        <select id="sign-ttl-unit" class="form-input" style="max-width:130px">
+          <option value="60">Minutes</option>
+          <option value="3600">Hours</option>
+          <option value="86400">Days</option>
+        </select>
+      </div>
+      <input type="range" id="sign-ttl-range" style="width:100%; display:block">
+      <p class="hint" id="sign-ttl-preview" style="margin:8px 0 2px"></p>
+      <p class="hint" id="sign-ttl-bounds"></p>
+    </div>
+    <div class="row" style="justify-content:flex-end; margin-top:14px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="sign-confirm-btn" type="button">Issue certificate</button>
+    </div>
+    <div id="sign-modal-status" class="status" style="margin-top:8px"></div>
+  </div>
+
   <!-- Mark failed -->
   <div class="modal" id="fail-modal" hidden>
     <h2>Mark Job Failed</h2>

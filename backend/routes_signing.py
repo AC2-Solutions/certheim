@@ -25,6 +25,28 @@ bp = Blueprint("signing", __name__)
 # Capability key gating the OpenBao backend (env_supports openbao + entitled).
 CAP_OPENBAO = "ca.signing.openbao"
 
+# Issuance-time validity (TTL) bounds for the Approve-&-sign control. The floor
+# supports genuinely short-lived certificates (e.g. 30-minute client certs); the
+# ceiling falls back to the template/global cap, else one year.
+MIN_SIGN_TTL = 1800                 # 30 minutes, in seconds
+DEFAULT_MAX_SIGN_TTL = 365 * 86400  # 1 year, when no template/global cap is set
+# Backends that honor an arbitrary per-issuance TTL (others issue at the CA's /
+# template's own validity and ignore a requested value).
+TTL_BACKENDS = {"openbao"}
+
+
+def _ttl_bounds(template):
+    """(min, max, default) issuance TTL in seconds for a job's template. max =
+    the template's max_ttl cap, else the global signing cap, else one year;
+    default = the template cap when set, else the max (current behavior)."""
+    cap = template.get("max_ttl")
+    if not cap:
+        g = get_setting("signing_max_ttl")
+        cap = int(g) if (g or "").strip().isdigit() else DEFAULT_MAX_SIGN_TTL
+    cap = max(int(cap), MIN_SIGN_TTL)
+    default = int(template.get("max_ttl") or cap)
+    return MIN_SIGN_TTL, cap, max(MIN_SIGN_TTL, min(default, cap))
+
 
 def _config_view():
     """Non-secret signing config: the selected provider, the full provider
@@ -86,6 +108,24 @@ def sign_job(job_id):
         return jsonify(error=f"{backend} signing is not available in this "
                              "deployment", capability=capabilities.status(_cap)), 409
 
+    # Optional issuance-time validity override (short-lived certs). Only honored
+    # for backends that accept an arbitrary TTL; clamped to the template's cap
+    # and never below the 30-minute floor.
+    payload = request.get_json(silent=True) or {}
+    chosen_ttl = None
+    req_ttl = payload.get("ttl")
+    if req_ttl not in (None, "") and backend in TTL_BACKENDS:
+        try:
+            req_ttl = int(req_ttl)
+        except (TypeError, ValueError):
+            return jsonify(error="ttl must be an integer number of seconds"), 400
+        lo, hi, _ = _ttl_bounds(template)
+        if req_ttl < lo:
+            return jsonify(error=f"ttl must be at least {lo} seconds "
+                                 f"({lo // 60} minutes)"), 400
+        chosen_ttl = min(req_ttl, hi)        # clamp down to the template/global cap
+        template = {**template, "max_ttl": chosen_ttl}
+
     try:
         result = sign.sign_csr(row["csr_pem"], template)
     except sign.BackendUnavailable as e:
@@ -105,12 +145,36 @@ def sign_job(job_id):
         return jsonify(**e.payload), e.status
 
     log_event("sign", "issued", job_id=job_id, backend=backend,
-              role=template.get("openbao_role") or "-", approver=actor_dn[:128])
+              role=template.get("openbao_role") or "-", approver=actor_dn[:128],
+              ttl=chosen_ttl if chosen_ttl is not None else "-")
     return jsonify(ok=True, status="issued", signed_via=backend,
                    target_host=completed["target_host"],
                    expires_at=completed["expires_at"],
+                   validity_seconds=chosen_ttl,
                    warnings=completed["warnings"],
                    chain_pem=result.chain_pem)
+
+
+@bp.get("/api/jobs/<job_id>/sign-options")
+@require_auth
+def sign_options(job_id):
+    """Validity bounds for the Approve-&-sign control: whether this job's backend
+    honors a per-issuance TTL, and the min / max / default (seconds)."""
+    if not JOB_ID_RE.match(job_id):
+        return jsonify(error="invalid job id"), 400
+    actor_dn = g.identity["dn"]
+    if not (g.user.get("is_admin") or _is_signer(actor_dn)):
+        return jsonify(error="not authorized"), 403
+    with db() as conn:
+        row = conn.execute(
+            "SELECT template_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        return jsonify(error="job not found"), 404
+    template = resolve_signing_policy(row["template_id"])
+    backend = template["signer_backend"]
+    lo, hi, default = _ttl_bounds(template)
+    return jsonify(backend=backend, supports_ttl=(backend in TTL_BACKENDS),
+                   ttl_min=lo, ttl_max=hi, ttl_default=default)
 
 
 @bp.post("/api/jobs/<job_id>/revoke")
