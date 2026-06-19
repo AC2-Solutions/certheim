@@ -50,6 +50,8 @@ CAPABILITIES = {
                           "desc": "In-UI signing via AWS Private CA (ACM PCA)"},
     "ca.server.acme": {"env": ["acme_server"],
                           "desc": "Expose an ACME (RFC 8555) server for external clients"},
+    "lifecycle.auto_renew": {"env": [],
+                          "desc": "Automated certificate renewal (licensed)"},
     "profiles.public_sector": {"env": [],
                           "desc": "Government / public-sector CSR profiles + consent banners (licensed)"},
     "compliance.airgap": {"env": [], "desc": "Air-gapped / offline operation"},
@@ -160,9 +162,24 @@ def _entitlements():
 # Higher tiers are supersets: government = commercial + the public-sector pack.
 EDITIONS = ("community", "commercial", "government")
 
-# Capability keys each PAID tier adds on top of free Community. Populate
-# COMMERCIAL_CAPABILITIES as the commercial/community line is drawn.
-COMMERCIAL_CAPABILITIES = set()
+# Capability keys each PAID tier adds on top of free Community.
+#
+# The line: **Community = manual only** (generate CSRs + upload a manually-issued
+# cert + fleet/audit). **Commercial = automation** - any in-UI signing backend,
+# the ACME server, automated renewal, and connected integrations. **Government =
+# Commercial + the public-sector pack.** Every key below is already enforced at
+# its call site, so listing it here is what gates it behind a license.
+COMMERCIAL_CAPABILITIES = {
+    # automated in-UI signing (manual upload stays free)
+    "ca.signing.openbao", "ca.signing.windows_ca", "ca.signing.cyberark",
+    "ca.signing.acme", "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
+    # the dashboard as an ACME CA
+    "ca.server.acme",
+    # automated certificate renewal
+    "lifecycle.auto_renew",
+    # connected integrations (basic SMTP email stays free)
+    "integrations.chat", "integrations.slack.interactive", "notify.email.api",
+}
 GOVERNMENT_CAPABILITIES = {"profiles.public_sector"}
 
 # Premium capabilities: never granted by the grant-all default - only by a valid
@@ -183,6 +200,12 @@ def edition_capabilities(edition):
 
 def is_entitled(key):
     if key in LICENSED_CAPABILITIES:
+        # Explicit operator override (dev / evaluation / all-access self-host):
+        # CSR_ENTITLEMENTS=* or a comma list unlocks licensed caps without a
+        # license file. Unset (the default) => a valid license is required.
+        ent = _entitlements()
+        if ent is not None and ("*" in ent or key in ent):
+            return True
         try:
             import licensing
             info = licensing.info()

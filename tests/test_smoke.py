@@ -388,11 +388,17 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
     assert bad.status_code == 400
 
-    # a COMMERCIAL license must NOT unlock the government-only pack
+    # community (no license) gates automation too (manual-only free tier).
+    # Use an env-free commercial cap so this isolates the *license* gate.
+    monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+    assert capabilities.available("lifecycle.auto_renew") is False
+
+    # a COMMERCIAL license unlocks automation but NOT the gov-only pack
     comm = _mint_license(priv, edition="commercial")
     rc = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": comm}))
     assert rc.status_code == 200 and rc.get_json()["edition"] == "commercial"
-    assert capabilities.available("profiles.public_sector") is False
+    assert capabilities.available("lifecycle.auto_renew") is True       # commercial: automation on
+    assert capabilities.available("profiles.public_sector") is False    # but not government
 
     # a GOVERNMENT license unlocks the pack (via edition expansion, no explicit entitlement)
     lic = _mint_license(priv, edition="government")
@@ -739,7 +745,8 @@ def _jws_post(client, path, key_pem, jwk, nonce, payload, url, kid=None):
         content_type="application/jose+json")
 
 
-def test_acme_server_directory_gated(client):
+def test_acme_server_directory_gated(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "0")
     assert client.get("/acme/directory").status_code == 404      # off by default
@@ -756,7 +763,8 @@ def test_acme_server_directory_gated(client):
         appmod.set_setting("acme_server_enabled", "0")
 
 
-def test_acme_server_rejects_bad_jws(client):
+def test_acme_server_rejects_bad_jws(client, monkeypatch):
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
@@ -785,6 +793,7 @@ def test_acme_server_full_flow(client, monkeypatch):
     import acme_client
     import acme_server
     import sign
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
