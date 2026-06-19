@@ -814,6 +814,13 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0")
     if "delivery_next_attempt" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN delivery_next_attempt REAL")
+    # Key-handling Phase 2: where a server-generated private key lives.
+    # key_vault_path set -> in OpenBao (host copy shredded); key_storage snapshots
+    # the policy at generation (vault | return_once | host | returned).
+    if "key_vault_path" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN key_vault_path TEXT")
+    if "key_storage" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN key_storage TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -1254,6 +1261,8 @@ licensing.configure(get_setting=get_setting)
 sign.configure(get_setting=get_setting, set_setting=set_setting)
 import deliver  # noqa: E402
 deliver.configure(get_setting=get_setting)
+import keystore  # noqa: E402
+keystore.configure(get_setting=get_setting)
 # Re-export the delivery-retry pass so the certinel-deliver timer can call
 # app.run_deliveries() without its own Flask context (same pattern as
 # run_auto_renew / run_expiry_warnings).

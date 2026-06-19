@@ -32,6 +32,7 @@ MANIFEST=(
   "backend/licensing.py      /opt/csr-dashboard/licensing.py                   root:csrapi 0640 backend"
   "backend/sign.py           /opt/csr-dashboard/sign.py                        root:csrapi 0640 backend"
   "backend/deliver.py        /opt/csr-dashboard/deliver.py                     root:csrapi 0640 backend"
+  "backend/keystore.py       /opt/csr-dashboard/keystore.py                    root:csrapi 0640 backend"
   "backend/renew.py          /opt/csr-dashboard/renew.py                       root:csrapi 0640 backend"
   "backend/acme_client.py    /opt/csr-dashboard/acme_client.py                 root:csrapi 0640 backend"
   "backend/acme_dns.py       /opt/csr-dashboard/acme_dns.py                    root:csrapi 0640 backend"

@@ -222,6 +222,72 @@ def test_signing_config_key_storage(client):
                data=json.dumps({"key_storage": "vault"}))        # restore
 
 
+def test_keystore_vault_store_shreds_host(client, monkeypatch):
+    """vault policy: read the key, write it to OpenBao, shred the host copy, and
+    record the vault path on the job."""
+    import keystore
+    appmod = client._appmod
+    monkeypatch.setenv("CSR_OPENBAO_ROLE_ID", "r")
+    monkeypatch.setenv("CSR_OPENBAO_SECRET_ID", "s")
+    with appmod.app.app_context():
+        appmod.set_setting("key_storage", "vault")
+    deleted, store, sets = [], {}, []
+
+    def fake_helper(args, **kw):
+        if args[0] == "get-key":
+            return (0, "PEMKEY", "")
+        if args[0] == "delete-key":
+            deleted.append(args[1])
+        return (0, "", "")
+    monkeypatch.setattr(appmod, "run_helper", fake_helper)
+    monkeypatch.setattr(keystore, "_put", lambda jid, pem: store.__setitem__(jid, pem))
+    monkeypatch.setattr(keystore, "_read", lambda jid: store.get(jid))
+    monkeypatch.setattr(keystore, "_set_job", lambda jid, **c: sets.append((jid, c)))
+
+    with appmod.app.app_context():
+        loc = keystore.secure_after_generate("ks-job-1", "host.example.key")
+    assert loc == "vault"
+    assert "host.example.key" in deleted           # host copy shredded
+    assert store.get("ks-job-1") == "PEMKEY"        # now in the vault
+    last = dict(sets[-1][1])
+    assert last["key_vault_path"] == "certinel-keys/ks-job-1" and last["key_storage"] == "vault"
+    with appmod.app.app_context():
+        pem = keystore.fetch_for_job({"id": "ks-job-1", "key_vault_path": "certinel-keys/ks-job-1",
+                                      "key_storage": "vault"})
+    assert pem == "PEMKEY"                           # retrieval comes from the vault
+
+
+def test_keystore_return_once_destroys_on_read(client, monkeypatch):
+    """return_once: the vault copy is destroyed after the first fetch."""
+    import keystore
+    appmod = client._appmod
+    destroyed, sets = [], []
+    monkeypatch.setattr(keystore, "_read", lambda jid: "PEM1")
+    monkeypatch.setattr(keystore, "_destroy", lambda jid: destroyed.append(jid))
+    monkeypatch.setattr(keystore, "_set_job", lambda jid, **c: sets.append((jid, c)))
+    with appmod.app.app_context():
+        pem = keystore.fetch_for_job({"id": "ks-job-2", "key_vault_path": "certinel-keys/ks-job-2",
+                                      "key_storage": "return_once"})
+    assert pem == "PEM1" and destroyed == ["ks-job-2"]
+    assert any(c.get("key_vault_path") is None for _, c in sets)
+
+
+def test_keystore_host_fallback_when_no_vault(client, monkeypatch):
+    """vault selected but OpenBao not configured -> fall back to host (never lose
+    the key)."""
+    import keystore
+    appmod = client._appmod
+    monkeypatch.delenv("CSR_OPENBAO_ROLE_ID", raising=False)
+    monkeypatch.delenv("CSR_OPENBAO_SECRET_ID", raising=False)
+    with appmod.app.app_context():
+        appmod.set_setting("key_storage", "vault")
+    sets = []
+    monkeypatch.setattr(keystore, "_set_job", lambda jid, **c: sets.append((jid, c)))
+    with appmod.app.app_context():
+        loc = keystore.secure_after_generate("ks-job-3", "k.key")
+    assert loc == "host" and sets and sets[-1][1].get("key_storage") == "host"
+
+
 def test_sign_requires_auth(client):
     # CSRF header present but no CAC identity -> 403
     assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403

@@ -319,8 +319,8 @@ def get_job_key(job_id):
         abort(400)
     with db() as conn:
         row = conn.execute(
-            "SELECT requester_dn, has_local_key, local_key_name, target_host, group_id "
-            "FROM jobs WHERE id = ?", (job_id,)
+            "SELECT id, requester_dn, has_local_key, local_key_name, target_host, "
+            "group_id, key_vault_path, key_storage FROM jobs WHERE id = ?", (job_id,)
         ).fetchone()
     if not row:
         abort(404)
@@ -341,8 +341,9 @@ def get_job_key(job_id):
                   target=row["target_host"])
         abort(403)
 
-    rc, out, err = run_helper(["get-key", row["local_key_name"]])
-    if rc != 0:
+    import keystore
+    out = keystore.fetch_for_job(dict(row))   # vault when stored there, else host
+    if not (out or "").strip():
         log_event("get_job_key", "not_found", job_id=job_id,
                   name=row["local_key_name"])
         return jsonify(error="key file not found"), 404
@@ -568,6 +569,9 @@ def renew_job(job_id):
             1 if has_key else 0, local_key if has_key else None,
             old["group_id"], cert_type, key_algo, job_id,
         ))
+    if has_key:
+        import keystore
+        keystore.secure_after_generate(new_id, local_key)
     run_helper(["delete-csr", csr_name])
 
     log_event("renew_job", "ok", job_id=job_id, new_job_id=new_id,
