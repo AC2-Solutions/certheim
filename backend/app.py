@@ -116,6 +116,7 @@ KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\.key$")
 HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+DOMAIN_RE = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 GROUP_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,63}$")
 
 # Cert types supported by the helper's generate-typed subcommand. Must match
@@ -1059,6 +1060,24 @@ def password_policy_errors(pw):
     if not re.search(r"[0-9]", pw or ""): e.append("a digit")
     if not re.search(r"[^A-Za-z0-9]", pw or ""): e.append("a special character")
     return e
+
+
+def parse_trusted_domains(raw):
+    """Normalize the trusted-registration-domain setting into a list.
+
+    Stored as a single string for backward compatibility, but may now hold
+    MULTIPLE domains separated by comma / whitespace / semicolon. Each entry is
+    lowercased and stripped of a leading '@'; blanks and duplicates are dropped
+    and order is preserved. Empty input -> [] (meaning 'any valid email may
+    self-register')."""
+    if not raw:
+        return []
+    out = []
+    for part in re.split(r"[\s,;]+", str(raw).strip().lower()):
+        part = part.strip().lstrip("@")
+        if part and part not in out:
+            out.append(part)
+    return out
 
 # --- login banners ----------------------------------------------------------
 # The login page can show a consent/notice banner gated by an "I agree"

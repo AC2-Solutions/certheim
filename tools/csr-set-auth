@@ -14,6 +14,7 @@ The DB must already exist (start csr-api once so the schema is created).
 """
 import argparse
 import os
+import re
 import sqlite3
 import sys
 
@@ -45,7 +46,9 @@ def _set(conn, key, value):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["mtls", "local"])
-    ap.add_argument("--domain", help="trusted email domain (local mode)")
+    ap.add_argument("--domain", help="trusted email domain(s) for local-mode "
+                    "self-registration; comma/space-separated for several "
+                    "(e.g. 'ac2solutions.com,mail.mil'). Empty = allow any.")
     ap.add_argument("--require-approval", action="store_true",
                     help="new local registrations need admin approval")
     ap.add_argument("--no-require-approval", action="store_true",
@@ -80,8 +83,16 @@ def main():
             _set(conn, "auth_mode", args.mode)
             changed.append(f"auth_mode={args.mode}")
         if args.domain is not None:
-            _set(conn, "trusted_email_domain", args.domain.strip().lower())
-            changed.append(f"trusted_email_domain={args.domain.strip().lower()}")
+            # normalize one OR MORE domains (comma/space/semicolon separated),
+            # lowercased, '@' stripped, deduped -> stored comma-joined
+            doms, seen = [], set()
+            for d in re.split(r"[\s,;]+", args.domain.strip().lower()):
+                d = d.strip().lstrip("@")
+                if d and d not in seen:
+                    seen.add(d); doms.append(d)
+            val = ",".join(doms)
+            _set(conn, "trusted_email_domain", val)
+            changed.append(f"trusted_email_domain={val}")
         if args.require_approval:
             _set(conn, "require_admin_approval", "1")
             changed.append("require_admin_approval=1")

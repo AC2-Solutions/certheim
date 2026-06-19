@@ -1,8 +1,8 @@
 """routes_auth blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, g, jsonify, request, session
-import re, sqlite3, string, time
+import sqlite3, string, time
 from app import (  # noqa: E402
-    APP_VERSION, BOOTSTRAP_FIRST_ADMIN, EMAIL_RE, LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL, LOCKOUT_SECONDS, LOCKOUT_THRESHOLD, LOGIN_BANNERS, NAME_RE, _get_or_create_session, _normalize_name_part, _sessions, _sessions_lock, _set_session_cookie, _upsert_user, auth_mode, banner_options, create_local_session, current_banner, db, derive_username, destroy_local_session, get_setting, hash_password, log_event, password_policy_errors, require_admin, require_auth, require_csrf, set_setting, verify_password)
+    APP_VERSION, BOOTSTRAP_FIRST_ADMIN, DOMAIN_RE, EMAIL_RE, LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL, LOCKOUT_SECONDS, LOCKOUT_THRESHOLD, LOGIN_BANNERS, NAME_RE, _get_or_create_session, _normalize_name_part, _sessions, _sessions_lock, _set_session_cookie, _upsert_user, auth_mode, banner_options, create_local_session, current_banner, db, derive_username, destroy_local_session, get_setting, hash_password, log_event, parse_trusted_domains, password_policy_errors, require_admin, require_auth, require_csrf, set_setting, verify_password)
 bp = Blueprint("auth", __name__)
 
 # ============================================================
@@ -21,7 +21,7 @@ def auth_info():
     """Unauthenticated: tells the UI which auth mode is active and whether
     self-registration is open, so it can show the right login/register UI."""
     mode = auth_mode()
-    domain = get_setting("trusted_email_domain") or ""
+    domains = parse_trusted_domains(get_setting("trusted_email_domain"))
     banner = current_banner()
     return jsonify(
         auth_mode=mode,
@@ -30,7 +30,10 @@ def auth_info():
         # email-domain filter - a domain is "not always going to be a thing".
         registration_open=(mode == "local"
                            and get_setting("allow_registration") == "1"),
-        trusted_email_domain=domain,
+        # `trusted_email_domain` (joined string) kept for backward compat;
+        # `trusted_email_domains` is the canonical list the UI should use.
+        trusted_email_domain=", ".join(domains),
+        trusted_email_domains=domains,
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
         banner=banner,
         require_agreement=bool(banner),
@@ -111,8 +114,9 @@ def auth_register():
         return jsonify(error="registration not available"), 403
     if get_setting("allow_registration") != "1":
         return jsonify(error="self-registration is disabled"), 403
-    # Optional email-domain filter (empty = any valid email may register).
-    domain = (get_setting("trusted_email_domain") or "").strip().lower()
+    # Optional email-domain filter (empty = any valid email may register;
+    # one OR MORE trusted domains may be configured).
+    domains = parse_trusted_domains(get_setting("trusted_email_domain"))
 
     payload = request.get_json(silent=True) or {}
     first = (payload.get("first_name") or "").strip()
@@ -128,10 +132,11 @@ def auth_register():
     if not EMAIL_RE.match(email):
         return jsonify(error="valid email required"), 400
     # Trusted-domain enforcement (case-insensitive, exact domain match) - only
-    # when an admin configured a domain; otherwise any valid email is allowed.
-    if domain and email.rsplit("@", 1)[-1] != domain:
+    # when an admin configured domain(s); otherwise any valid email is allowed.
+    if domains and email.rsplit("@", 1)[-1] not in domains:
         log_event("register", "deny_domain", email=email[:128])
-        return jsonify(error=f"email must be @{domain}"), 403
+        allowed = ", ".join("@" + d for d in domains)
+        return jsonify(error=f"email must be at one of: {allowed}"), 403
     pol = password_policy_errors(password)
     if pol:
         return jsonify(error="password needs " + ", ".join(pol)), 400
@@ -198,9 +203,11 @@ def auth_register():
 @bp.get("/api/admin/auth-settings")
 @require_admin
 def admin_get_auth_settings():
+    domains = parse_trusted_domains(get_setting("trusted_email_domain"))
     return jsonify(
         auth_mode=auth_mode(),
-        trusted_email_domain=get_setting("trusted_email_domain") or "",
+        trusted_email_domain=", ".join(domains),   # back-compat display string
+        trusted_email_domains=domains,             # canonical list
         require_admin_approval=(get_setting("require_admin_approval") == "1"),
         allow_registration=(get_setting("allow_registration") == "1"),
         login_banner=get_setting("login_banner") or "none",
@@ -226,12 +233,20 @@ def admin_set_auth_settings():
             return jsonify(error="enabling mTLS requires confirm_mtls=true; "
                                  "ensure CAC access works first"), 400
         set_setting("auth_mode", mode); changed["auth_mode"] = mode
-    if "trusted_email_domain" in payload:
-        dom = (payload["trusted_email_domain"] or "").strip().lower()
-        if dom and not re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", dom):
-            return jsonify(error="invalid domain"), 400
-        set_setting("trusted_email_domain", dom)
-        changed["trusted_email_domain"] = dom
+    if "trusted_email_domains" in payload or "trusted_email_domain" in payload:
+        # Accept either a list (canonical) or a string that may itself hold
+        # several domains (comma/space/semicolon separated). Validate each;
+        # store comma-joined in the single back-compat setting key.
+        raw = payload.get("trusted_email_domains")
+        raw = ",".join(str(x) for x in raw) if isinstance(raw, list) \
+            else (payload.get("trusted_email_domain") or "")
+        domains = parse_trusted_domains(raw)
+        bad = [d for d in domains if not DOMAIN_RE.match(d)]
+        if bad:
+            return jsonify(error="invalid domain(s): " + ", ".join(bad)), 400
+        joined = ",".join(domains)
+        set_setting("trusted_email_domain", joined)
+        changed["trusted_email_domain"] = joined
     if "require_admin_approval" in payload:
         val = "1" if payload["require_admin_approval"] else "0"
         set_setting("require_admin_approval", val)

@@ -464,6 +464,59 @@ def test_license_renewal_notice(client, monkeypatch, tmp_path):
         licensing.reset_cache()
 
 
+def test_multi_trusted_domains_registration(client):
+    """Admin can configure MULTIPLE trusted email domains; self-registration is
+    allowed at any of them and rejected elsewhere."""
+    import json
+    appmod = client._appmod
+
+    def put(body):
+        return client.put("/api/admin/auth-settings", headers=WRITE,
+                          data=json.dumps(body))
+
+    # snapshot auth state — the client fixture is session-scoped, and the app
+    # ignores CAC headers once in local mode, so we MUST restore via set_setting.
+    with appmod.app.app_context():
+        prev = {k: appmod.get_setting(k) for k in
+                ("auth_mode", "trusted_email_domain", "allow_registration")}
+    try:
+        # --- admin endpoint (CAC admin works in the default mtls mode) ---
+        # list form, normalized (lowercased)
+        assert put({"trusted_email_domains": ["ac2solutions.com", "MAIL.MIL"]}).status_code == 200
+        s = client.get("/api/admin/auth-settings", headers=CAC).get_json()
+        assert s["trusted_email_domains"] == ["ac2solutions.com", "mail.mil"]
+        # string form (comma/space separated) also accepted + deduped
+        assert put({"trusted_email_domain": "ac2solutions.com, mail.mil ac2solutions.com"}).status_code == 200
+        assert client.get("/api/admin/auth-settings", headers=CAC).get_json()["trusted_email_domains"] \
+            == ["ac2solutions.com", "mail.mil"]
+        # an invalid domain is rejected
+        assert put({"trusted_email_domains": ["notadomain"]}).status_code == 400
+        # unauthenticated /auth/info exposes the list for the login/register UI
+        assert set(client.get("/api/auth/info").get_json()["trusted_email_domains"]) \
+            == {"ac2solutions.com", "mail.mil"}
+
+        # --- registration enforcement (needs local mode; set it directly so we
+        #     don't lock out the CAC admin the rest of the session shares) ---
+        with appmod.app.app_context():
+            appmod.set_setting("auth_mode", "local")
+            appmod.set_setting("allow_registration", "1")
+
+        def reg(email):
+            return client.post("/api/auth/register", headers=WRITE, data=json.dumps(
+                {"first_name": "Test", "last_name": "User", "email": email,
+                 "password": "Sup3r#SecretPw1"}))
+
+        assert reg("a.one@ac2solutions.com").status_code == 200   # first listed domain
+        assert reg("b.two@mail.mil").status_code == 200           # second listed domain
+        bad = reg("c.three@evil.example")
+        assert bad.status_code == 403                             # untrusted domain
+        assert "one of" in (bad.get_json().get("error", "").lower())
+    finally:
+        with appmod.app.app_context():
+            for k, v in prev.items():
+                appmod.set_setting(k, v or "")
+
+
 def test_csr_subject_render_sanitizes():
     import csr_subject as s
     out = s.render_conf({"org": "X$(id)`whoami`;rm", "ous": ["DoD", "DoD", "A;B"],
