@@ -58,6 +58,10 @@ CAPABILITIES = {
                           "desc": "Deliver via a scoped pull token the destination fetches"},
     "delivery.k8s": {"env": ["openbao"],
                           "desc": "Deliver issued certs into a Kubernetes TLS Secret"},
+    "delivery.webhook": {"env": [],
+                          "desc": "Deliver issued certs by POST to an mTLS/HMAC webhook receiver"},
+    "delivery.cyberark": {"env": [],
+                          "desc": "Deliver issued certs into CyberArk Conjur"},
     "lifecycle.auto_renew": {"env": [],
                           "desc": "Automated certificate renewal (licensed)"},
     "profiles.public_sector": {"env": [],
@@ -189,6 +193,7 @@ COMMERCIAL_CAPABILITIES = {
     "ca.server.acme",
     # automated delivery of issued certs to destinations
     "delivery.openbao", "delivery.ssh", "delivery.pull", "delivery.k8s",
+    "delivery.webhook", "delivery.cyberark",
     # background automated renewal (on-demand renew via OpenBao stays free)
     "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)
