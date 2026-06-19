@@ -935,6 +935,15 @@
         </div>
       </div>
 
+      <div id="signing-fips-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">
+        <label class="textarea-label">FIPS 140-3 cryptography</label>
+        <p id="signing-fips-status" class="hint" style="margin:4px 0 6px">checking…</p>
+        <label class="status" style="display:block">
+          <input type="checkbox" id="signing-cfg-fips-required"> Require FIPS mode
+          <span class="hint">(flag the deployment when the validated module isn't active)</span>
+        </label>
+      </div>
+
       <div id="signing-renew-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">
         <label class="status" style="display:block;margin-bottom:4px">
           <input type="checkbox" id="signing-cfg-autorenew"> Enable automated certificate renewal

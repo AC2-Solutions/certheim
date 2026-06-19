@@ -367,6 +367,27 @@ def test_keystore_migrate_host_keys(client, monkeypatch):
     assert vp == "certinel-keys/mig-job-1"
 
 
+def test_fips_status_and_required(client):
+    """FIPS self-check is exposed (kernel + OpenSSL provider) and the
+    fips_required policy round-trips through signing-config."""
+    import json
+    import capabilities
+    body = client.get("/api/admin/capabilities", headers=CAC).get_json()
+    assert "fips" in body
+    assert {"kernel_fips", "openssl_provider", "validated", "required",
+            "compliant"} <= set(body["fips"].keys())
+    with client._appmod.app.app_context():
+        s = capabilities.fips_status()
+    assert isinstance(s["validated"], bool) and isinstance(s["compliant"], bool)
+    sc = client.get("/api/admin/signing-config", headers=CAC).get_json()
+    assert "fips" in sc
+    assert client.put("/api/admin/signing-config", headers=WRITE,
+                      data=json.dumps({"fips_required": True})).status_code == 200
+    assert client.get("/api/admin/signing-config", headers=CAC).get_json()["fips"]["required"] is True
+    client.put("/api/admin/signing-config", headers=WRITE,
+               data=json.dumps({"fips_required": False}))   # restore
+
+
 def test_sign_requires_auth(client):
     # CSRF header present but no CAC identity -> 403
     assert client.post("/api/jobs/" + "a" * 32 + "/sign", headers=CSRF).status_code == 403

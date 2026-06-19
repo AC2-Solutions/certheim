@@ -84,6 +84,8 @@ def _config_view():
         # Phase 3 short-lived auto-rule: templates capped at <= this many seconds
         # don't retain keys (return_once); 0 disables. Per-template override wins.
         "key_return_once_max_ttl": int(get_setting("key_return_once_max_ttl") or 0),
+        # FIPS 140-3 posture: live self-check + the admin "require FIPS" policy.
+        "fips": capabilities.fips_status(),
     }
 
 
@@ -292,6 +294,8 @@ def put_signing_config():
         except (TypeError, ValueError):
             return jsonify(error="key_return_once_max_ttl must be a non-negative integer"), 400
         set_setting("key_return_once_max_ttl", str(v))
+    if "fips_required" in payload:
+        set_setting("fips_required", "1" if payload.get("fips_required") else "0")
     if "acme_server_enabled" in payload:
         set_setting("acme_server_enabled", "1" if payload.get("acme_server_enabled") else "0")
     if "acme_server_base_url" in payload:
