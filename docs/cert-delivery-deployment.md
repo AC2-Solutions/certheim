@@ -50,13 +50,23 @@ path "secret/metadata/csr-certs/*"        { capabilities = ["read", "list"] }
 # Per-destination SSH credentials the dashboard reads (ssh provider):
 path "secret/data/csr-delivery-ssh/*"     { capabilities = ["read"] }
 path "secret/metadata/csr-delivery-ssh/*" { capabilities = ["read", "list"] }
+# Per-cluster Kubernetes API credentials the dashboard reads (k8s provider):
+path "secret/data/csr-delivery-k8s/*"     { capabilities = ["read"] }
+path "secret/metadata/csr-delivery-k8s/*" { capabilities = ["read", "list"] }
 ```
 
 ```bash
 bao policy write csr-delivery csr-delivery.hcl
 ```
 
-> If you only need the `openbao` provider, drop the two `csr-delivery-ssh` lines.
+> If you only need the `openbao` provider, drop the `csr-delivery-ssh` and
+> `csr-delivery-k8s` lines. The `pull` provider needs **no** Vault grant at all.
+
+> **Codified path:** this policy + AppRole attach is an Ansible role —
+> `roles/csr_delivery_openbao` in the `ansible` repo. Add the deployment's
+> AppRole to `csrd_target_roles` and run
+> `ansible-playbook playbooks/csr_delivery_openbao.yml -e bootstrap=true`
+> instead of the manual `bao` steps in §1–§2.
 
 ## 2. Attach it to the dashboard's AppRole
 
@@ -139,8 +149,50 @@ un-revoked** (they don't auto-expire).
    - **target** = for `openbao`, the KV base path (blank = `csr-certs`); for
      `ssh`, the remote directory (blank = a sensible default; host = the cert's
      CN/`target_host`).
-3. The **`delivery.openbao` / `delivery.ssh`** capabilities are Commercial — a
-   licensed (or `CSR_ENTITLEMENTS`-overridden) deployment.
+3. The **`delivery.openbao` / `delivery.ssh` / `delivery.pull` / `delivery.k8s`**
+   capabilities are Commercial — a licensed (or `CSR_ENTITLEMENTS`-overridden)
+   deployment.
+
+---
+
+## 5b. P2 providers — `pull` and `k8s`
+
+### `pull` (token-bundle — destination fetches)
+
+No push path and **no Vault grant**: the dashboard stores the issued bundle and
+hands back a scoped, single-use URL the destination fetches. Ideal when the
+dashboard can't reach the destination but the destination can reach the
+dashboard (one-way firewall), or for a human/script to grab a short-lived cert.
+
+- **Env:** set **`public_base_url`** (admin setting) to the dashboard's external
+  URL so the returned link is absolute (e.g. `https://csr.example.com/csr`).
+  Optional: `delivery_pull_ttl` (seconds, default `3600`) and
+  `delivery_pull_max_uses` (default `1`).
+- **Per template:** Delivery = `pull token`; `key_mode` controls whether the key
+  is included in the bundle. No target field.
+- **Fetch:** `GET <public_base_url>/api/deliver/pull/<token>` → JSON
+  `{certificate, private_key?}`; `?format=pem` → cert(+key) PEM; `?format=cert`
+  → leaf only. The token is consumed on fetch and 404s afterward.
+
+### `k8s` (Kubernetes TLS Secret)
+
+Server-side-applies a `kubernetes.io/tls` Secret into a cluster namespace.
+Requires `key_mode = ship` (a TLS Secret needs `tls.key`).
+
+1. **Per-cluster credential in Vault** at `secret/csr-delivery-k8s/<cluster>`:
+   ```bash
+   bao kv put secret/csr-delivery-k8s/<cluster> \
+     api_server="https://<k8s-api>:6443" \
+     token="<serviceaccount-token>" \
+     ca_cert=@/path/to/cluster-ca.crt        # optional; omit to use system trust
+   ```
+   The service account needs `create`/`patch` on `secrets` in the target
+   namespace(s) — e.g. a Role granting `["get","create","patch"]` on
+   `secrets` + a RoleBinding.
+2. **Per template:** Delivery = `Kubernetes Secret`; `key_mode = ship`;
+   **target** = `<namespace>/<secret>` (or `<cluster>/<namespace>/<secret>` to
+   pick a non-default cluster; default cluster name is the `delivery_k8s_cluster`
+   setting).
 
 ---
 

@@ -59,6 +59,7 @@ CRITICAL_ROUTES = [
     ("GET", "/api/admin/csr-subject"),
     ("PUT", "/api/admin/csr-subject"),
     ("POST", "/api/admin/run-auto-renew"),
+    ("GET", "/api/deliver/pull/<token>"),
 ]
 
 
@@ -247,7 +248,7 @@ def test_delivery_module(client):
     """deliver.py: no-op for 'none', cert-only bundle for key_mode=destination,
     and the openbao provider is capability-gated (premium)."""
     import deliver
-    assert "openbao" in deliver.PROVIDERS and "ssh" in deliver.PROVIDERS
+    assert {"openbao", "ssh", "pull", "k8s"} <= set(deliver.PROVIDERS)
     # a template with no delivery backend is a no-op
     assert deliver.deliver_job({"delivery_backend": "none"}) is None
     assert deliver.deliver_job({}) is None
@@ -295,6 +296,74 @@ def test_template_delivery_config(client):
     # restore
     client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                data=json.dumps({"signer_backend": "manual", "delivery_backend": "none"}))
+
+
+def test_delivery_pull_lifecycle(client):
+    """pull provider stores a single-use bundle; the public /deliver/pull/<token>
+    endpoint serves it once and 404s on reuse / unknown tokens (no oracle)."""
+    import deliver
+    appmod = client._appmod
+    with appmod.app.app_context():
+        appmod.set_setting("public_base_url", "https://csr.example")
+        detail = deliver._deliver_pull({"id": None, "target_host": "pull-host.example",
+                                        "cert_pem": "PULLCERT", "key_mode": "destination"})
+    assert detail.startswith("pull:https://csr.example/api/deliver/pull/")
+    token = detail.split("/deliver/pull/")[1].split()[0]
+    r = client.get(f"/api/deliver/pull/{token}")
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["certificate"] == "PULLCERT"
+    assert body["target_host"] == "pull-host.example"
+    assert "private_key" not in body                 # key-at-destination -> cert only
+    # single-use: reuse and unknown tokens both 404
+    assert client.get(f"/api/deliver/pull/{token}").status_code == 404
+    assert client.get("/api/deliver/pull/" + "z" * 43).status_code == 404
+
+
+def test_delivery_pull_formats(client):
+    """?format=pem returns cert+key, ?format=cert just the cert; exhausts at max_uses."""
+    import time
+    import secrets as _secrets
+    appmod = client._appmod
+    tok = _secrets.token_urlsafe(16)
+    with appmod.app.app_context():
+        with appmod.db() as conn:
+            conn.execute(
+                "INSERT INTO delivery_pulls (token,target_host,certificate,private_key,"
+                "created_at,expires_at,max_uses,uses) VALUES (?,?,?,?,?,?,?,0)",
+                (tok, "h", "CERTX", "KEYY", time.time(), time.time() + 600, 2))
+    pem = client.get(f"/api/deliver/pull/{tok}?format=pem")
+    assert pem.status_code == 200 and b"CERTX" in pem.data and b"KEYY" in pem.data
+    cert = client.get(f"/api/deliver/pull/{tok}?format=cert")
+    assert cert.status_code == 200 and b"CERTX" in cert.data and b"KEYY" not in cert.data
+    assert client.get(f"/api/deliver/pull/{tok}").status_code == 404   # 2 uses exhausted
+
+
+def test_delivery_k8s_guards(client):
+    """k8s provider validates target shape + names and requires the private key
+    (a kubernetes.io/tls Secret needs tls.key) before any network call."""
+    import deliver
+    appmod = client._appmod
+    with appmod.app.app_context():
+        with pytest.raises(deliver.DeliveryError, match="delivery_target"):
+            deliver._deliver_k8s({"delivery_target": "only-one", "cert_pem": "C",
+                                  "target_host": "h", "key_mode": "ship"})
+        with pytest.raises(deliver.DeliveryError, match="invalid k8s"):
+            deliver._deliver_k8s({"delivery_target": "ns/Bad_Name", "cert_pem": "C",
+                                  "target_host": "h", "key_mode": "ship"})
+        with pytest.raises(deliver.DeliveryError, match="private key"):
+            deliver._deliver_k8s({"delivery_target": "ns/sec", "cert_pem": "C",
+                                  "target_host": "h", "key_mode": "destination"})
+
+
+def test_delivery_k8s_env_gated(client):
+    """k8s delivery needs OpenBao configured (cred source); refused when it isn't."""
+    import deliver
+    with client._appmod.app.app_context():
+        with pytest.raises(deliver.DeliveryError):
+            deliver.deliver_job({"delivery_backend": "k8s", "cert_pem": "C",
+                                 "target_host": "h", "key_mode": "ship",
+                                 "delivery_target": "ns/sec"})
 
 
 def test_template_signing_policy(client):

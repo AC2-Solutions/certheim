@@ -202,6 +202,8 @@ function editTemplateSigning(td, t) {
         <option value="none">No delivery</option>
         <option value="openbao">Deliver → OpenBao KV</option>
         <option value="ssh">Deliver → SSH host</option>
+        <option value="pull">Deliver → pull token</option>
+        <option value="k8s">Deliver → Kubernetes Secret</option>
       </select>
       <span class="sig-deliver-cfg" hidden>
         <select class="sig-keymode form-input" style="width:auto;display:inline-block" title="Private-key handling">
@@ -232,9 +234,21 @@ function editTemplateSigning(td, t) {
   delSel.value = t.delivery_backend || "none";
   td.querySelector(".sig-keymode").value = t.key_mode || "destination";
   const sshOnly = td.querySelector(".sig-ssh-only");
+  const delTarget = td.querySelector(".sig-deliver-target");
+  // Per-backend meaning of the "target" field; pull needs none.
+  const TARGET_HINT = {
+    openbao: "KV base (csr-certs)",
+    ssh: "remote dir (/etc/ssl/delivered)",
+    k8s: "namespace/secret",
+    pull: "",
+  };
   const _delToggle = () => {
     delCfg.hidden = delSel.value === "none";
     if (sshOnly) sshOnly.hidden = delSel.value !== "ssh";   // reload cmd is ssh-only
+    if (delTarget) {
+      delTarget.hidden = delSel.value === "pull";           // pull has no destination target
+      delTarget.placeholder = TARGET_HINT[delSel.value] || "target";
+    }
   };
   _delToggle();
   delSel.addEventListener("change", _delToggle);

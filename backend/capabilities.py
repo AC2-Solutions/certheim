@@ -54,6 +54,10 @@ CAPABILITIES = {
                           "desc": "Deliver issued certs to OpenBao / Vault KV"},
     "delivery.ssh": {"env": ["openbao"],
                           "desc": "Deliver issued certs to a host over SSH (creds from Vault)"},
+    "delivery.pull": {"env": [],
+                          "desc": "Deliver via a scoped pull token the destination fetches"},
+    "delivery.k8s": {"env": ["openbao"],
+                          "desc": "Deliver issued certs into a Kubernetes TLS Secret"},
     "lifecycle.auto_renew": {"env": [],
                           "desc": "Automated certificate renewal (licensed)"},
     "profiles.public_sector": {"env": [],
@@ -184,7 +188,7 @@ COMMERCIAL_CAPABILITIES = {
     # the dashboard as an ACME CA
     "ca.server.acme",
     # automated delivery of issued certs to destinations
-    "delivery.openbao", "delivery.ssh",
+    "delivery.openbao", "delivery.ssh", "delivery.pull", "delivery.k8s",
     # background automated renewal (on-demand renew via OpenBao stays free)
     "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)

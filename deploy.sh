@@ -38,6 +38,7 @@ MANIFEST=(
   "backend/ca_providers.py   /opt/csr-dashboard/ca_providers.py                root:csrapi 0640 backend"
   "backend/acme_server.py    /opt/csr-dashboard/acme_server.py                 root:csrapi 0640 backend"
   "backend/routes_acme.py    /opt/csr-dashboard/routes_acme.py                 root:csrapi 0640 backend"
+  "backend/routes_deliver.py /opt/csr-dashboard/routes_deliver.py              root:csrapi 0640 backend"
   "backend/csr_subject.py    /opt/csr-dashboard/csr_subject.py                 root:csrapi 0640 backend"
   "backend/routes_integrations.py /opt/csr-dashboard/routes_integrations.py    root:csrapi 0640 backend"
   "backend/routes_feedback.py /opt/csr-dashboard/routes_feedback.py            root:csrapi 0640 backend"
