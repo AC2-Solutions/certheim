@@ -42,7 +42,7 @@ import sign
 _ENV_DEFAULTS = {
     "CSR_HELPER_PATH": "/root/sslcerts/scripts/csr_dashboard_helper.sh",
     "CSR_DB_PATH": "/var/lib/csr-dashboard/jobs.db",
-    "CSR_ISSUED_DIR": "/home/ansible/issued",
+    "CSR_ISSUED_DIR": "/var/opt/certinel/issued",
     "CSR_SESSION_TTL": "28800",          # 8h in seconds
     "CSR_MAX_CERTLIST_BYTES": "65536",
     "CSR_MAX_CSR_BYTES": "32768",
