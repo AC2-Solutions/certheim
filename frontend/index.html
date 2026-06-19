@@ -103,6 +103,7 @@
     <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
     <button id="nav-admin" class="header-nav admin-only" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>
     <button id="nav-tour" class="header-nav" type="button" title="Replay the tutorial">Tour</button>
+    <button id="nav-guide" class="header-nav" type="button" title="Open the user guide for this page">Guide</button>
     <button id="nav-feedback" class="header-nav" type="button" title="Send feedback">Feedback</button>
     <button id="nav-settings" class="header-nav" type="button" title="My settings">⚙ Settings</button>
     <button id="nav-logout" class="header-nav" type="button" title="Sign out" hidden>Sign out</button>
@@ -1360,9 +1361,317 @@
 </div>
 
 <!-- App JS split into logical pieces; load in order (shared global scope). -->
+<!-- ===== In-app user guide (rendered by app.5-guide.js via the data-* contract) ===== -->
+<div id="guide-overlay" class="guide-overlay" hidden>
+  <div class="guide-modal" role="dialog" aria-modal="true" aria-label="User guide">
+    <div class="guide-head">
+      <h2 class="guide-heading">User Guide</h2>
+      <span class="guide-pglabel" data-guide-pglabel></span>
+      <button class="guide-close" id="guide-close" type="button" aria-label="Close guide">×</button>
+    </div>
+    <div class="guide-body">
+      <nav class="guide-toc" data-guide-toc aria-label="Guide contents"></nav>
+      <div class="guide-scroll">
+        <div class="guide-pages" data-guide>
+
+          <section data-page="welcome" data-title="Welcome" data-group="Getting started">
+            <h3>Welcome to CSR Dashboard</h3>
+            <p>CSR Dashboard is where your team requests, signs, tracks, and renews
+               TLS/PKI certificates — without juggling spreadsheets, shared inboxes, or
+               manual OpenSSL commands.</p>
+            <p>The app has two areas, switched from the header:</p>
+            <ul>
+              <li><strong>Dashboard</strong> — day-to-day work: create requests, track
+                  jobs, download issued certificates, and watch expirations.</li>
+              <li><strong>Admin</strong> — configuration: users, authentication,
+                  templates, signing backends, notifications, and the audit log
+                  (visible only to administrators).</li>
+            </ul>
+            <p><strong>This guide is context-aware.</strong> Open it with the
+               <em>Guide</em> button in the header and it lands on the page for whatever
+               you're currently looking at. Use the contents on the left, the
+               <em>Previous / Next</em> buttons, or the ← → arrow keys to move around;
+               press <em>Esc</em> to close.</p>
+          </section>
+
+          <section data-page="create" data-title="Create requests" data-group="Dashboard" hidden>
+            <h3>Create requests</h3>
+            <p>Start a new certificate request here. There are two ways in:</p>
+            <ul>
+              <li><strong>Generate</strong> — the app creates the private key and CSR for
+                  you from a template. The key stays on the server only as long as needed
+                  to issue, and you download the key + certificate when it's ready.</li>
+              <li><strong>External submit</strong> — you already generated a key and CSR
+                  elsewhere; paste the CSR and the app routes it for signing. Your private
+                  key never leaves your machine.</li>
+            </ul>
+            <p><strong>Pick a template</strong> first — it sets the certificate's purpose,
+               allowed names, validity, and which CA signs it. Then fill in the hostname /
+               common name and any additional <em>Subject Alternative Names</em> (SANs).
+               Optionally assign the request to one of your <em>groups</em> so teammates
+               can see and manage it.</p>
+            <p><strong>Tip:</strong> save your notification email once in
+               <em>Settings</em> and it pre-fills on every request, so you're told when a
+               certificate is issued.</p>
+          </section>
+
+          <section data-page="jobs" data-title="Jobs" data-group="Dashboard" hidden>
+            <h3>Jobs</h3>
+            <p>Every request becomes a <em>job</em> you can track through its lifecycle:</p>
+            <ul>
+              <li><strong>Pending</strong> — awaiting approval / signing.</li>
+              <li><strong>Issued</strong> — signed and ready; download the certificate and
+                  its chain (and the key, for Generate jobs).</li>
+              <li><strong>Error</strong> — signing failed; open the job to see why.</li>
+            </ul>
+            <p>Open a job to see its full detail: the subject, SANs, serial, the CSR, and
+               the issued certificate. Depending on your role and the template you may also
+               see actions to <strong>cancel</strong> a pending request, <strong>revoke</strong>
+               an issued certificate, or <strong>renew</strong> one that's nearing expiry.</p>
+            <p>Jobs assigned to a group are visible to that group's members; personal jobs
+               are visible only to you and administrators.</p>
+          </section>
+
+          <section data-page="signing" data-title="Signing queue" data-group="Dashboard" hidden>
+            <h3>Signing queue</h3>
+            <p>Visible to <em>signers</em> and administrators. This is the approval queue:
+               pending requests waiting for a human to authorize issuance.</p>
+            <ul>
+              <li>Review the request — subject, SANs, requester, and template policy.</li>
+              <li>Choose <strong>Approve &amp; sign</strong> to issue it against the
+                  template's configured CA backend (e.g. OpenBao, ACME, or an enterprise CA).</li>
+              <li>The signing CA key never sits on the app server — the dashboard only asks
+                  the backend to sign, and every approval is written to the audit log.</li>
+            </ul>
+            <p>Templates can also be set to <em>auto-sign</em>, in which case matching
+               requests skip this queue and issue immediately.</p>
+          </section>
+
+          <section data-page="fleet" data-title="Fleet certs" data-group="Dashboard" hidden>
+            <h3>Fleet certs</h3>
+            <p>An inventory of the certificates you and your groups are responsible for —
+               both ones issued here and any you're tracking. Use it to stay ahead of
+               expirations.</p>
+            <ul>
+              <li>See each certificate's subject, issuer, and <strong>days until expiry</strong>,
+                  with near-expiry items highlighted.</li>
+              <li>Renew issued certificates directly when a template supports it, or let
+                  automated renewal handle them in the background.</li>
+            </ul>
+          </section>
+
+          <section data-page="mygroups" data-title="My groups" data-group="Dashboard" hidden>
+            <h3>My groups</h3>
+            <p>Groups let a team share certificate requests. Jobs assigned to a group are
+               visible to every member, so coverage doesn't depend on one person.</p>
+            <ul>
+              <li>See the groups you belong to and their members.</li>
+              <li>When creating a request, pick a group in the assignment dropdown to share
+                  it; leave it blank for a personal job.</li>
+            </ul>
+            <p>Administrators create groups and manage membership from
+               <em>Admin → Groups</em>.</p>
+          </section>
+
+          <section data-page="usertemplates" data-title="Templates" data-group="Dashboard" hidden>
+            <h3>Templates</h3>
+            <p>A read-only view of the certificate <em>templates</em> available to you. A
+               template is a reusable recipe that decides:</p>
+            <ul>
+              <li>the certificate's <strong>purpose</strong> (server, client, etc.) and key type;</li>
+              <li>the <strong>allowed names / domains</strong> and validity period;</li>
+              <li>which <strong>CA backend</strong> signs it and whether issuance needs
+                  approval or is automatic.</li>
+            </ul>
+            <p>Pick the template that matches what you're requesting on the
+               <em>Create requests</em> page. Administrators define templates under
+               <em>Admin → Templates</em>.</p>
+          </section>
+
+          <section data-page="admin-overview" data-title="Overview" data-group="Administration" hidden>
+            <h3>Admin · Overview</h3>
+            <p>The administrator's home: a snapshot of system status and recent activity —
+               job counts by state, user and group totals, and any items needing attention.</p>
+            <p>Use the Admin navigation to configure the rest of the system. A good
+               first-run order on a new deployment: <em>CSR Subject</em> → <em>Templates</em>
+               → <em>Signing / CA</em> → <em>Authentication</em> → <em>Users</em>.</p>
+          </section>
+
+          <section data-page="admin-users" data-title="Users" data-group="Administration" hidden>
+            <h3>Admin · Users</h3>
+            <p>Manage who can use the dashboard and what they can do.</p>
+            <ul>
+              <li><strong>Roles:</strong> grant <em>admin</em> (full configuration) or
+                  <em>signer</em> (may approve &amp; sign in the queue).</li>
+              <li><strong>Status:</strong> activate, deactivate, or approve users who
+                  registered and are pending.</li>
+              <li>In local-auth mode users have a <code>first.last</code> username; with
+                  CAC/mTLS they're identified by their certificate DN.</li>
+            </ul>
+          </section>
+
+          <section data-page="admin-authentication" data-title="Authentication" data-group="Administration" hidden>
+            <h3>Admin · Authentication</h3>
+            <p>Controls how people sign in. A host runs <strong>one</strong> mode:</p>
+            <ul>
+              <li><strong>local</strong> — username + password, with optional
+                  self-registration.</li>
+              <li><strong>mTLS / CAC</strong> — client-certificate (smart-card) login.</li>
+            </ul>
+            <p>For self-registration you can require admin approval and restrict sign-ups to
+               one or more <strong>trusted email domains</strong> (comma-separated, e.g.
+               <code>example.com, mail.mil</code>). You can also set a
+               <strong>login banner</strong> (a consent/notice users must accept), choosing a
+               preset or custom text.</p>
+            <p><strong>Caution:</strong> don't switch to mTLS until CAC login is proven
+               working, or you can lock everyone out — the app requires an explicit confirm.</p>
+          </section>
+
+          <section data-page="admin-groups" data-title="Groups" data-group="Administration" hidden>
+            <h3>Admin · Groups</h3>
+            <p>Create groups and assign members so teams can share certificate requests.</p>
+            <ul>
+              <li>Add or remove members and set their role within the group.</li>
+              <li>Members then see group-assigned jobs on their Dashboard and can pick the
+                  group when creating requests.</li>
+            </ul>
+          </section>
+
+          <section data-page="admin-templates" data-title="Templates" data-group="Administration" hidden>
+            <h3>Admin · Templates</h3>
+            <p>Define the certificate <em>templates</em> users request against. Each
+               template sets the policy and the signing path:</p>
+            <ul>
+              <li><strong>Subject &amp; SAN policy</strong> — allowed names/domains, key
+                  type, validity (TTL).</li>
+              <li><strong>Signing backend</strong> — which CA issues it (manual upload,
+                  OpenBao, ACME, or an enterprise CA), plus the backend's role/options.</li>
+              <li><strong>Approval</strong> — require a signer's <em>Approve &amp; sign</em>,
+                  or <em>auto-sign</em> on request.</li>
+              <li><strong>Auto-renew</strong> — let the background renewer reissue before
+                  expiry.</li>
+            </ul>
+            <p>Only one signing producer runs per template, so a job is never signed twice.</p>
+          </section>
+
+          <section data-page="admin-webhooks" data-title="Integrations" data-group="Administration" hidden>
+            <h3>Admin · Integrations</h3>
+            <p>Send notifications to chat when jobs change — issued, failed, or assigned.</p>
+            <ul>
+              <li>Supports <strong>Slack, Microsoft Teams, Discord</strong>, and generic
+                  <strong>webhooks</strong>.</li>
+              <li>Messages include a deep link back to the job and the assignee/group.</li>
+              <li>Slack can be made <em>interactive</em> (assign a job from Slack) over an
+                  HTTP endpoint or Socket Mode.</li>
+            </ul>
+            <p>Secrets (tokens, signing secrets) are provided through the server
+               environment, not stored in the UI.</p>
+          </section>
+
+          <section data-page="admin-email" data-title="Email" data-group="Administration" hidden>
+            <h3>Admin · Email</h3>
+            <p>Configure how the dashboard emails requesters (issued/expiry notices).</p>
+            <ul>
+              <li>Choose a delivery method — SMTP relay, a mail API, or <strong>None</strong>
+                  to disable email entirely.</li>
+              <li>Fill in the method-specific fields (host/port, from-address, base URL used
+                  in links).</li>
+            </ul>
+            <p>On an IP-whitelisted relay, no auth is needed — just ensure the relay accepts
+               this server's address.</p>
+          </section>
+
+          <section data-page="admin-signingca" data-title="Signing / CA" data-group="Administration" hidden>
+            <h3>Admin · Signing / CA</h3>
+            <p>Connect the certificate authorities the dashboard signs against, and test them
+               before use.</p>
+            <ul>
+              <li><strong>Backends:</strong> OpenBao/Vault PKI, ACME (Let's Encrypt, step-ca,
+                  commercial), and enterprise CAs (Microsoft AD CS, EJBCA, Venafi, AWS
+                  Private CA), plus cloud DNS-01 solvers for ACME.</li>
+              <li><strong>Test connection</strong> to confirm credentials and reachability
+                  before pointing a template at a backend.</li>
+              <li>Optionally run the dashboard's own <strong>ACME server</strong> so certbot
+                  / cert-manager can enroll directly.</li>
+              <li>Issued certificates can be <strong>revoked</strong>, with CRL/OCSP where the
+                  backend supports it.</li>
+            </ul>
+            <p>Credentials live in the server environment; this page holds only non-secret
+               connection settings.</p>
+          </section>
+
+          <section data-page="admin-csrsubject" data-title="CSR Subject" data-group="Administration" hidden>
+            <h3>Admin · CSR Subject</h3>
+            <p>Set the organization-wide certificate <em>subject</em> defaults so requesters
+               don't have to: country, state, locality, organization, organizational units,
+               and domain suffix.</p>
+            <ul>
+              <li>Choose an <strong>org profile</strong> or define your own; a live preview
+                  shows the resulting Distinguished Name.</li>
+              <li>These values seed every new request, keeping issued certificates
+                  consistent.</li>
+            </ul>
+            <p>This is part of first-run setup (the OOBE) on a fresh deployment.</p>
+          </section>
+
+          <section data-page="admin-cleanup" data-title="Job cleanup" data-group="Administration" hidden>
+            <h3>Admin · Job cleanup</h3>
+            <p>Keep the job list tidy by retiring old, completed jobs according to a retention
+               policy. Review what would be removed before purging. Issued certificates and
+               the audit trail are preserved per your settings.</p>
+          </section>
+
+          <section data-page="admin-orphans" data-title="Orphaned files" data-group="Administration" hidden>
+            <h3>Admin · Orphaned files</h3>
+            <p>Finds key/certificate files on disk that no longer have a matching database
+               record (or vice-versa) — usually leftovers from interrupted operations. Review
+               the list and clean them up to keep storage and state in sync.</p>
+          </section>
+
+          <section data-page="admin-feedback" data-title="Feedback" data-group="Administration" hidden>
+            <h3>Admin · Feedback</h3>
+            <p>Read feedback users submit with the header <em>Feedback</em> button. New
+               items are flagged on the Admin navigation so you don't miss them.</p>
+          </section>
+
+          <section data-page="admin-audit" data-title="Audit log" data-group="Administration" hidden>
+            <h3>Admin · Audit log</h3>
+            <p>A searchable, append-only record of significant actions — logins, request
+               creation, approvals and signings (with actor, job, role, and serial),
+               revocations, and configuration changes. Use it for compliance review and
+               incident investigation.</p>
+          </section>
+
+          <section data-page="admin-license" data-title="License" data-group="Administration" hidden>
+            <h3>Admin · License</h3>
+            <p>Shows the active edition and installs your license.</p>
+            <ul>
+              <li><strong>Community</strong> (free) covers the core request → sign → issue
+                  workflow via the open-source CA. <strong>Commercial</strong> and
+                  <strong>Government</strong> editions unlock additional CA backends, the
+                  ACME server, automated renewal, integrations, and the public-sector pack.</li>
+              <li>Paste a license to upgrade; it's verified <strong>offline</strong> against an
+                  embedded key, so even air-gapped sites stay licensed without contacting a
+                  server.</li>
+              <li>A renewal reminder appears here and in the header banner as a license nears
+                  expiry.</li>
+            </ul>
+          </section>
+
+        </div>
+      </div>
+    </div>
+    <div class="guide-foot">
+      <button class="btn secondary" type="button" data-guide-prev>‹ Previous</button>
+      <button class="btn primary" type="button" data-guide-next>Next ›</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.1-core.js"></script>
 <script src="app.2-jobs.js"></script>
 <script src="app.3-admin.js"></script>
 <script src="app.4-misc-boot.js"></script>
+<script src="app.5-guide.js"></script>
 </body>
 </html>
