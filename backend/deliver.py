@@ -16,9 +16,17 @@ P1 provider: `openbao` (write the bundle to OpenBao/Vault KV v2). The `ssh`
 host-push provider lands in P1-B. Connection secrets come from the environment /
 sign.py's OpenBao login; this module stores no secrets.
 """
+import os
+import re
+import subprocess
+import tempfile
+
 import sign
 
 _get_setting = None
+# A destination hostname must be a plain host/FQDN - it's interpolated into the
+# remote scp path, so reject anything with shell-significant characters.
+_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,253}$")
 
 
 def configure(get_setting=None):
@@ -76,8 +84,77 @@ def _deliver_openbao(job):
     return f"openbao:{kv_mount}/{base}/{host}"
 
 
+def _openbao_kv_read(path):
+    """Read a KV v2 secret's data dict at <kv_mount>/<path>; {} if empty."""
+    addr, _pki = sign._openbao_addr_mount()
+    if not addr:
+        raise DeliveryError("OpenBao address is not configured")
+    mount = (_get("delivery_openbao_kv_mount", "secret")).strip("/")
+    token = sign._openbao_login(addr)
+    try:
+        d = sign._http(f"{addr}/v1/{mount}/data/{path}", token=token)
+    except sign.SignError as e:
+        raise DeliveryError(f"Vault read of {mount}/{path} failed: {e}")
+    return ((d.get("data") or {}).get("data")) or {}
+
+
+def _deliver_ssh(job):
+    """Copy the cert (and key, per key_mode) to the destination host over SSH,
+    using a per-destination credential fetched from Vault
+    (secret/csr-delivery-ssh/<host>: username, private_key, optional port), then
+    run the template's optional reload command."""
+    host = (job.get("target_host") or "").strip()
+    if not _HOST_RE.match(host):
+        raise DeliveryError(f"invalid destination host: {host!r}")
+    cred = _openbao_kv_read("csr-delivery-ssh/" + host)
+    key = cred.get("private_key")
+    if not key:
+        raise DeliveryError(f"no SSH credential at secret/csr-delivery-ssh/{host}")
+    user = (cred.get("username") or "root").strip()
+    port = str(cred.get("port") or "22").strip()
+    remote_dir = (job.get("delivery_target") or "/etc/ssl/delivered").rstrip("/")
+    bundle = _job_bundle(job)
+
+    kf = tempfile.NamedTemporaryFile("w", delete=False, suffix=".key")
+    try:
+        kf.write(key if key.endswith("\n") else key + "\n")
+        kf.close()
+        os.chmod(kf.name, 0o600)
+        ssh = ["ssh", "-i", kf.name, "-p", port,
+               "-o", "StrictHostKeyChecking=accept-new",
+               "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+               f"{user}@{host}"]
+
+        def _put(content, name, mode):
+            dest = f"{remote_dir}/{name}"
+            p = subprocess.run(
+                ssh + [f"umask 077; cat > '{dest}' && chmod {mode} '{dest}'"],
+                input=content, capture_output=True, text=True, timeout=30)
+            if p.returncode != 0:
+                raise DeliveryError(f"write {name} failed: {(p.stderr or p.stdout)[:160]}")
+
+        _put(bundle["certificate"], host + ".crt", "0644")
+        shipped = "cert"
+        if bundle.get("private_key"):
+            _put(bundle["private_key"], host + ".key", "0600")
+            shipped = "cert+key"
+        reload_cmd = (job.get("delivery_reload") or "").strip()
+        if reload_cmd:
+            p = subprocess.run(ssh + [reload_cmd], capture_output=True,
+                               text=True, timeout=60)
+            if p.returncode != 0:
+                raise DeliveryError(f"reload failed: {(p.stderr or p.stdout)[:160]}")
+        return f"ssh:{user}@{host}:{remote_dir} ({shipped})"
+    finally:
+        try:
+            os.remove(kf.name)
+        except OSError:
+            pass
+
+
 PROVIDERS = {
     "openbao": _deliver_openbao,
+    "ssh": _deliver_ssh,
 }
 
 

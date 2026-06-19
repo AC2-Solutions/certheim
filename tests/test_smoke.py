@@ -247,6 +247,7 @@ def test_delivery_module(client):
     """deliver.py: no-op for 'none', cert-only bundle for key_mode=destination,
     and the openbao provider is capability-gated (premium)."""
     import deliver
+    assert "openbao" in deliver.PROVIDERS and "ssh" in deliver.PROVIDERS
     # a template with no delivery backend is a no-op
     assert deliver.deliver_job({"delivery_backend": "none"}) is None
     assert deliver.deliver_job({}) is None
@@ -280,6 +281,12 @@ def test_template_delivery_config(client):
     t = [x for x in client.get("/api/templates", headers=CAC).get_json()["templates"]
          if x["id"] == tid][0]
     assert t["delivery_backend"] == "openbao" and t["delivery_target"] == "csr-certs/test"
+    # ssh backend + reload command round-trip
+    ssh = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE, data=json.dumps({
+        "signer_backend": "manual", "delivery_backend": "ssh", "key_mode": "ship",
+        "delivery_target": "/etc/ssl/delivered", "delivery_reload": "sudo systemctl reload nginx"}))
+    assert ssh.status_code == 200 and ssh.get_json()["delivery_backend"] == "ssh"
+    assert ssh.get_json()["delivery_reload"] == "sudo systemctl reload nginx"
     # invalid enums rejected
     assert client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                       data=json.dumps({"delivery_backend": "bogus"})).status_code == 400

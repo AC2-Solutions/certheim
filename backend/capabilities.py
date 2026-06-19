@@ -52,6 +52,8 @@ CAPABILITIES = {
                           "desc": "Expose an ACME (RFC 8555) server for external clients"},
     "delivery.openbao": {"env": ["openbao"],
                           "desc": "Deliver issued certs to OpenBao / Vault KV"},
+    "delivery.ssh": {"env": ["openbao"],
+                          "desc": "Deliver issued certs to a host over SSH (creds from Vault)"},
     "lifecycle.auto_renew": {"env": [],
                           "desc": "Automated certificate renewal (licensed)"},
     "profiles.public_sector": {"env": [],
@@ -182,7 +184,7 @@ COMMERCIAL_CAPABILITIES = {
     # the dashboard as an ACME CA
     "ca.server.acme",
     # automated delivery of issued certs to destinations
-    "delivery.openbao",
+    "delivery.openbao", "delivery.ssh",
     # background automated renewal (on-demand renew via OpenBao stays free)
     "lifecycle.auto_renew",
     # connected integrations (basic SMTP email stays free)
