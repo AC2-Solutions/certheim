@@ -2169,7 +2169,9 @@ function _csrSubjectCfg() {
     state: document.getElementById("csrsubject-st").value.trim(),
     locality: document.getElementById("csrsubject-l").value.trim(),
     org: document.getElementById("csrsubject-o").value.trim(),
-    ous: [...document.querySelectorAll("#csrsubject-ou-chips [data-ou]")].map(c => c.dataset.ou),
+    // Only the chip <span> carries the OU - the delete <a> also has data-ou,
+    // so a bare [data-ou] selector would read every OU twice (duplicate OUs).
+    ous: [...document.querySelectorAll("#csrsubject-ou-chips span[data-ou]")].map(c => c.dataset.ou),
     domain_suffix: document.getElementById("csrsubject-domain").value.trim(),
   };
 }
