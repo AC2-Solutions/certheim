@@ -3,6 +3,18 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.20.1 — 2026-06-19
+
+_Released 2026-06-19. 1 change since v2.20.0._
+
+### Fixes & improvements
+
+- hide Administration guide pages from non-admin users (`de543a5`)
+  The in-app guide showed all 21 pages to everyone, including the 14 admin pages. Filter the
+  Administration group to admins only - regular users see just Getting started + the Dashboard
+  guides (they can't reach the admin screens anyway). Recomputed on each open so it tracks the
+  logged-in user.
+
 ## 2.20.0 — 2026-06-19
 
 _Released 2026-06-19. 1 change since v2.19.1._
