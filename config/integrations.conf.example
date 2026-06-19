@@ -9,7 +9,7 @@
 enabled = false
 
 # Base URL of the GitLab instance (no trailing slash).
-base_url = https://git.ac2solutions.com
+base_url = https://gitlab.example.com
 
 # Target signing project: numeric id OR url path "group/subgroup/name".
 project =

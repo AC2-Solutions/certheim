@@ -112,8 +112,8 @@ signer    → POST /api/jobs/<id>/sign  → policy check
 
 ## 6. OpenBao PKI setup (Phase 0)
 
-A dedicated mount keeps blast radius small. See
-`tools/v2-openbao-pki-phase0.sh` for the runnable, idempotent version.
+A dedicated mount keeps blast radius small. The steps below are idempotent; run
+them once against your OpenBao instance.
 
 1. **Mount:** enable `pki_csr/` (separate from any existing PKI), set
    `max_lease_ttl`.
@@ -121,9 +121,9 @@ A dedicated mount keeps blast radius small. See
    - *Spike:* `pki_csr/root/generate/internal` (self-contained internal root —
      proves the e2e mechanism).
    - *Production:* `pki_csr/intermediate/generate/internal` → sign the
-     intermediate CSR with the **AC2 root** (step-ca `ca.ac2.lan`, or the
-     offline AC2 root key) → `pki_csr/intermediate/set-signed`, so issued certs
-     chain to the already-trusted AC2 CA bundle. (Requires a CA-signing
+     intermediate CSR with the **the internal root CA** (step-ca `ca.example.com`, or the
+     offline the internal root CA key) → `pki_csr/intermediate/set-signed`, so issued certs
+     chain to the already-trusted internal CA bundle. (Requires a CA-signing
      provisioner/key; tracked as Phase 0.5.)
 3. **URLs:** set `pki_csr/config/urls` (issuing_certificates / crl_distribution
    / ocsp_servers) to the dashboard host so CRL/OCSP resolve.
@@ -168,8 +168,8 @@ No app-flow change between environments — only the backend + template policy.
 
 - **P0** — stand up `pki_csr` mount + role + scoped AppRole credential; prove a
   real (helper-generated) CSR signs end-to-end and the cert verifies against the
-  chain. *(script: `tools/v2-openbao-pki-phase0.sh`)*
-- **P0.5** — replace the internal root with an AC2-root-chained intermediate.
+  chain.
+- **P0.5** — replace the internal root with an internal-root-chained intermediate.
 - **P1** — `sign.py` + `POST /api/jobs/<id>/sign` + template migrations + admin
   "Signing / CA" tab; approval-gated, reusing `_attach_signed_cert()`.
 - **P2** — UI polish (Approve & sign, chain download), revoke + CRL/OCSP wiring,
@@ -177,7 +177,7 @@ No app-flow change between environments — only the backend + template policy.
 
 ## 10. Open questions
 
-- Where does the AC2 **root** sign the intermediate — a step-ca provisioner that
+- Where does the internal **root** sign the intermediate — a step-ca provisioner that
   permits CA certs, or the offline root key? (Blocks P0.5, not P0.)
 - AppRole vs JWT for the app credential (lean AppRole: no per-request IdP
   dependency on the air-gapped box).

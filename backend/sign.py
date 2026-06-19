@@ -78,7 +78,7 @@ def _cfg(setting_key, env_var, default=""):
 
 def _ssl_context():
     """TLS context, optionally pinned to the OpenBao CA. Falls back to the
-    system trust store (the app box trusts the AC2 root, which OpenBao chains
+    system trust store (the app box trusts the internal root CA, which OpenBao chains
     to). Verification is NEVER disabled."""
     ca_file = _cfg("openbao_ca_file", "CSR_OPENBAO_CA_FILE", "")
     if ca_file and os.path.isfile(ca_file):
