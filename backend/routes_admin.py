@@ -496,6 +496,17 @@ def admin_delete_orphan_key(name):
     log_event("admin_delete_orphan_key", "ok", name=name)
     return jsonify(ok=True)
 
+@bp.post("/api/admin/keys/migrate-to-vault")
+@require_admin
+@require_csrf
+def admin_migrate_keys_to_vault():
+    """Phase 4a: sweep legacy on-disk private keys into the credential manager."""
+    import keystore
+    result = keystore.migrate_host_keys()
+    log_event("admin_migrate_keys", "ok", actor=g.identity["dn"][:128], **{
+        k: v for k, v in result.items() if isinstance(v, int)})
+    return jsonify(result)
+
 @bp.get("/api/admin/orphans/certs")
 @require_admin
 def admin_list_orphan_certs():
@@ -806,6 +817,15 @@ def admin_set_template_signing(template_id):
         return jsonify(error=f"key_mode must be one of {list(deliver.KEY_MODES)}"), 400
     dtarget = (payload.get("delivery_target") or "").strip() or None
     dreload = (payload.get("delivery_reload") or "").strip() or None
+    # Key-handling Phase 3: per-template key-storage override ("" / "default" =
+    # inherit the global policy -> stored as NULL).
+    import keystore
+    kstore = (payload.get("key_storage") or "").strip()
+    if kstore in ("", "default"):
+        kstore = None
+    elif kstore not in keystore.KEY_STORAGE_MODES:
+        return jsonify(error="key_storage must be one of "
+                             f"{['default'] + list(keystore.KEY_STORAGE_MODES)}"), 400
     with db() as conn:
         if not conn.execute("SELECT 1 FROM cert_templates WHERE id = ?",
                             (template_id,)).fetchone():
@@ -814,18 +834,19 @@ def admin_set_template_signing(template_id):
             "UPDATE cert_templates SET signer_backend = ?, openbao_role = ?, "
             "max_ttl = ?, auto_sign = ?, auto_renew = ?, renew_before_days = ?, "
             "delivery_backend = ?, key_mode = ?, delivery_target = ?, "
-            "delivery_reload = ? WHERE id = ?",
+            "delivery_reload = ?, key_storage = ? WHERE id = ?",
             (backend, role, ttl, auto_sign, auto_renew, renew_days,
-             dbackend, key_mode, dtarget, dreload, template_id))
+             dbackend, key_mode, dtarget, dreload, kstore, template_id))
     log_event("template_signing", "update", template_id=template_id,
               backend=backend, auto_sign=auto_sign, auto_renew=auto_renew,
-              delivery=dbackend, key_mode=key_mode,
+              delivery=dbackend, key_mode=key_mode, key_storage=(kstore or "default"),
               actor=g.identity["dn"][:128])
     return jsonify(ok=True, template_id=template_id, signer_backend=backend,
                    openbao_role=role, max_ttl=ttl, auto_sign=bool(auto_sign),
                    auto_renew=bool(auto_renew), renew_before_days=renew_days,
                    delivery_backend=dbackend, key_mode=key_mode,
-                   delivery_target=dtarget, delivery_reload=dreload)
+                   delivery_target=dtarget, delivery_reload=dreload,
+                   key_storage=(kstore or "default"))
 
 
 # ----- CSR subject / organization identity (configurable, not hardcoded) -----

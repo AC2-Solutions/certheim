@@ -45,6 +45,33 @@ def policy():
     return p if p in KEY_STORAGE_MODES else DEFAULT_KEY_STORAGE
 
 
+def effective_mode(template_id):
+    """Resolve the key-storage mode for a job (Phase 3). Precedence:
+      1. the template's per-template key_storage override, if set;
+      2. the short-lived auto-rule - a template capped at <= key_return_once_max_ttl
+         seconds doesn't retain keys (return_once); 0 disables the rule;
+      3. the global key_storage policy.
+    """
+    glob = policy()
+    if not template_id:
+        return glob
+    from app import db
+    with db() as conn:
+        r = conn.execute("SELECT key_storage, max_ttl FROM cert_templates "
+                         "WHERE id = ?", (template_id,)).fetchone()
+    if not r:
+        return glob
+    if r["key_storage"] in KEY_STORAGE_MODES:
+        return r["key_storage"]
+    try:
+        thr = int(_get("key_return_once_max_ttl", "0") or 0)
+    except ValueError:
+        thr = 0
+    if thr > 0 and r["max_ttl"] and int(r["max_ttl"]) <= thr:
+        return "return_once"
+    return glob
+
+
 def vault_available():
     """Vault storage needs OpenBao configured (AppRole creds in the env)."""
     return bool(os.environ.get("CSR_OPENBAO_ROLE_ID", "").strip()
@@ -108,12 +135,14 @@ def _set_job(job_id, **cols):
 # --------------------------------------------------------------------------- #
 # Public API                                                                   #
 # --------------------------------------------------------------------------- #
-def secure_after_generate(job_id, key_name):
+def secure_after_generate(job_id, key_name, template_id=None):
     """Apply the key-storage policy to a freshly generated server key (called
-    right after the job is created). Returns the location: 'host' | 'vault' |
-    'returned'. Never raises - any vault failure leaves the key on the host."""
+    right after the job is created). The effective mode honors a per-template
+    override (Phase 3), else the global policy. Returns the location: 'host' |
+    'vault' | 'returned'. Never raises - any vault failure leaves the key on the
+    host."""
     from app import run_helper, log_event
-    mode = policy()
+    mode = effective_mode(template_id)
     if mode == "host" or not key_name:
         _set_job(job_id, key_storage="host")
         return "host"
@@ -177,6 +206,39 @@ def fetch_by_name(name):
         return fetch_for_job(dict(r))
     rc, pem, _ = run_helper(["get-key", name])
     return pem if rc == 0 else None
+
+
+def migrate_host_keys(limit=1000):
+    """Phase 4a: sweep legacy host-stored keys into the vault. For each job with a
+    host key and no vault path, read it via the helper, write it to OpenBao, shred
+    the host copy, and record the vault path. Lets the /root/sslcerts/private
+    keystore drain so it can be retired. Returns {migrated, failed, scanned}."""
+    from app import db, run_helper, log_event
+    if not vault_available():
+        return {"migrated": 0, "failed": 0, "scanned": 0, "error": "vault not configured"}
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, local_key_name FROM jobs WHERE has_local_key = 1 "
+            "AND local_key_name IS NOT NULL AND key_vault_path IS NULL LIMIT ?",
+            (limit,)).fetchall()
+        jobs = [dict(r) for r in rows]
+    migrated = failed = 0
+    for j in jobs:
+        rc, pem, _ = run_helper(["get-key", j["local_key_name"]])
+        if rc != 0 or not (pem or "").strip():
+            _set_job(j["id"], has_local_key=0)      # host file already gone; tidy the flag
+            continue
+        try:
+            _put(j["id"], pem)
+        except Exception as e:  # noqa: BLE001
+            log_event("keystore", "migrate_fail", job_id=j["id"], error=str(e)[:160])
+            failed += 1
+            continue
+        run_helper(["delete-key", j["local_key_name"]])   # shred host copy
+        _set_job(j["id"], key_vault_path="certinel-keys/" + j["id"], key_storage="vault")
+        migrated += 1
+    log_event("keystore", "migrate_sweep", migrated=migrated, failed=failed, scanned=len(jobs))
+    return {"migrated": migrated, "failed": failed, "scanned": len(jobs)}
 
 
 def purge_for_job(job):

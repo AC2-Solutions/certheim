@@ -220,6 +220,15 @@ function editTemplateSigning(td, t) {
                value="${escapeHtml(t.delivery_reload || "")}">
       </span>
     </span>
+    <span class="sig-keystore-wrap" style="margin-left:8px"
+          title="Private-key storage for keys this template generates (overrides the global policy)">
+      <select class="sig-keystore form-input" style="width:auto;display:inline-block">
+        <option value="default">key store: default</option>
+        <option value="vault">key store: vault</option>
+        <option value="return_once">key store: return once</option>
+        <option value="host">key store: host</option>
+      </select>
+    </span>
     <button class="btn sig-save" style="padding:2px 10px">Save</button>
     <button class="link-btn sig-cancel">Cancel</button>
     <span class="sig-status status"></span>`;
@@ -235,6 +244,7 @@ function editTemplateSigning(td, t) {
   const delCfg = td.querySelector(".sig-deliver-cfg");
   delSel.value = t.delivery_backend || "none";
   td.querySelector(".sig-keymode").value = t.key_mode || "destination";
+  td.querySelector(".sig-keystore").value = t.key_storage || "default";
   const sshOnly = td.querySelector(".sig-ssh-only");
   const delTarget = td.querySelector(".sig-deliver-target");
   // Per-backend meaning of the "target" field; pull needs none.
@@ -276,6 +286,7 @@ function editTemplateSigning(td, t) {
       key_mode: td.querySelector(".sig-keymode").value,
       delivery_target: td.querySelector(".sig-deliver-target").value.trim(),
       delivery_reload: td.querySelector(".sig-deliver-reload").value.trim(),
+      key_storage: td.querySelector(".sig-keystore").value,
     };
     setStatus(td.querySelector(".sig-status"), "Saving…");
     const r = await jsonReq(`/admin/templates/${t.id}/signing`, {
@@ -558,6 +569,8 @@ async function loadSigningConfig() {
       .map(k => `<option value="${k}">${escapeHtml(KS_LABELS[k] || k)}</option>`).join("");
     ksSel.value = c.key_storage || "vault";
   }
+  const slEl = document.getElementById("signing-cfg-shortlived-ttl");
+  if (slEl) slEl.value = c.key_return_once_max_ttl || 0;
   const asc = c.acme_server_capability || {};
   document.getElementById("signing-acmesrv-cap").textContent =
     asc.available === false ? "⚠ not entitled here" + (asc.reason ? " — " + asc.reason : "") : "";
@@ -601,6 +614,18 @@ async function loadSigningConfig() {
   }
 }
 
+document.getElementById("keystore-migrate-btn")?.addEventListener("click", async () => {
+  const s = document.getElementById("keystore-migrate-status");
+  if (!confirm("Move all on-disk private keys into the credential manager and shred the host copies?")) return;
+  setStatus(s, "Migrating…");
+  const r = await jsonReq("/admin/keys/migrate-to-vault", { method: "POST" });
+  if (!r.ok) { setStatus(s, (r.body && r.body.error) || "Failed", "err"); return; }
+  const b = r.body || {};
+  setStatus(s, b.error ? b.error
+    : `migrated ${b.migrated}, failed ${b.failed} (scanned ${b.scanned})`,
+    b.error || b.failed ? "err" : "ok");
+});
+
 document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("signing-cfg-status");
   const ttlRaw = document.getElementById("signing-cfg-ttl").value.trim();
@@ -620,6 +645,8 @@ document.getElementById("signing-cfg-save-btn")?.addEventListener("click", async
       acme_server_enabled: document.getElementById("signing-cfg-acmesrv").checked,
       acme_server_base_url: document.getElementById("signing-cfg-acmesrv-url").value.trim(),
       key_storage: document.getElementById("signing-cfg-keystorage").value,
+      key_return_once_max_ttl:
+        parseInt(document.getElementById("signing-cfg-shortlived-ttl").value, 10) || 0,
       fields,
     }),
   });

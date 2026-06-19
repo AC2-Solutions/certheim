@@ -923,7 +923,16 @@
           recommended. <strong>Return once</strong> stores the key in the vault and destroys
           it after the first retrieval. <strong>Host keystore</strong> is the legacy on-disk
           store for air-gapped sites. Applied to keys Certinel generates; falls back to the
-          host keystore if no credential manager is configured.</p>
+          host keystore if no credential manager is configured. Override per template in
+          Admin → Templates.</p>
+        <label for="signing-cfg-shortlived-ttl" class="textarea-label" style="margin-top:8px">Short-lived auto-policy
+          <span class="hint">(templates capped at ≤ this many seconds don't retain keys; 0 = off)</span></label>
+        <input type="number" id="signing-cfg-shortlived-ttl" class="form-input" min="0"
+               style="max-width:200px" placeholder="0">
+        <div style="margin-top:8px">
+          <button id="keystore-migrate-btn" class="link-btn" type="button">Migrate existing on-disk keys to the vault →</button>
+          <span id="keystore-migrate-status" class="status"></span>
+        </div>
       </div>
 
       <div id="signing-renew-wrap" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#444)">
