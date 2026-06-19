@@ -18,7 +18,8 @@
   const overlay = document.getElementById("guide-overlay");
   if (!root || !overlay) return;
 
-  const pages = Array.from(root.querySelectorAll("[data-page]"));
+  const allPages = Array.from(root.querySelectorAll("[data-page]"));
+  let pages = allPages;   // active subset; Administration pages hidden for non-admins
   const tocEl = document.querySelector("[data-guide-toc]");
   const pglabel = document.querySelector("[data-guide-pglabel]");
   const prevBtn = document.querySelector("[data-guide-prev]");
@@ -73,8 +74,20 @@
     return n < 0 ? 0 : n;
   }
 
+  // Regular users only get the Getting-started + Dashboard guides; the
+  // Administration pages are admin-only (they can't reach those screens anyway).
+  // Recomputed on each open so it tracks the logged-in user.
+  function refreshPages() {
+    const isAdmin = !!(typeof currentUser !== "undefined" && currentUser && currentUser.is_admin);
+    pages = allPages.filter((p) =>
+      isAdmin || (p.getAttribute("data-group") || "") !== "Administration");
+    allPages.forEach((p) => { if (pages.indexOf(p) < 0) p.hidden = true; });
+    buildToc();
+  }
+
   function open(pageId) {
-    if (pageId) show(indexOfPage(pageId));
+    refreshPages();
+    show(pageId ? indexOfPage(pageId) : Math.min(idx, pages.length - 1));
     overlay.hidden = false;
     document.body.classList.add("guide-open");
   }
@@ -98,7 +111,7 @@
   // that page. Injected (not hand-placed in markup) so it stays in sync with
   // the pages above and never collides with a card-header's right-side controls.
   function injectPanelHelp() {
-    const ids = new Set(pages.map((p) => p.getAttribute("data-page")));
+    const ids = new Set(allPages.map((p) => p.getAttribute("data-page")));
     [["#main-panels", (dp) => dp], ["#admin-panels", (dp) => "admin-" + dp]]
       .forEach(([container, toId]) => {
         const host = document.querySelector(container);
@@ -122,7 +135,7 @@
       });
   }
 
-  buildToc();
+  refreshPages();   // build the (filtered) TOC for the current user
   injectPanelHelp();
   show(0);
 
