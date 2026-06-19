@@ -21,6 +21,7 @@ out on every request.
 """
 import base64
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -158,6 +159,37 @@ def entitlements():
     """Explicit entitlement keys from a currently-valid license (edition-derived
     grants are expanded by capabilities.edition_capabilities)."""
     return set(info().get("entitlements", []))
+
+
+_SECONDS_PER_DAY = 86400
+
+
+def expiry_notice(within_days):
+    """A renewal warning if a *valid* license expires within `within_days`,
+    else None. Drives the UI's renewal banner.
+
+    Returns None for: no/invalid license, the Community baseline, a perpetual
+    license (no `expires`), and one already expired (info() already flips an
+    expired license to Community, so this never fires past the expiry date).
+    Otherwise returns {days_left, expires, edition, customer}. days_left is the
+    whole-day countdown, rounded UP so a partial final day still counts (44.9
+    days left reads as "45"); a valid license therefore never reports 0 here
+    (info() flips an expired one to Community first)."""
+    i = info()
+    if not i.get("valid"):
+        return None
+    exp = i.get("expires")
+    if not exp:
+        return None
+    days_left = math.ceil((float(exp) - time.time()) / _SECONDS_PER_DAY)
+    if days_left > within_days:
+        return None
+    return {
+        "days_left": max(days_left, 0),
+        "expires": float(exp),
+        "edition": i.get("edition"),
+        "customer": i.get("customer"),
+    }
 
 
 def reset_cache():

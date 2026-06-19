@@ -468,7 +468,44 @@ async function loadMe() {
   }
   const sqBtn = document.getElementById("main-nav-signing");
   if (sqBtn) sqBtn.hidden = !(currentUser && (currentUser.is_signer || currentUser.is_admin));
+  _licenseNotice = currentUser ? (currentUser.license_notice || null) : null;
+  updateLicenseBanner();
 }
+
+// ===== License-renewal banner =====
+// The server (/api/me) only sends `license_notice` within the relevant window
+// (60 days for admins, 30 for everyone else). We additionally gate by the
+// *current view*, so the earlier 60-day warning stays on the Admin UI while the
+// main dashboard only warns inside 30 days. Dismiss is per browser session.
+let _licenseNotice = null;
+const _LICENSE_DISMISS_KEY = "csr-license-banner-dismissed";
+
+function updateLicenseBanner() {
+  const el = document.getElementById("license-banner");
+  if (!el) return;
+  const n = _licenseNotice;
+  if (!n || sessionStorage.getItem(_LICENSE_DISMISS_KEY) === "1") {
+    el.hidden = true;
+    return;
+  }
+  // Admin view active => 60-day window; main dashboard => 30 days.
+  const threshold = (adminView && !adminView.hidden) ? 60 : 30;
+  if (n.days_left > threshold) { el.hidden = true; return; }
+  const days = n.days_left;
+  const when = days <= 0 ? "today" : days === 1 ? "in 1 day" : `in ${days} days`;
+  const edition = n.edition ? n.edition.charAt(0).toUpperCase() + n.edition.slice(1) : "";
+  const cust = n.customer ? ` (${n.customer})` : "";
+  document.getElementById("license-banner-msg").textContent =
+    `Your ${edition} license${cust} expires ${when}. Renew it before it lapses `
+    + `to keep your licensed features — contact your vendor to obtain a new license.`;
+  el.hidden = false;
+}
+
+document.getElementById("license-banner-dismiss")?.addEventListener("click", () => {
+  sessionStorage.setItem(_LICENSE_DISMISS_KEY, "1");
+  const el = document.getElementById("license-banner");
+  if (el) el.hidden = true;
+});
 
 // ===== Settings modal =====
 allModalIds.push("settings-modal", "user-edit-modal");
@@ -518,6 +555,7 @@ function applyRoute() {
     navAdminBtn.classList.remove("active");
     const jobId = decodeURIComponent(location.hash.slice(5));
     if (jobId) openDetailModal(jobId);
+    updateLicenseBanner();
     return;
   }
   const wantAdmin = location.hash === "#admin" && currentUser && currentUser.is_admin;
@@ -534,6 +572,7 @@ function applyRoute() {
     navAdminBtn.classList.remove("active");
     if (location.hash === "#admin") location.hash = "";
   }
+  updateLicenseBanner();
 }
 navDashBtn.addEventListener("click", () => { location.hash = ""; });
 navAdminBtn.addEventListener("click", () => { location.hash = "#admin"; });

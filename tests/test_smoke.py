@@ -427,6 +427,43 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
         assert capabilities.available("profiles.public_sector") is False
 
 
+def test_license_renewal_notice(client, monkeypatch, tmp_path):
+    """/api/me surfaces a renewal notice as the license nears expiry (60-day
+    window for an admin); a comfortably-valid or absent license gives none."""
+    import json
+    import subprocess
+    import licensing
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    licensing.reset_cache()
+
+    def install(blob):
+        licensing.reset_cache()
+        return client.put("/api/admin/license", headers=WRITE,
+                          data=json.dumps({"license": blob}))
+
+    try:
+        # No license -> no notice (Community has nothing to renew).
+        assert client.get("/api/me", headers=CAC).get_json().get("license_notice") is None
+
+        # Expires in 200 days -> outside the 60-day admin window -> no notice.
+        assert install(_mint_license(priv, edition="government", days=200)).status_code == 200
+        assert client.get("/api/me", headers=CAC).get_json().get("license_notice") is None
+
+        # Expires in 20 days -> notice present with a sane day count + edition.
+        assert install(_mint_license(priv, edition="government", days=20)).status_code == 200
+        n = client.get("/api/me", headers=CAC).get_json().get("license_notice")
+        assert n is not None
+        assert n["edition"] == "government"
+        assert 19 <= n["days_left"] <= 20      # ceil of a hair under 20 days
+    finally:
+        client.delete("/api/admin/license", headers=WRITE)
+        licensing.reset_cache()
+
+
 def test_csr_subject_render_sanitizes():
     import csr_subject as s
     out = s.render_conf({"org": "X$(id)`whoami`;rm", "ous": ["DoD", "DoD", "A;B"],

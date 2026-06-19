@@ -1,5 +1,6 @@
 """routes_me blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, g, jsonify, request
+import licensing
 from app import (  # noqa: E402
     APP_VERSION, _is_signer, _validate_email, db, log_event, require_auth, require_csrf)
 bp = Blueprint("me", __name__)
@@ -10,12 +11,17 @@ bp = Blueprint("me", __name__)
 @bp.get("/api/me")
 @require_auth
 def get_me():
+    is_admin = bool(g.user["is_admin"])
+    # License-renewal reminder. Admins are warned earlier (60 days) so they can
+    # act; regular users only inside 30 days. The UI further confines the 60-day
+    # window to the Admin view (the main dashboard shows it only inside 30 days).
+    notice = licensing.expiry_notice(60 if is_admin else 30)
     return jsonify({
         "dn":           g.user["dn"],
         "cn":           g.user["cn"],
         "username":     g.user["username"] if "username" in g.user.keys() else None,
         "email":        g.user["email"],
-        "is_admin":     bool(g.user["is_admin"]),
+        "is_admin":     is_admin,
         "is_active":    bool(g.user["is_active"]),
         "is_signer":    _is_signer(g.user["dn"]),
         "tutorial_dismissed": bool(g.user["tutorial_dismissed"]),
@@ -23,6 +29,7 @@ def get_me():
         "last_seen_at": g.user["last_seen_at"],
         # how this request authenticated: "cac" | "local" | "none"
         "via":          (g.identity or {}).get("via", "none"),
+        "license_notice": notice,
         "version": APP_VERSION,
     })
 
