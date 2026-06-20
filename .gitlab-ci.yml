@@ -46,7 +46,7 @@ bash-syntax:
   script:
     - bash -n helper/csr_dashboard_helper.sh
     - for f in helper/csr_dashboard_helper.d/*.sh; do bash -n "$f"; done
-    - bash -n deploy.sh gather.sh tools/csrbackup.sh tools/release.sh
+    - bash -n deploy.sh gather.sh tools/csrbackup.sh tools/release.sh install/online-install.sh
     - echo "bash OK"
 
 js-syntax:
