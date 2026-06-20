@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""slack_listener.py - CSR Dashboard Slack interactivity over Socket Mode.
+"""slack_listener.py - Certinel Slack interactivity over Socket Mode.
 
 Outbound-only: dials OUT to Slack over a WebSocket, so it needs NO public
 exposure (no Request URL / tunnel). It activates only when the admin selects
@@ -25,8 +25,8 @@ JOB_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 def _db_path():
     val = os.environ.get("CSR_DB_PATH")
     if not val:
-        env = os.environ.get("CSR_DASHBOARD_ENV",
-                             "/etc/csr-dashboard/csr-dashboard.env")
+        env = os.environ.get("CERTINEL_ENV",
+                             "/etc/certinel/certinel.env")
         try:
             with open(env) as f:
                 for line in f:
@@ -36,7 +36,7 @@ def _db_path():
                         break
         except OSError:
             pass
-    return val or "/var/lib/csr-dashboard/jobs.db"
+    return val or "/var/lib/certinel/jobs.db"
 
 
 DB_PATH = _db_path()

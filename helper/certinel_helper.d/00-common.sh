@@ -1,6 +1,6 @@
 #!/bin/bash
 # 00-common.sh - paths, audit logging, generic file operations.
-# Sourced by csr_dashboard_helper.sh; never executed directly.
+# Sourced by certinel_helper.sh; never executed directly.
 
 # Certinel paths. The helper + its transient key scratch live off /root now
 # (Phase 4b) so the systemd sandbox can mask /home + /root. Data under /var/opt,
@@ -51,7 +51,7 @@ if [[ -r "$SUBJECT_CONF" ]]; then
     unset _k _v
 fi
 
-audit() { /usr/bin/logger -p authpriv.notice -t csr-dashboard-helper -- "$@"; }
+audit() { /usr/bin/logger -p authpriv.notice -t certinel-helper -- "$@"; }
 
 read_certlist() {
     local path="$1"

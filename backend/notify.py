@@ -3,7 +3,7 @@
 Plain SMTP over port 25 to an IP-whitelisted relay (e.g., an internal SMTP smarthost).
 No STARTTLS, no SSL, no authentication.
 
-Reads config from /etc/csr-dashboard/email.conf at import time. All
+Reads config from /etc/certinel/email.conf at import time. All
 public functions return (ok, reason) and never raise; SMTP failures
 must never break the calling endpoint.
 
@@ -33,7 +33,7 @@ import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
-CONFIG_PATH = Path("/etc/csr-dashboard/email.conf")
+CONFIG_PATH = Path("/etc/certinel/email.conf")
 
 # Supported delivery methods and the (non-secret + secret) fields each needs.
 # The admin UI shows a method dropdown and only the fields for the selection.
@@ -607,7 +607,7 @@ def get_settings():
 def save_settings(d):
     """Write new settings to email.conf and hot-reload. Returns (ok, reason).
     Preserves the OTHER methods' sections and any unchanged secret (a blank
-    api_key/password keeps the stored one). File must be csrapi-writable."""
+    api_key/password keeps the stored one). File must be certinel-writable."""
     cfg = configparser.ConfigParser()
     if CONFIG_PATH.exists():
         try:
@@ -648,7 +648,7 @@ def save_settings(d):
 
     try:
         with open(CONFIG_PATH, "w") as f:
-            f.write("# /etc/csr-dashboard/email.conf\n")
+            f.write("# /etc/certinel/email.conf\n")
             f.write("# Managed via the dashboard admin UI. Comments are not kept.\n")
             cfg.write(f)
     except OSError as e:

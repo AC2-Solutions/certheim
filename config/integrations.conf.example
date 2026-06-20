@@ -1,6 +1,6 @@
-# /etc/csr-dashboard/integrations.conf
+# /etc/certinel/integrations.conf
 # Managed via the dashboard admin UI (Admin > GitLab). Secrets (api_token,
-# webhook_secret) are written here mode 0640 owner csrapi. This example just
+# webhook_secret) are written here mode 0640 owner certinel. This example just
 # documents the shape; the live file is seeded by deploy.sh.
 
 [gitlab]

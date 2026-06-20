@@ -150,7 +150,7 @@ def _openbao_login(addr):
 def _sign_openbao(csr_pem, template):
     addr, mount = _openbao_addr_mount()
     role = (template or {}).get("openbao_role") or \
-        _cfg("openbao_default_role", "CSR_OPENBAO_ROLE", "csr-dashboard")
+        _cfg("openbao_default_role", "CSR_OPENBAO_ROLE", "certinel")
     token = _openbao_login(addr)
     payload = {"csr": csr_pem, "format": "pem"}
     ttl = (template or {}).get("max_ttl")
@@ -418,7 +418,7 @@ PROVIDERS = {
             {"key": "pki_mount", "setting": "openbao_pki_mount", "label": "PKI mount",
              "placeholder": "pki_csr"},
             {"key": "default_role", "setting": "openbao_default_role", "label": "Default role",
-             "placeholder": "csr-dashboard"},
+             "placeholder": "certinel"},
         ],
     },
     "cyberark": {
@@ -431,7 +431,7 @@ PROVIDERS = {
             {"key": "ca_id", "setting": "signing_cyberark_ca_id",
              "label": "Issuing CA / policy ID", "placeholder": "policy or CA identifier"},
             {"key": "app_id", "setting": "signing_cyberark_app_id",
-             "label": "Application ID", "placeholder": "csr-dashboard"},
+             "label": "Application ID", "placeholder": "certinel"},
         ],
     },
     "windows_ca": {
@@ -514,7 +514,7 @@ PROVIDERS = {
             {"key": "ee_profile", "setting": "ejbca_ee_profile",
              "label": "End-entity profile", "placeholder": "ENDUSER"},
             {"key": "username", "setting": "ejbca_username", "label": "Enrollment username",
-             "placeholder": "csr-dashboard"},
+             "placeholder": "certinel"},
         ],
     },
     "venafi": {
@@ -525,7 +525,7 @@ PROVIDERS = {
             {"key": "base_url", "setting": "venafi_base_url", "label": "TPP base URL",
              "placeholder": "https://tpp.example.com"},
             {"key": "policy_dn", "setting": "venafi_policy_dn", "label": "Policy folder (DN)",
-             "placeholder": "\\VED\\Policy\\Certificates\\CSR Dashboard"},
+             "placeholder": "\\VED\\Policy\\Certificates\\Certinel"},
         ],
     },
     "aws_pca": {

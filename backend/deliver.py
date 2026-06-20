@@ -341,7 +341,7 @@ def _deliver_k8s(job):
     # Server-side apply is idempotent (create or update) and needs no
     # resourceVersion; force=true claims fields from any prior manager.
     url = (f"{api}/api/v1/namespaces/{namespace}/secrets/{name}"
-           "?fieldManager=csr-dashboard&force=true")
+           "?fieldManager=certinel&force=true")
     status, _ = _https(
         "PATCH", url, body=body, ca_pem=ca_pem,
         headers={"Authorization": "Bearer " + tok,
@@ -377,7 +377,7 @@ def _deliver_webhook(job):
         "certificate": bundle["certificate"],
         **({"private_key": bundle["private_key"]} if bundle.get("private_key") else {}),
     })
-    headers = {"Content-Type": "application/json", "User-Agent": "csr-dashboard"}
+    headers = {"Content-Type": "application/json", "User-Agent": "certinel"}
     secret = cred.get("secret")
     if secret:
         sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()

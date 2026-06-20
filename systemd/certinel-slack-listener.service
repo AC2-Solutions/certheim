@@ -7,10 +7,10 @@ After=network-online.target certinel-api.service
 Wants=network-online.target
 
 [Service]
-User=csrapi
-Group=csrapi
-EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
-ExecStart=/opt/csr-dashboard/venv/bin/python /opt/csr-dashboard/slack_listener.py
+User=certinel
+Group=certinel
+EnvironmentFile=-/etc/certinel/certinel.env
+ExecStart=/opt/certinel/venv/bin/python /opt/certinel/slack_listener.py
 Restart=always
 RestartSec=10
 NoNewPrivileges=true

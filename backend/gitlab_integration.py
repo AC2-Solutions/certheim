@@ -1,4 +1,4 @@
-"""GitLab integration for the CSR Dashboard.
+"""GitLab integration for the Certinel.
 
 Bidirectional, issue-driven signing loop:
 
@@ -12,7 +12,7 @@ Bidirectional, issue-driven signing loop:
      the PEM and attaches it to the matching job. Closing the issue
      (Issue Hook, action=close) confirms completion.
 
-Config lives in /etc/csr-dashboard/integrations.conf (INI), managed from the
+Config lives in /etc/certinel/integrations.conf (INI), managed from the
 admin UI and writable by the service account. Secrets (api_token,
 webhook_secret) are never returned to the UI in clear. All public functions
 return (ok, ...) tuples and never raise into the request path.
@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CONFIG_PATH = Path("/etc/csr-dashboard/integrations.conf")
+CONFIG_PATH = Path("/etc/certinel/integrations.conf")
 API_TIMEOUT = 15
 
 # A PEM cert block pasted directly into an issue comment.
@@ -74,7 +74,7 @@ def _api(method, path, fields=None, token=None, full_url=None):
     tok = token or _get("api_token")
     url = full_url or f"{base}/api/v4{path}"
     data = urllib.parse.urlencode(fields, doseq=True).encode() if fields else None
-    headers = {"PRIVATE-TOKEN": tok, "User-Agent": "csr-dashboard/2.3"}
+    headers = {"PRIVATE-TOKEN": tok, "User-Agent": "certinel/2.3"}
     if data:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -138,7 +138,7 @@ def create_issue(job):
     group = job.get("group_name") or "—"
     title = f"CSR signing: {job.get('target_host')} ({job.get('id')})"
     description = (
-        "A certificate signing request awaits signing from the CSR Dashboard.\n\n"
+        "A certificate signing request awaits signing from the Certinel.\n\n"
         f"- **Target host:** `{job.get('target_host')}`\n"
         f"- **Job ID:** `{job.get('id')}`\n"
         f"- **Requested by:** {job.get('requester_cn') or '—'}"
@@ -256,7 +256,7 @@ def save_settings(d):
     }
     try:
         with open(CONFIG_PATH, "w") as f:
-            f.write("# /etc/csr-dashboard/integrations.conf - managed via the admin UI\n")
+            f.write("# /etc/certinel/integrations.conf - managed via the admin UI\n")
             cfg.write(f)
     except OSError as e:
         return False, f"could not write {CONFIG_PATH}: {e}"

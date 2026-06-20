@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""csr-set-auth - set authentication settings in the Certinel database.
+"""certinel-set-auth - set authentication settings in the Certinel database.
 
 Sets rows in the app_settings table (the same store the app reads via
 get_setting). Used by the installer to configure password-auth mode on a box
 without CAC mTLS, and usable by an admin from the CLI.
 
 Usage:
-  csr-set-auth --mode local --domain example.com [--require-approval]
-  csr-set-auth --mode mtls
-  csr-set-auth --show
+  certinel-set-auth --mode local --domain example.com [--require-approval]
+  certinel-set-auth --mode mtls
+  certinel-set-auth --show
 
 The DB must already exist (start certinel-api once so the schema is created).
 """
@@ -22,8 +22,8 @@ import sys
 def _db_path():
     val = os.environ.get("CSR_DB_PATH")
     if not val:
-        env = os.environ.get("CSR_DASHBOARD_ENV",
-                             "/etc/csr-dashboard/csr-dashboard.env")
+        env = os.environ.get("CERTINEL_ENV",
+                             "/etc/certinel/certinel.env")
         try:
             with open(env) as f:
                 for line in f:
@@ -33,7 +33,7 @@ def _db_path():
                         break
         except OSError:
             pass
-    return val or "/var/lib/csr-dashboard/jobs.db"
+    return val or "/var/lib/certinel/jobs.db"
 
 
 def _set(conn, key, value):

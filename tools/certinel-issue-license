@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""csr-issue-license - mint a signed Certinel license (VENDOR-side tool).
+"""certinel-issue-license - mint a signed Certinel license (VENDOR-side tool).
 
 Run ONLY on the machine that holds the vendor RSA private signing key - never on
 a customer/product box. The matching public key is embedded in the app
 (backend/licensing.py), which verifies the license offline.
 
-  ./tools/csr-issue-license --key vendor-private.pem \
+  ./tools/certinel-issue-license --key vendor-private.pem \
       --customer "Acme Gov Agency" --edition government \
       --entitlements profiles.public_sector --days 365
 

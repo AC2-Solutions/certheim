@@ -25,7 +25,7 @@ client ──TLS──> nginx ──> gunicorn ──> app.py (Flask)
 
 Two auth modes, one per box: **mtls/CAC** (trusts `X-Client-Verify` /
 `X-Client-DN` headers from nginx) or **local** (username/password session).
-CSRF is enforced via the `X-Requested-With: csr-dashboard` header on writes.
+CSRF is enforced via the `X-Requested-With: certinel` header on writes.
 
 ## Backend (`backend/`)
 

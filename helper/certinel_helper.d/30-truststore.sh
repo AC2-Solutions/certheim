@@ -1,6 +1,6 @@
 #!/bin/bash
 # 30-truststore.sh - install the Certinel CA trust bundle into THIS host's OS
-# trust store. Sourced by csr_dashboard_helper.sh; never executed directly.
+# trust store. Sourced by certinel_helper.sh; never executed directly.
 #
 # install_ca_bundle reads a PEM bundle (one or more CA certs) on stdin and adds
 # it to the host trust anchors, auto-detecting the platform tool:

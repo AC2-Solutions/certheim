@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""import_certs.py - import fleet-scanned certificates into the CSR Dashboard.
+"""import_certs.py - import fleet-scanned certificates into the Certinel.
 
 Reads a JSON file produced by the fleet-cert-scan playbook:
     [{"host": "web01.example.com",
@@ -14,8 +14,8 @@ changed since the last run (cert was renewed on-host), the expiry-warning
 tier is reset so warnings re-arm for the new cert. CA certificates
 (basicConstraints CA:TRUE) are skipped by default.
 
-Run as the csrapi user (the DB owner):
-    sudo -u csrapi python3 /opt/csr-dashboard/import_certs.py /tmp/fleet-certs.json
+Run as the certinel user (the DB owner):
+    sudo -u certinel python3 /opt/certinel/import_certs.py /tmp/fleet-certs.json
 
 Stdlib only - no Flask/venv required, though running under the venv python
 is also fine.
@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-DB_PATH = "/var/lib/csr-dashboard/jobs.db"
+DB_PATH = "/var/lib/certinel/jobs.db"
 
 EKU_TYPE_MAP = {
     "TLS Web Server Authentication": "web",
@@ -120,7 +120,7 @@ def parse_cert(pem):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Import fleet certs into the CSR Dashboard")
+    ap = argparse.ArgumentParser(description="Import fleet certs into the Certinel")
     ap.add_argument("json_file", help="JSON array of {host, path, pem}")
     ap.add_argument("--db", default=DB_PATH)
     ap.add_argument("--default-notify-email", default="",

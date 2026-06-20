@@ -17,7 +17,7 @@ Providers covered: **`openbao`** (write the cert bundle to Vault KV) and **`ssh`
   token:
   ```bash
   # on the dashboard host, using its env creds:
-  source /etc/csr-dashboard/csr-dashboard.env
+  source /etc/certinel/certinel.env
   TOK=$(curl -s --cacert "$CSR_OPENBAO_CA_FILE" -X POST \
     "$CSR_OPENBAO_ADDR/v1/auth/approle/login" \
     -d "{\"role_id\":\"$CSR_OPENBAO_ROLE_ID\",\"secret_id\":\"$CSR_OPENBAO_SECRET_ID\"}" \
@@ -25,7 +25,7 @@ Providers covered: **`openbao`** (write the cert bundle to Vault KV) and **`ssh`
   curl -s --cacert "$CSR_OPENBAO_CA_FILE" -H "X-Vault-Token: $TOK" \
     "$CSR_OPENBAO_ADDR/v1/auth/token/lookup-self" | python3 -m json.tool | grep -E 'role_name|policies'
   ```
-  In the AC2 reference deployment the role is **`csr-dashboard`**; substitute
+  In the AC2 reference deployment the role is **`certinel`**; substitute
   `<ROLE>` below.
 - A KV **v2** secrets engine (default mount `secret`). The provider writes to
   `secret/csr-certs/<host>` and (for ssh) reads `secret/csr-delivery-ssh/<host>`.
@@ -137,7 +137,7 @@ un-revoked** (they don't auto-expire).
 ## 5. Dashboard configuration
 
 1. **Env (optional)** — override the KV mount/base if not the defaults
-   (`secret` / `csr-certs`) in `/etc/csr-dashboard/csr-dashboard.env`:
+   (`secret` / `csr-certs`) in `/etc/certinel/certinel.env`:
    ```
    # delivery_openbao_kv_mount and delivery_openbao_base are app_settings,
    # set in the admin UI or seeded here; defaults are secret / csr-certs.
@@ -220,10 +220,10 @@ Writes the cert to the Conjur variable named by **target**, and the key (when
 env-only:
 
 ```
-# /etc/csr-dashboard/csr-dashboard.env
+# /etc/certinel/certinel.env
 CSR_CYBERARK_URL=https://conjur.example.com
 CSR_CYBERARK_ACCOUNT=myConjurAccount
-CSR_CYBERARK_LOGIN=host/csr-dashboard
+CSR_CYBERARK_LOGIN=host/certinel
 CSR_CYBERARK_API_KEY=<api-key>
 # CSR_CYBERARK_CA_CERT=<pem>   # optional, pin Conjur's TLS
 ```

@@ -127,11 +127,11 @@ them once against your OpenBao instance.
      provisioner/key; tracked as Phase 0.5.)
 3. **URLs:** set `pki_csr/config/urls` (issuing_certificates / crl_distribution
    / ocsp_servers) to the dashboard host so CRL/OCSP resolve.
-4. **Role:** `pki_csr/roles/csr-dashboard` — `allowed_domains`,
+4. **Role:** `pki_csr/roles/certinel` — `allowed_domains`,
    `allow_subdomains`, `server_flag`/`client_flag` (EKU), `key_usage`,
    `max_ttl`. **The role is the authoritative policy.**
 5. **Scoped app credential:** an ACL policy that allows **only**
-   `pki_csr/sign/csr-dashboard` (`update`) — no `issue`, no `root`/
+   `pki_csr/sign/certinel` (`update`) — no `issue`, no `root`/
    `intermediate`, no key read, no role write. Bind it to an **AppRole**
    (`role_id` + `secret_id`) or JWT (existing patterns:
    `openbao-gitlab-jwt`, `openbao-db-rotation-for-vm-services`). The app logs in
@@ -145,7 +145,7 @@ them once against your OpenBao instance.
   `audit_log` (actor, job, role, serial).
 - **Caps enforced twice** — TTL + allowed-domain/SAN/EKU in the OpenBao role
   (authoritative) and pre-checked in-app for a clean error.
-- **New egress** — `gunicorn (csrapi) → OpenBao` over TLS is new outbound on the
+- **New egress** — `gunicorn (certinel) → OpenBao` over TLS is new outbound on the
   STIG box: allow it in firewalld and for the service account
   (`httpd_can_network_connect` is already on; the app→OpenBao path is separate
   from nginx). Pin the OpenBao CA in the app's trust.

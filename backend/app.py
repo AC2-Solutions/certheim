@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CSR Dashboard API - Linux generation, manual signing, optional cert upload-back."""
+"""Certinel API - Linux generation, manual signing, optional cert upload-back."""
 import json
 import logging
 import logging.handlers
@@ -34,14 +34,14 @@ import sign
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
-# a single file to edit. Search order: $CSR_DASHBOARD_ENV, then the default
+# a single file to edit. Search order: $CERTINEL_ENV, then the default
 # path. Missing file is fine - sensible generic defaults below.
 # Format: plain KEY=value lines, # comments allowed, no shell
 # expansion (read with stdlib, so no python-dotenv dependency - matters for
 # the offline/air-gapped bundle).
 _ENV_DEFAULTS = {
-    "CSR_HELPER_PATH": "/opt/certinel/helper/csr_dashboard_helper.sh",
-    "CSR_DB_PATH": "/var/lib/csr-dashboard/jobs.db",
+    "CSR_HELPER_PATH": "/opt/certinel/helper/certinel_helper.sh",
+    "CSR_DB_PATH": "/var/lib/certinel/jobs.db",
     "CSR_ISSUED_DIR": "/var/opt/certinel/issued",
     "CSR_SESSION_TTL": "28800",          # 8h in seconds
     "CSR_MAX_CERTLIST_BYTES": "65536",
@@ -58,8 +58,8 @@ _ENV_DEFAULTS = {
 def _load_env_file():
     """Merge an optional KEY=value env file over os.environ over defaults."""
     values = dict(_ENV_DEFAULTS)
-    path = os.environ.get("CSR_DASHBOARD_ENV",
-                          "/etc/csr-dashboard/csr-dashboard.env")
+    path = os.environ.get("CERTINEL_ENV",
+                          "/etc/certinel/certinel.env")
     try:
         with open(path) as f:
             for line in f:
@@ -120,14 +120,14 @@ DOMAIN_RE = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 GROUP_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,63}$")
 
 # Cert types supported by the helper's generate-typed subcommand. Must match
-# CERT_TYPE_LIST in csr_dashboard_helper.d/10-certtypes.sh.
+# CERT_TYPE_LIST in certinel_helper.d/10-certtypes.sh.
 # "server-client" is a legacy alias accepted on input, expanded to client+web.
 CERT_TYPES_ALLOWED = ("web", "client", "email", "codesign",
                       "ipsec", "ocsp", "timestamp", "8021x")
 EXCLUSIVE_CERT_TYPES = {"codesign", "ocsp", "timestamp"}
 
 # Key algorithms the helper can generate. Must match KEY_ALGO_RE in
-# csr_dashboard_helper.d/20-generate.sh.
+# certinel_helper.d/20-generate.sh.
 KEY_ALGOS_ALLOWED = ("rsa2048", "rsa3072", "rsa4096", "ecdsa256", "ecdsa384")
 
 # Built-in templates seeded on first run, named after the familiar Windows
@@ -258,7 +258,7 @@ def _webhook_summary(event, data):
         "job.failed": "CSR request failed",
         "job.expired": "Certificate expiring soon",
         "feedback.submitted": "Feedback submitted",
-        "test": "Test notification from CSR Dashboard",
+        "test": "Test notification from Certinel",
     }
     title = titles.get(event, event)
     bits = []
@@ -405,7 +405,7 @@ def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
     body = json.dumps(payload).encode("utf-8")
     request_headers = {
         "Content-Type": "application/json",
-        "User-Agent": "csr-dashboard/2.2",
+        "User-Agent": "certinel/2.2",
     }
     if isinstance(headers, dict):
         for k, v in headers.items():
@@ -533,7 +533,7 @@ _h = logging.handlers.SysLogHandler(
     address="/dev/log",
     facility=logging.handlers.SysLogHandler.LOG_AUTHPRIV,
 )
-_h.setFormatter(logging.Formatter("csr-dashboard[%(process)d]: %(message)s"))
+_h.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
 audit.addHandler(_h)
 
 app = Flask(__name__)
@@ -1526,7 +1526,7 @@ def require_csrf(fn):
     @wraps(fn)
     def w(*a, **kw):
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
-            if request.headers.get("X-Requested-With") != "csr-dashboard":
+            if request.headers.get("X-Requested-With") != "certinel":
                 log_event(fn.__name__, "deny_csrf")
                 abort(403)
         return fn(*a, **kw)

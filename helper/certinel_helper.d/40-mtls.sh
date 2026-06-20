@@ -7,7 +7,7 @@
 # nginx config is tested before reload and rolled back on failure, so a bad
 # bundle/path can never take the site down.
 
-MTLS_FRAGMENT="/etc/nginx/csr-dashboard.d/10-mtls.conf"
+MTLS_FRAGMENT="/etc/nginx/certinel.d/10-mtls.conf"
 
 apply_mtls() {
     # args: mode(enforce|optional|off) [bundle_path]

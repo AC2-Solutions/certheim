@@ -1,6 +1,6 @@
 #!/bin/bash
 # 10-certtypes.sh - cert type profiles, combination rules, SAN handling,
-# and openssl config generation. Sourced by csr_dashboard_helper.sh.
+# and openssl config generation. Sourced by certinel_helper.sh.
 #
 # Type model:
 #   Combinable: web client email ipsec 8021x   (EKUs union into one cert)

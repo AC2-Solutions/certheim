@@ -9,7 +9,7 @@ key - no activation server, so it works fully air-gapped. A license is:
   payload    = {"customer","edition","entitlements":[...],"issued","expires"}
   signature  = RSA-SHA256 over the base64url(payload) bytes, signed by the
                vendor PRIVATE key (held only by the vendor; mint a license with
-               tools/csr-issue-license).
+               tools/certinel-issue-license).
 
 Source order: env CSR_LICENSE_FILE (a path on disk) wins, else the admin-uploaded
 blob in app_settings ('license_blob'). No valid license -> no premium
