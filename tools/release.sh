@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # release.sh - compute the next semantic version from Conventional Commits since
-# the last v* tag, and (if a release is warranted) update VERSION, CHANGELOG.md,
-# and RELEASE-NOTES-vX.Y.Z.md. The CALLER (the CI `release` job) does the git
-# commit + tag + push; this script only computes + writes files.
+# the last v* tag, and (if a release is warranted) update VERSION + CHANGELOG.md
+# (committed) and write a TRANSIENT RELEASE-NOTES-vX.Y.Z.md. The CALLER (the CI
+# `release` job) commits VERSION + CHANGELOG.md, tags, pushes, and uses the notes
+# file ONLY to populate the GitLab Release page - it is gitignored and never
+# committed (CHANGELOG.md is the durable in-tree history).
 #
 # Bump rules (https://www.conventionalcommits.org + SemVer):
 #   * a commit with `<type>!:` OR a `BREAKING CHANGE` body  -> MAJOR (x.0.0)

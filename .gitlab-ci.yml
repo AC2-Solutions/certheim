@@ -109,7 +109,10 @@ release:
           exit 0
         fi
         echo "Cutting v$ver (attempt $attempt)"
-        git add VERSION CHANGELOG.md "RELEASE-NOTES-v$ver.md"
+        # Commit only VERSION + CHANGELOG.md. RELEASE-NOTES-v$ver.md is still
+        # generated (used below to populate the GitLab Release page) but is
+        # gitignored and never committed - it doesn't belong in the tree.
+        git add VERSION CHANGELOG.md
         git commit -m "release: v$ver [skip ci]"
         git tag -a "v$ver" -m "CSR Dashboard v$ver"
         if git push origin "HEAD:${CI_DEFAULT_BRANCH}" && git push origin "v$ver"; then

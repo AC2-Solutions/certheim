@@ -42,3 +42,8 @@ desktop.ini
 secrets/
 .env
 .env.local
+
+# Per-release notes are transient: the CI release job generates one to populate
+# the GitLab Release page, but it is NOT committed (CHANGELOG.md is the durable
+# history). Keep them out of the tree.
+RELEASE-NOTES-v*.md
