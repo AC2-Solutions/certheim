@@ -21,10 +21,12 @@ subjects since the last `v*` tag and picks the bump:
 The highest applicable bump wins (one `feat` among several `fix`es → minor).
 
 The job then regenerates **`VERSION`**, prepends a section to **`CHANGELOG.md`**,
-writes **`RELEASE-NOTES-vX.Y.Z.md`**, commits (`release: vX.Y.Z [skip ci]`),
-**tags `vX.Y.Z`**, and creates a **GitLab Release** object (Deploy → Releases)
-using those notes as its description — so every release has notes, automatically,
-both in-repo and in the GitLab UI.
+commits those two (`release: vX.Y.Z [skip ci]`), **tags `vX.Y.Z`**, and creates a
+**GitLab Release** object (Deploy → Releases). It also generates a transient
+`RELEASE-NOTES-vX.Y.Z.md` to use as the Release description — that file is
+**gitignored and never committed** (it bloated the repo root). The durable,
+in-tree history is **`CHANGELOG.md`**; per-version notes live on the GitLab
+Releases page.
 
 ## So: write Conventional Commits
 
