@@ -3,6 +3,26 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.31.1 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v2.31.0._
+
+### Fixes & improvements
+
+- **install:** seed auth_mode in the DB (not a dead env var) + first-admin OOBE (`f6e889e`)
+  The installer wrote the auth choice to CSR_AUTH_MODE in the env file, but the app reads it from
+  the app_settings 'auth_mode' row (auth_mode() = get_setting() or 'mtls'). So a fresh local-auth
+  install came up in mTLS/CAC mode regardless of the choice. Also used AUTH_MODE=cac where the app
+  stores 'mtls'.
+  - AUTH_MODE is now 'mtls'|'local' (the app's values).
+  - Seed app_settings auth_mode (+ mtls_mode/path) after deploy, then restart the service so it
+    reads them. The dead CSR_AUTH_MODE env write is kept only as a record + clearly commented.
+  - First-admin OOBE: enable CSR_BOOTSTRAP_FIRST_ADMIN (first authenticated user on an empty table
+    becomes admin, self-disabling); local mode also opens self-registration so there's an account
+    to bootstrap. Completion message is now mode-aware (the old ip:127.0.0.1 hint never worked in
+    strict local mode).
+  Live-applied + verified on the certinel box: auth_mode=local, registration_open.
+
 ## 2.31.0 — 2026-06-20
 
 _Released 2026-06-20. 6 changes since v2.30.0._
