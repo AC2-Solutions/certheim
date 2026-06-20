@@ -453,6 +453,12 @@ if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$CSR_DB" ]]; then
     systemctl try-restart certinel-api.service 2>/dev/null || true
 fi
 
+# Post-install self-check: surface CHDIR/exec/SELinux/502/auth-gate/TLS issues
+# now, instead of when the operator first hits the login page. Non-fatal.
+echo ""
+log "Post-install health check (certinel-doctor)"
+bash "$REPO_ROOT/tools/certinel-doctor.sh" || warn "certinel-doctor reported problems above - review before using this host"
+
 echo ""
 echo "==================================================================="
 echo " Certinel online install COMPLETE for v$(cat VERSION 2>/dev/null || echo '?')"

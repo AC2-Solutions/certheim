@@ -1,0 +1,30 @@
+# Certinel doctor email alerts (Mailgun) - copy to /etc/certinel/doctor-alert.conf
+# and chmod 0600 root:root (it holds an API key).
+#
+# The certinel-doctor.timer runs the health check every ~15 min regardless; this
+# file only adds EMAIL on failure. Leave the three required values blank to keep
+# checks journal-only (no email). State-based: alerts on a healthy->FAIL change,
+# re-sends every RENOTIFY_HOURS while still failing, and sends a RECOVERED notice.
+
+# --- required for email ---
+ALERT_EMAIL=
+# Provide the Mailgun key/domain EITHER inline here, OR pull them from OpenBao/
+# Vault at runtime (recommended: rotate in OpenBao, no redeploy). For the OpenBao
+# path, set MAILGUN_OPENBAO_PATH below and leave these blank.
+MAILGUN_API_KEY=
+MAILGUN_DOMAIN=
+
+# --- OpenBao/Vault (optional; overrides the blanks above at runtime) ---
+# KV-v2 API path holding {api_key, domain}. openbao-fetch reads AppRole creds
+# from /etc/openbao/approle.env. Rotation = `bao kv put secret/mailgun api_key=NEW`.
+#MAILGUN_OPENBAO_PATH=secret/data/mailgun
+#MAILGUN_KEY_FIELD=api_key
+#MAILGUN_DOMAIN_FIELD=domain
+
+# --- optional ---
+# From header (default: "Certinel Monitor <certinel@$MAILGUN_DOMAIN>")
+#MAILGUN_FROM=Certinel Monitor <certinel@mg.example.com>
+# Mailgun region base URL (default US). EU accounts:
+#MAILGUN_BASE=https://api.eu.mailgun.net/v3
+# Hours between repeat alerts while a host stays unhealthy (default 24)
+#RENOTIFY_HOURS=24

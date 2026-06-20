@@ -83,10 +83,15 @@ MANIFEST=(
   "systemd/certinel-deliver.service     /etc/systemd/system/certinel-deliver.service     root:root 0644 systemd"
   "systemd/certinel-deliver.timer       /etc/systemd/system/certinel-deliver.timer       root:root 0644 systemd"
   "systemd/certinel-api.service          /etc/systemd/system/certinel-api.service          root:root 0644 systemd"
+  "systemd/certinel-doctor.service       /etc/systemd/system/certinel-doctor.service       root:root 0644 systemd"
+  "systemd/certinel-doctor.timer         /etc/systemd/system/certinel-doctor.timer         root:root 0644 systemd"
   "tools/certinel-backup.sh        /usr/local/sbin/certinel-backup                         root:root 0750 tools"
   "tools/certinel-bootstrap-admin /usr/local/sbin/certinel-bootstrap-admin               root:root 0750 tools"
   "tools/certinel-uninstall.sh    /usr/local/sbin/certinel-uninstall                      root:root 0750 tools"
   "tools/certinel-set-auth        /usr/local/sbin/certinel-set-auth                       root:root 0750 tools"
+  "tools/certinel-doctor.sh       /usr/local/sbin/certinel-doctor                         root:root 0750 tools"
+  "tools/certinel-doctor-alert.sh /usr/local/sbin/certinel-doctor-alert                   root:root 0750 tools"
+  "tools/openbao-fetch.sh         /usr/local/sbin/openbao-fetch                           root:root 0755 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
 MANIFEST+=("nginx/30-csr.conf /etc/nginx/certinel.d/30-csr.conf root:root 0644 nginx")
@@ -142,6 +147,11 @@ if [[ ! -f /etc/certinel/certinel.env && -f config/certinel.env.example ]]; then
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0640 \
         config/certinel.env.example /etc/certinel/certinel.env
     echo "seeded /etc/certinel/certinel.env from example - review it"
+fi
+if [[ ! -f /etc/certinel/doctor-alert.conf && -f config/doctor-alert.conf.example ]]; then
+    install -o root -g root -m 0600 \
+        config/doctor-alert.conf.example /etc/certinel/doctor-alert.conf
+    echo "seeded /etc/certinel/doctor-alert.conf (blank - add Mailgun creds to enable email alerts)"
 fi
 if [[ ! -f /etc/certinel/email.conf && -f config/email.conf.example ]]; then
     install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/certinel
@@ -236,7 +246,7 @@ if [[ "$changed_tags" == *systemd* ]]; then
     systemctl daemon-reload
     # Enable the periodic timers (idempotent). The .service units are oneshot,
     # triggered by their timers; we enable the timers, not the services.
-    systemctl enable --now certinel-expiry-warn.timer certinel-auto-renew.timer certinel-deliver.timer 2>/dev/null || true
+    systemctl enable --now certinel-expiry-warn.timer certinel-auto-renew.timer certinel-deliver.timer certinel-doctor.timer 2>/dev/null || true
 fi
 if [[ "$changed_tags" == *nginx* ]]; then
     # Validate before (re)loading - a bad config must not take nginx down.
