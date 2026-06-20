@@ -1641,10 +1641,11 @@ def test_truststore_targets_and_distribute_gated(client):
             client.delete(f"/api/admin/truststore/{c['id']}", headers=WRITE)
 
 
-def test_mtls_auth_settings(client):
-    """Admin-configurable nginx client-cert (mTLS): validation + persistence.
-    The actual nginx apply runs via the helper, which is absent in CI, so the
-    route stores the setting and reports mtls_applied=false rather than 500."""
+def test_mtls_auth_settings(client, monkeypatch):
+    """CAC/mTLS is a licensed capability (auth.cac): the auth-settings route
+    refuses to enable it (auth_mode=mtls or mtls_mode optional/enforce) without
+    the entitlement, and accepts it with one. nginx apply is best-effort (the
+    helper is absent in CI), so a valid set returns mtls_applied=false, not 500."""
     import json
     appmod = client._appmod
 
@@ -1652,31 +1653,33 @@ def test_mtls_auth_settings(client):
         return client.put("/api/admin/auth-settings", headers=WRITE, data=json.dumps(body))
 
     with appmod.app.app_context():
-        prev = {k: appmod.get_setting(k) for k in ("mtls_mode", "mtls_ca_bundle_path")}
+        prev = {k: appmod.get_setting(k) for k in ("mtls_mode", "mtls_ca_bundle_path", "auth_mode")}
     try:
-        # GET surfaces the mtls fields + the allowed modes
         s = client.get("/api/admin/auth-settings", headers=CAC).get_json()
         assert "mtls_mode" in s and s["mtls_modes"] == ["off", "optional", "enforce"]
 
-        # invalid mode -> 400
-        assert put({"mtls_mode": "bogus"}).status_code == 400
-        # enforce with no / bad path -> 400 (before any apply)
-        assert put({"mtls_mode": "enforce"}).status_code == 400
-        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "relative/x"}).status_code == 400
-        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/x; rm -rf /"}).status_code == 400
+        # --- Community (no entitlement): CAC/mTLS is gated (403) ---
+        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"}).status_code == 403
+        assert put({"mtls_mode": "optional"}).status_code == 403
+        assert put({"auth_mode": "mtls", "confirm_mtls": True}).status_code == 403
+        # turning client-certs OFF needs no license
+        assert put({"mtls_mode": "off"}).status_code == 200
 
-        # off persists; apply is best-effort (helper absent in CI -> applied=false)
-        r = put({"mtls_mode": "off"})
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("mtls_mode") == "off" and "mtls_applied" in body
-        assert client.get("/api/admin/auth-settings", headers=CAC).get_json()["mtls_mode"] == "off"
-
-        # a valid enforce path passes validation + persists (apply still best-effort)
-        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"}).status_code == 200
+        # --- licensed (Government / CAC add-on) via an explicit entitlement ---
+        monkeypatch.setenv("CSR_ENTITLEMENTS", "auth.cac")
+        assert put({"mtls_mode": "bogus"}).status_code == 400                                   # bad mode
+        assert put({"mtls_mode": "enforce"}).status_code == 400                                  # missing path
+        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/x; rm -rf /"}).status_code == 400  # bad path
+        r = put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"})
+        assert r.status_code == 200 and "mtls_applied" in r.get_json()
         gg = client.get("/api/admin/auth-settings", headers=CAC).get_json()
         assert gg["mtls_mode"] == "enforce" and gg["mtls_ca_bundle_path"] == "/etc/pki/dod/dod-cas.pem"
+        # auth_mode=mtls is now allowed too
+        assert put({"auth_mode": "mtls", "confirm_mtls": True}).status_code == 200
     finally:
+        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
         with appmod.app.app_context():
+            appmod.set_setting("auth_mode", prev.get("auth_mode") or "mtls")
             for k, v in prev.items():
                 appmod.set_setting(k, v if v is not None else "")

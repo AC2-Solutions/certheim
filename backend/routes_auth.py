@@ -1,6 +1,14 @@
 """routes_auth blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, g, jsonify, request, session
 import sqlite3, string, time
+import capabilities
+
+# CAC / client-cert mTLS is a licensed capability (Government edition, or a
+# Commercial add-on entitlement). Enabling it - the app's mtls auth mode or the
+# nginx client-cert verification - requires that entitlement.
+_CAC_LICENSED_ERR = ("CAC / mTLS is a licensed feature - it requires a "
+                     "Government license or the CAC add-on. Apply a license "
+                     "in Admin -> License, then enable it here.")
 from app import (  # noqa: E402
     APP_VERSION, BOOTSTRAP_FIRST_ADMIN, DOMAIN_RE, EMAIL_RE, LOCAL_SESSION_COOKIE, LOCAL_SESSION_TTL, LOCKOUT_SECONDS, LOCKOUT_THRESHOLD, LOGIN_BANNERS, NAME_RE, _get_or_create_session, _normalize_name_part, _sessions, _sessions_lock, _set_session_cookie, _upsert_user, auth_mode, banner_options, create_local_session, current_banner, db, derive_username, destroy_local_session, get_setting, hash_password, log_event, parse_trusted_domains, password_policy_errors, require_admin, require_auth, require_csrf, set_setting, verify_password)
 bp = Blueprint("auth", __name__)
@@ -233,6 +241,8 @@ def admin_set_auth_settings():
         # Guard: don't switch to mtls unless at least one CAC-capable admin
         # exists, or the operator could lock everyone out. We can't verify a
         # cert here, so require explicit confirm flag for the mtls switch.
+        if mode == "mtls" and not capabilities.available("auth.cac"):
+            return jsonify(error=_CAC_LICENSED_ERR), 403
         if mode == "mtls" and not payload.get("confirm_mtls"):
             return jsonify(error="enabling mTLS requires confirm_mtls=true; "
                                  "ensure CAC access works first"), 400
@@ -244,6 +254,8 @@ def admin_set_auth_settings():
         mmode = (payload.get("mtls_mode") or "off").strip()
         if mmode not in ("off", "optional", "enforce"):
             return jsonify(error="mtls_mode must be off|optional|enforce"), 400
+        if mmode in ("optional", "enforce") and not capabilities.available("auth.cac"):
+            return jsonify(error=_CAC_LICENSED_ERR), 403
         mpath = (payload.get("mtls_ca_bundle_path") or "").strip()
         if mmode == "enforce":
             ok_path = (mpath.startswith("/") and
