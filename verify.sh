@@ -60,6 +60,7 @@ PAIRS=(
   "tools/certinel-bootstrap-admin|/usr/local/sbin/certinel-bootstrap-admin"
   "tools/certinel-uninstall.sh|/usr/local/sbin/certinel-uninstall"
   "tools/certinel-set-auth|/usr/local/sbin/certinel-set-auth"
+  "tools/certinel-doctor.sh|/usr/local/sbin/certinel-doctor"
   "README.md|"
   ".gitignore|"
   ".gitlab-ci.yml|"

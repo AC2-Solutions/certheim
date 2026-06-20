@@ -87,6 +87,7 @@ MANIFEST=(
   "tools/certinel-bootstrap-admin /usr/local/sbin/certinel-bootstrap-admin               root:root 0750 tools"
   "tools/certinel-uninstall.sh    /usr/local/sbin/certinel-uninstall                      root:root 0750 tools"
   "tools/certinel-set-auth        /usr/local/sbin/certinel-set-auth                       root:root 0750 tools"
+  "tools/certinel-doctor.sh       /usr/local/sbin/certinel-doctor                         root:root 0750 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
 MANIFEST+=("nginx/30-csr.conf /etc/nginx/certinel.d/30-csr.conf root:root 0644 nginx")
