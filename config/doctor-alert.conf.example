@@ -8,8 +8,18 @@
 
 # --- required for email ---
 ALERT_EMAIL=
+# Provide the Mailgun key/domain EITHER inline here, OR pull them from OpenBao/
+# Vault at runtime (recommended: rotate in OpenBao, no redeploy). For the OpenBao
+# path, set MAILGUN_OPENBAO_PATH below and leave these blank.
 MAILGUN_API_KEY=
 MAILGUN_DOMAIN=
+
+# --- OpenBao/Vault (optional; overrides the blanks above at runtime) ---
+# KV-v2 API path holding {api_key, domain}. openbao-fetch reads AppRole creds
+# from /etc/openbao/approle.env. Rotation = `bao kv put secret/mailgun api_key=NEW`.
+#MAILGUN_OPENBAO_PATH=secret/data/mailgun
+#MAILGUN_KEY_FIELD=api_key
+#MAILGUN_DOMAIN_FIELD=domain
 
 # --- optional ---
 # From header (default: "Certinel Monitor <certinel@$MAILGUN_DOMAIN>")

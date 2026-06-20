@@ -91,6 +91,7 @@ MANIFEST=(
   "tools/certinel-set-auth        /usr/local/sbin/certinel-set-auth                       root:root 0750 tools"
   "tools/certinel-doctor.sh       /usr/local/sbin/certinel-doctor                         root:root 0750 tools"
   "tools/certinel-doctor-alert.sh /usr/local/sbin/certinel-doctor-alert                   root:root 0750 tools"
+  "tools/openbao-fetch.sh         /usr/local/sbin/openbao-fetch                           root:root 0755 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
 MANIFEST+=("nginx/30-csr.conf /etc/nginx/certinel.d/30-csr.conf root:root 0644 nginx")

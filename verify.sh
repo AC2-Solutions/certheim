@@ -64,6 +64,7 @@ PAIRS=(
   "tools/certinel-set-auth|/usr/local/sbin/certinel-set-auth"
   "tools/certinel-doctor.sh|/usr/local/sbin/certinel-doctor"
   "tools/certinel-doctor-alert.sh|/usr/local/sbin/certinel-doctor-alert"
+  "tools/openbao-fetch.sh|/usr/local/sbin/openbao-fetch"
   "README.md|"
   ".gitignore|"
   ".gitlab-ci.yml|"

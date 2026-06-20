@@ -14,6 +14,14 @@ STATE=/var/lib/certinel/.doctor-alert-state
 DOCTOR=/usr/local/sbin/certinel-doctor
 [[ -x "$DOCTOR" ]] || DOCTOR="$(cd "$(dirname "$0")" && pwd)/certinel-doctor.sh"
 [[ -r "$CONF" ]] && . "$CONF"
+# Optionally pull the Mailgun key/domain from OpenBao/Vault at RUNTIME so rotating
+# the secret is a single 'bao kv put' with no redeploy. Set MAILGUN_OPENBAO_PATH
+# (e.g. secret/data/mailgun) in the conf; openbao-fetch reads AppRole creds from
+# /etc/openbao/approle.env. A static MAILGUN_API_KEY in the conf still wins.
+if [[ -n "${MAILGUN_OPENBAO_PATH:-}" ]] && command -v openbao-fetch >/dev/null 2>&1; then
+    : "${MAILGUN_API_KEY:=$(openbao-fetch "$MAILGUN_OPENBAO_PATH" "${MAILGUN_KEY_FIELD:-api_key}" 2>/dev/null || true)}"
+    : "${MAILGUN_DOMAIN:=$(openbao-fetch "$MAILGUN_OPENBAO_PATH" "${MAILGUN_DOMAIN_FIELD:-domain}" 2>/dev/null || true)}"
+fi
 RENOTIFY_HOURS="${RENOTIFY_HOURS:-24}"
 MAILGUN_BASE="${MAILGUN_BASE:-https://api.mailgun.net/v3}"
 HOST="$(hostname -f 2>/dev/null || hostname)"
