@@ -20,7 +20,11 @@ ProtectSystem=full
 # rest under a home directory.
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /var/opt/certinel /etc/csr-dashboard
+# ProtectSystem=full makes /etc read-only; the (sudo'd) helper needs to write
+# the app-managed nginx mTLS fragment (/etc/nginx/csr-dashboard.d) and the host
+# trust anchors (/etc/pki/ca-trust, Trust store -> Install on this host), so
+# carve those two out as writable. Everything else under /etc stays read-only.
+ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /var/opt/certinel /etc/csr-dashboard /etc/nginx /etc/pki/ca-trust
 NoNewPrivileges=false
 
 # Resource limits
