@@ -77,15 +77,23 @@ case "${TLS_MODE,,}" in
   stepca)
     ask STEP_CA_URL         "  step-ca base URL" "https://ca.example.com"
     ask STEP_CA_FINGERPRINT "  step-ca root fingerprint" ""
+    # Guard against a truncated/ellipsis paste: a step-ca root fingerprint is
+    # exactly 64 hex chars (SHA-256). Reject anything else up front.
+    STEP_CA_FINGERPRINT="${STEP_CA_FINGERPRINT//[[:space:]]/}"
+    [[ "$STEP_CA_FINGERPRINT" =~ ^[0-9a-fA-F]{64}$ ]] \
+        || die "step-ca fingerprint must be 64 hex chars (got: '${STEP_CA_FINGERPRINT}'). Get it with: step certificate fingerprint root_ca.crt"
     ask STEP_PROVISIONER    "  step-ca provisioner" "acme"
     ask_secret STEP_PROV_PASSWORD "  provisioner password (JWK provisioners only)"
     ;;
 esac
 
 # C. Authentication
+# DOD_CA_BUNDLE is referenced by the nginx stanza in BOTH mTLS modes, so default
+# it unconditionally (set -u would otherwise abort when mTLS is off).
+DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
 ask ENABLE_MTLS "Enable CAC/mTLS auth? (else local username/password)" "no"
 if is_yes "$ENABLE_MTLS"; then
-    ask DOD_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "/etc/pki/dod/dod-cas.pem"
+    ask DOD_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "$DOD_CA_BUNDLE"
     AUTH_MODE=cac
 else
     AUTH_MODE=local
