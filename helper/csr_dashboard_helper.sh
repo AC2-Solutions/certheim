@@ -100,6 +100,10 @@ case "$cmd" in
         # Install the Certinel CA trust bundle (PEM on stdin) into this host.
         install_ca_bundle
         ;;
+    apply-mtls)
+        # Render the app-managed nginx client-cert (mTLS) fragment + reload.
+        apply_mtls "${1:-off}" "${2:-}"
+        ;;
     *)
         cat >&2 <<EOF
 Usage: $0 <subcommand> [args]
@@ -117,6 +121,7 @@ Usage: $0 <subcommand> [args]
   list-keys / get-key / delete-key <name>
   chown-issued / delete-issued <name>
   install-ca-bundle                 (reads PEM CA bundle on stdin)
+  apply-mtls <enforce|optional|off> [client-ca-bundle-path]
 EOF
         exit 64
         ;;

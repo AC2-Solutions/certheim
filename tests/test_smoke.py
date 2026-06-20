@@ -1639,3 +1639,44 @@ def test_truststore_targets_and_distribute_gated(client):
     for c in client.get("/api/admin/truststore", headers=CAC).get_json()["certs"]:
         if c["name"] == "Push Root":
             client.delete(f"/api/admin/truststore/{c['id']}", headers=WRITE)
+
+
+def test_mtls_auth_settings(client):
+    """Admin-configurable nginx client-cert (mTLS): validation + persistence.
+    The actual nginx apply runs via the helper, which is absent in CI, so the
+    route stores the setting and reports mtls_applied=false rather than 500."""
+    import json
+    appmod = client._appmod
+
+    def put(body):
+        return client.put("/api/admin/auth-settings", headers=WRITE, data=json.dumps(body))
+
+    with appmod.app.app_context():
+        prev = {k: appmod.get_setting(k) for k in ("mtls_mode", "mtls_ca_bundle_path")}
+    try:
+        # GET surfaces the mtls fields + the allowed modes
+        s = client.get("/api/admin/auth-settings", headers=CAC).get_json()
+        assert "mtls_mode" in s and s["mtls_modes"] == ["off", "optional", "enforce"]
+
+        # invalid mode -> 400
+        assert put({"mtls_mode": "bogus"}).status_code == 400
+        # enforce with no / bad path -> 400 (before any apply)
+        assert put({"mtls_mode": "enforce"}).status_code == 400
+        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "relative/x"}).status_code == 400
+        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/x; rm -rf /"}).status_code == 400
+
+        # off persists; apply is best-effort (helper absent in CI -> applied=false)
+        r = put({"mtls_mode": "off"})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("mtls_mode") == "off" and "mtls_applied" in body
+        assert client.get("/api/admin/auth-settings", headers=CAC).get_json()["mtls_mode"] == "off"
+
+        # a valid enforce path passes validation + persists (apply still best-effort)
+        assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"}).status_code == 200
+        gg = client.get("/api/admin/auth-settings", headers=CAC).get_json()
+        assert gg["mtls_mode"] == "enforce" and gg["mtls_ca_bundle_path"] == "/etc/pki/dod/dod-cas.pem"
+    finally:
+        with appmod.app.app_context():
+            for k, v in prev.items():
+                appmod.set_setting(k, v if v is not None else "")

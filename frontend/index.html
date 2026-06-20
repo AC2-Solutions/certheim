@@ -529,6 +529,27 @@
         </div>
       </div>
 
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border,#444)">
+        <label for="admin-mtls-mode" class="textarea-label">Client certificate (mTLS) verification
+          <span class="hint">(nginx edge; applied live to this host)</span></label>
+        <select id="admin-mtls-mode" class="form-input" style="max-width:380px">
+          <option value="off">Off — no client certificate requested</option>
+          <option value="optional">Optional — request, don't require (ip: fallback)</option>
+          <option value="enforce">Required — verify against a client-CA bundle</option>
+        </select>
+        <div id="admin-mtls-bundle-row" class="form-row" style="margin-top:8px" hidden>
+          <label for="admin-mtls-bundle">Client-CA bundle path
+            <span class="hint">(PEM on this host, e.g. the DoD CA bundle)</span></label>
+          <input type="text" id="admin-mtls-bundle" class="form-input"
+                 placeholder="/etc/pki/dod/dod-cas.pem">
+        </div>
+        <p class="hint" style="margin-top:4px">Certinel writes the nginx client-cert
+           config and reloads nginx (config‑tested, auto‑reverted if invalid). Use
+           <strong>Required</strong> with your CAC/DoD CA bundle to enforce certificates
+           at the edge; pair it with the CAC auth mode above.</p>
+        <p id="admin-mtls-status" class="hint"></p>
+      </div>
+
       <div class="row" style="margin-top:14px">
         <button id="admin-auth-save-btn" type="button">Save authentication settings</button>
       </div>

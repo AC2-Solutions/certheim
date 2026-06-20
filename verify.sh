@@ -47,6 +47,7 @@ PAIRS=(
   "helper/csr_dashboard_helper.d/10-certtypes.sh|/opt/certinel/helper/csr_dashboard_helper.d/10-certtypes.sh"
   "helper/csr_dashboard_helper.d/20-generate.sh|/opt/certinel/helper/csr_dashboard_helper.d/20-generate.sh"
   "helper/csr_dashboard_helper.d/30-truststore.sh|/opt/certinel/helper/csr_dashboard_helper.d/30-truststore.sh"
+  "helper/csr_dashboard_helper.d/40-mtls.sh|/opt/certinel/helper/csr_dashboard_helper.d/40-mtls.sh"
   "systemd/certinel-expiry-warn.service|/etc/systemd/system/certinel-expiry-warn.service"
   "systemd/certinel-expiry-warn.timer|/etc/systemd/system/certinel-expiry-warn.timer"
   "systemd/certinel-auto-renew.service|/etc/systemd/system/certinel-auto-renew.service"
