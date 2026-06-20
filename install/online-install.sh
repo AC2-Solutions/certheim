@@ -73,7 +73,13 @@ $interactive && echo "  (press Enter to accept each [default]; or pre-set any as
 # A. Identity & paths
 ask SERVICE_USER  "Service account (the app runs as this user)" "certinel"
 ask SERVICE_GROUP "Service account group" "$SERVICE_USER"
-ask PYBIN         "Python interpreter" "python3.12"
+# Pick the best Python present (3.12 preferred; RHEL/Alma 9 only ships 3.9).
+# Hardcoding python3.12 broke installs on el9 - detect instead of assume.
+_default_py=python3
+for _p in python3.12 python3.11 python3.10 python3.9 python3; do
+    command -v "$_p" >/dev/null 2>&1 && { _default_py="$_p"; break; }
+done
+ask PYBIN         "Python interpreter" "$_default_py"
 
 # B. Web & TLS
 _def_fqdn="$(hostname -f 2>/dev/null || hostname)"

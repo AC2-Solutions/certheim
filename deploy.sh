@@ -179,7 +179,10 @@ if command -v semanage >/dev/null 2>&1; then
 fi
 # fapolicyd must trust the relocated helper (exec + sourced parts).
 if [[ "$changed_tags" == *helper* ]] && command -v fapolicyd-cli >/dev/null 2>&1; then
-    fapolicyd-cli --file update /opt/certinel/helper/ || true
+    # 'add' on a fresh box, 'update' when the entry already exists (re-deploy).
+    # '--file update' alone errors with "not in the trust database" on install.
+    fapolicyd-cli --file add /opt/certinel/helper/ 2>/dev/null \
+        || fapolicyd-cli --file update /opt/certinel/helper/ 2>/dev/null || true
     fapolicyd-cli --update || true
 fi
 
@@ -190,7 +193,8 @@ if [[ "$changed_tags" == *frontend* ]]; then
     restorecon -Rv /var/www/csr/ || true
 fi
 if [[ "$changed_tags" == *backend* ]]; then
-    fapolicyd-cli --file update /opt/certinel/ || true
+    fapolicyd-cli --file add /opt/certinel/ 2>/dev/null \
+        || fapolicyd-cli --file update /opt/certinel/ 2>/dev/null || true
     fapolicyd-cli --update || true
 fi
 if [[ "$changed_tags" == *systemd* ]]; then
