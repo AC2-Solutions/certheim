@@ -3,6 +3,50 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.31.0 — 2026-06-20
+
+_Released 2026-06-20. 6 changes since v2.30.0._
+
+### Features
+
+- **auth:** app-managed nginx mTLS (client-cert) config in the admin UI (`5cafb43`)
+  Makes the CAC/mTLS client-CA bundle a real, admin-configurable setting instead of an install-time-
+  only nginx edit:
+  - Helper 40-mtls.sh 'apply-mtls <off|optional|enforce> [bundle_path]' renders a dedicated
+    /etc/nginx/csr-dashboard.d/10-mtls.conf fragment, nginx -t's it, and reloads - auto-reverting
+    on a bad config so a wrong bundle can never down the site.
+  - Admin -> Authentication gains a 'Client certificate (mTLS)' control (off / optional / required
+    + bundle path); PUT /api/admin/auth-settings stores the choice and applies it via the helper
+    (best-effort, reports mtls_applied).
+  - Installer writes mTLS as that app-managed fragment (NOT baked into the server block, so no
+    duplicate ssl_verify_client) and seeds mtls_mode/path into app_settings so the UI reflects the
+    install choice.
+  - Carries the earlier MR !71 fixes (DOD_CA_BUNDLE default + 64-hex fingerprint guard). New smoke
+    test; helper part added to deploy/verify manifests.
+
+### Fixes & improvements
+
+- **systemd:** let the helper write /etc/nginx + /etc/pki/ca-trust (`acca0a3`)
+  ProtectSystem=full makes /etc read-only for certinel-api and its sudo'd helper, so the new app-
+  managed mTLS apply (writes /etc/nginx/csr-dashboard.d/10-mtls.conf) and the Trust store 'Install
+  on this host' (writes /etc/pki/ca-trust anchors) failed with EROFS through the real sandboxed
+  service. Add both dirs to ReadWritePaths; the rest of /etc stays read-only. Proven via a sandbox
+  replica: without the carve-out the write fails 'Read-only file system'; with it, applied.
+- **install:** default DOD_CA_BUNDLE + validate step-ca fingerprint (`0725870`)
+  Two installer bugs hit during a live stepca/local-auth install:
+  - DOD_CA_BUNDLE was only set when ENABLE_MTLS=yes, but the nginx server-block stanza references
+    it in BOTH modes. Under `set -u` that aborted the install right after the cert was issued
+    ('DOD_CA_BUNDLE: unbound variable'). Default it unconditionally before the auth prompt.
+  - A step-ca root fingerprint pasted with an abbreviating ellipsis sailed through to `step ca
+    bootstrap`, which then 404'd ('root ... not found'). Strip whitespace and require exactly 64
+    hex chars, failing fast with a clear hint.
+
+### Other changes
+
+- **release:** RELEASING.md - notes file is transient, not committed (`9191e3f`)
+- **release:** stop committing per-release notes; drop the 37 in-tree files (`ec82772`)
+- Edit .gitignore (`9b57683`)
+
 ## 2.30.0 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v2.29.1._
