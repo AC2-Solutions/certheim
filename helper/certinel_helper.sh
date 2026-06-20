@@ -1,8 +1,8 @@
 #!/bin/bash
-# csr_dashboard_helper.sh - mediated root operations for the CSR dashboard
+# certinel_helper.sh - mediated root operations for the CSR dashboard
 #
 # This is the dispatcher. All implementation lives in numbered parts under
-# csr_dashboard_helper.d/ in the same directory, sourced in lexical order:
+# certinel_helper.d/ in the same directory, sourced in lexical order:
 #   00-common.sh     paths, audit, generic file operations
 #   10-certtypes.sh  cert type profiles, combination + SAN logic
 #   20-generate.sh   generate_typed pipeline
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELPER_D="$HELPER_DIR/csr_dashboard_helper.d"
+HELPER_D="$HELPER_DIR/certinel_helper.d"
 
 if [[ ! -d "$HELPER_D" ]]; then
     echo "ERROR: $HELPER_D not found - helper is not fully installed" >&2

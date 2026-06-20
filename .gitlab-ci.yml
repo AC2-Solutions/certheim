@@ -1,4 +1,4 @@
-# .gitlab-ci.yml - syntax gates for the csr-dashboard repo.
+# .gitlab-ci.yml - syntax gates for the certinel repo.
 #
 # Runs on a self-hosted shell runner (tag: shell).
 # The bare `python3` on a RHEL 8 runner is 3.6, which predates the walrus
@@ -44,9 +44,9 @@ python-syntax:
 bash-syntax:
   stage: lint
   script:
-    - bash -n helper/csr_dashboard_helper.sh
-    - for f in helper/csr_dashboard_helper.d/*.sh; do bash -n "$f"; done
-    - bash -n deploy.sh gather.sh tools/csrbackup.sh tools/release.sh install/online-install.sh
+    - bash -n helper/certinel_helper.sh
+    - for f in helper/certinel_helper.d/*.sh; do bash -n "$f"; done
+    - bash -n deploy.sh gather.sh tools/certinel-backup.sh tools/release.sh install/online-install.sh
     - echo "bash OK"
 
 js-syntax:
@@ -91,7 +91,7 @@ release:
         echo "RELEASE_TOKEN not set — skipping auto-release (set a write_repository token to enable)."
         exit 0
       fi
-      git config user.email "release-bot@csr-dashboard.local"
+      git config user.email "release-bot@certinel.local"
       git config user.name  "release-bot"
       git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
       # Rapid back-to-back merges run a `release` job each. They race on the push

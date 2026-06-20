@@ -1,5 +1,5 @@
 #!/bin/bash
-# deploy.sh - install the csr-dashboard repo contents to their live paths.
+# deploy.sh - install the certinel repo contents to their live paths.
 #
 # Usage:
 #   ./deploy.sh --diff     show what would change, touch nothing
@@ -24,58 +24,58 @@ done
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
 # Service account the app runs as. online-install.sh records the operator's
-# choice in /etc/csr-dashboard/install.conf; absent that we default to csrapi, so
+# choice in /etc/certinel/install.conf; absent that we default to certinel, so
 # existing deployments are unaffected. deploy substitutes it into file ownership
-# (the manifest's `:csrapi` group) and into the systemd units' User=/Group=.
-INSTALL_CONF=/etc/csr-dashboard/install.conf
+# (the manifest's `:certinel` group) and into the systemd units' User=/Group=.
+INSTALL_CONF=/etc/certinel/install.conf
 # shellcheck source=/dev/null
 [[ -r "$INSTALL_CONF" ]] && . "$INSTALL_CONF"
-SERVICE_USER="${SERVICE_USER:-csrapi}"
+SERVICE_USER="${SERVICE_USER:-certinel}"
 SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
 # src | dest | owner:group | mode | tag
 MANIFEST=(
-  "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
-  "backend/app.py            /opt/csr-dashboard/app.py                         root:csrapi 0640 backend"
-  "backend/notify.py         /opt/csr-dashboard/notify.py                      root:csrapi 0640 backend"
-  "backend/capabilities.py   /opt/csr-dashboard/capabilities.py                root:csrapi 0640 backend"
-  "backend/licensing.py      /opt/csr-dashboard/licensing.py                   root:csrapi 0640 backend"
-  "backend/sign.py           /opt/csr-dashboard/sign.py                        root:csrapi 0640 backend"
-  "backend/deliver.py        /opt/csr-dashboard/deliver.py                     root:csrapi 0640 backend"
-  "backend/keystore.py       /opt/csr-dashboard/keystore.py                    root:csrapi 0640 backend"
-  "backend/renew.py          /opt/csr-dashboard/renew.py                       root:csrapi 0640 backend"
-  "backend/acme_client.py    /opt/csr-dashboard/acme_client.py                 root:csrapi 0640 backend"
-  "backend/acme_dns.py       /opt/csr-dashboard/acme_dns.py                    root:csrapi 0640 backend"
-  "backend/ca_providers.py   /opt/csr-dashboard/ca_providers.py                root:csrapi 0640 backend"
-  "backend/acme_server.py    /opt/csr-dashboard/acme_server.py                 root:csrapi 0640 backend"
-  "backend/routes_acme.py    /opt/csr-dashboard/routes_acme.py                 root:csrapi 0640 backend"
-  "backend/routes_deliver.py /opt/csr-dashboard/routes_deliver.py              root:csrapi 0640 backend"
-  "backend/truststore.py     /opt/csr-dashboard/truststore.py                  root:csrapi 0640 backend"
-  "backend/routes_truststore.py /opt/csr-dashboard/routes_truststore.py        root:csrapi 0640 backend"
-  "backend/csr_subject.py    /opt/csr-dashboard/csr_subject.py                 root:csrapi 0640 backend"
-  "backend/routes_integrations.py /opt/csr-dashboard/routes_integrations.py    root:csrapi 0640 backend"
-  "backend/routes_feedback.py /opt/csr-dashboard/routes_feedback.py            root:csrapi 0640 backend"
-  "backend/routes_auth.py    /opt/csr-dashboard/routes_auth.py                 root:csrapi 0640 backend"
-  "backend/routes_jobs.py    /opt/csr-dashboard/routes_jobs.py                 root:csrapi 0640 backend"
-  "backend/routes_requests.py /opt/csr-dashboard/routes_requests.py            root:csrapi 0640 backend"
-  "backend/routes_groups.py  /opt/csr-dashboard/routes_groups.py               root:csrapi 0640 backend"
-  "backend/routes_me.py      /opt/csr-dashboard/routes_me.py                   root:csrapi 0640 backend"
-  "backend/routes_admin.py   /opt/csr-dashboard/routes_admin.py                root:csrapi 0640 backend"
-  "backend/routes_signing.py /opt/csr-dashboard/routes_signing.py              root:csrapi 0640 backend"
-  "backend/import_certs.py   /opt/csr-dashboard/import_certs.py                root:csrapi 0640 backend"
-  "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
-  "frontend/app.css          /var/www/csr/app.css                              root:nginx  0640 frontend"
-  "frontend/app.1-core.js    /var/www/csr/app.1-core.js                        root:nginx  0640 frontend"
-  "frontend/app.2-jobs.js    /var/www/csr/app.2-jobs.js                        root:nginx  0640 frontend"
-  "frontend/app.3-admin.js   /var/www/csr/app.3-admin.js                       root:nginx  0640 frontend"
-  "frontend/app.4-misc-boot.js /var/www/csr/app.4-misc-boot.js                 root:nginx  0640 frontend"
-  "frontend/app.5-guide.js   /var/www/csr/app.5-guide.js                       root:nginx  0640 frontend"
-  "helper/csr_dashboard_helper.sh /opt/certinel/helper/csr_dashboard_helper.sh root:root 0750 helper"
-  "helper/csr_dashboard_helper.d/00-common.sh    /opt/certinel/helper/csr_dashboard_helper.d/00-common.sh    root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/10-certtypes.sh /opt/certinel/helper/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/20-generate.sh  /opt/certinel/helper/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/30-truststore.sh /opt/certinel/helper/csr_dashboard_helper.d/30-truststore.sh root:root 0640 helper"
-  "helper/csr_dashboard_helper.d/40-mtls.sh       /opt/certinel/helper/csr_dashboard_helper.d/40-mtls.sh       root:root 0640 helper"
+  "VERSION                   /opt/certinel/VERSION                        root:certinel 0640 backend"
+  "backend/app.py            /opt/certinel/app.py                         root:certinel 0640 backend"
+  "backend/notify.py         /opt/certinel/notify.py                      root:certinel 0640 backend"
+  "backend/capabilities.py   /opt/certinel/capabilities.py                root:certinel 0640 backend"
+  "backend/licensing.py      /opt/certinel/licensing.py                   root:certinel 0640 backend"
+  "backend/sign.py           /opt/certinel/sign.py                        root:certinel 0640 backend"
+  "backend/deliver.py        /opt/certinel/deliver.py                     root:certinel 0640 backend"
+  "backend/keystore.py       /opt/certinel/keystore.py                    root:certinel 0640 backend"
+  "backend/renew.py          /opt/certinel/renew.py                       root:certinel 0640 backend"
+  "backend/acme_client.py    /opt/certinel/acme_client.py                 root:certinel 0640 backend"
+  "backend/acme_dns.py       /opt/certinel/acme_dns.py                    root:certinel 0640 backend"
+  "backend/ca_providers.py   /opt/certinel/ca_providers.py                root:certinel 0640 backend"
+  "backend/acme_server.py    /opt/certinel/acme_server.py                 root:certinel 0640 backend"
+  "backend/routes_acme.py    /opt/certinel/routes_acme.py                 root:certinel 0640 backend"
+  "backend/routes_deliver.py /opt/certinel/routes_deliver.py              root:certinel 0640 backend"
+  "backend/truststore.py     /opt/certinel/truststore.py                  root:certinel 0640 backend"
+  "backend/routes_truststore.py /opt/certinel/routes_truststore.py        root:certinel 0640 backend"
+  "backend/csr_subject.py    /opt/certinel/csr_subject.py                 root:certinel 0640 backend"
+  "backend/routes_integrations.py /opt/certinel/routes_integrations.py    root:certinel 0640 backend"
+  "backend/routes_feedback.py /opt/certinel/routes_feedback.py            root:certinel 0640 backend"
+  "backend/routes_auth.py    /opt/certinel/routes_auth.py                 root:certinel 0640 backend"
+  "backend/routes_jobs.py    /opt/certinel/routes_jobs.py                 root:certinel 0640 backend"
+  "backend/routes_requests.py /opt/certinel/routes_requests.py            root:certinel 0640 backend"
+  "backend/routes_groups.py  /opt/certinel/routes_groups.py               root:certinel 0640 backend"
+  "backend/routes_me.py      /opt/certinel/routes_me.py                   root:certinel 0640 backend"
+  "backend/routes_admin.py   /opt/certinel/routes_admin.py                root:certinel 0640 backend"
+  "backend/routes_signing.py /opt/certinel/routes_signing.py              root:certinel 0640 backend"
+  "backend/import_certs.py   /opt/certinel/import_certs.py                root:certinel 0640 backend"
+  "frontend/index.html       /var/www/certinel/index.html                           root:nginx  0640 frontend"
+  "frontend/app.css          /var/www/certinel/app.css                              root:nginx  0640 frontend"
+  "frontend/app.1-core.js    /var/www/certinel/app.1-core.js                        root:nginx  0640 frontend"
+  "frontend/app.2-jobs.js    /var/www/certinel/app.2-jobs.js                        root:nginx  0640 frontend"
+  "frontend/app.3-admin.js   /var/www/certinel/app.3-admin.js                       root:nginx  0640 frontend"
+  "frontend/app.4-misc-boot.js /var/www/certinel/app.4-misc-boot.js                 root:nginx  0640 frontend"
+  "frontend/app.5-guide.js   /var/www/certinel/app.5-guide.js                       root:nginx  0640 frontend"
+  "helper/certinel_helper.sh /opt/certinel/helper/certinel_helper.sh root:root 0750 helper"
+  "helper/certinel_helper.d/00-common.sh    /opt/certinel/helper/certinel_helper.d/00-common.sh    root:root 0640 helper"
+  "helper/certinel_helper.d/10-certtypes.sh /opt/certinel/helper/certinel_helper.d/10-certtypes.sh root:root 0640 helper"
+  "helper/certinel_helper.d/20-generate.sh  /opt/certinel/helper/certinel_helper.d/20-generate.sh  root:root 0640 helper"
+  "helper/certinel_helper.d/30-truststore.sh /opt/certinel/helper/certinel_helper.d/30-truststore.sh root:root 0640 helper"
+  "helper/certinel_helper.d/40-mtls.sh       /opt/certinel/helper/certinel_helper.d/40-mtls.sh       root:root 0640 helper"
   "systemd/certinel-expiry-warn.service /etc/systemd/system/certinel-expiry-warn.service root:root 0644 systemd"
   "systemd/certinel-expiry-warn.timer   /etc/systemd/system/certinel-expiry-warn.timer   root:root 0644 systemd"
   "systemd/certinel-auto-renew.service  /etc/systemd/system/certinel-auto-renew.service  root:root 0644 systemd"
@@ -83,13 +83,13 @@ MANIFEST=(
   "systemd/certinel-deliver.service     /etc/systemd/system/certinel-deliver.service     root:root 0644 systemd"
   "systemd/certinel-deliver.timer       /etc/systemd/system/certinel-deliver.timer       root:root 0644 systemd"
   "systemd/certinel-api.service          /etc/systemd/system/certinel-api.service          root:root 0644 systemd"
-  "tools/csrbackup.sh        /usr/local/sbin/csrbackup                         root:root 0750 tools"
-  "tools/csr-bootstrap-admin /usr/local/sbin/csr-bootstrap-admin               root:root 0750 tools"
-  "tools/csr-uninstall.sh    /usr/local/sbin/csr-uninstall                      root:root 0750 tools"
-  "tools/csr-set-auth        /usr/local/sbin/csr-set-auth                       root:root 0750 tools"
+  "tools/certinel-backup.sh        /usr/local/sbin/certinel-backup                         root:root 0750 tools"
+  "tools/certinel-bootstrap-admin /usr/local/sbin/certinel-bootstrap-admin               root:root 0750 tools"
+  "tools/certinel-uninstall.sh    /usr/local/sbin/certinel-uninstall                      root:root 0750 tools"
+  "tools/certinel-set-auth        /usr/local/sbin/certinel-set-auth                       root:root 0750 tools"
 )
 # nginx include: uncomment and fix the filename once it's in the repo
-MANIFEST+=("nginx/30-csr.conf /etc/nginx/csr-dashboard.d/30-csr.conf root:root 0644 nginx")
+MANIFEST+=("nginx/30-csr.conf /etc/nginx/certinel.d/30-csr.conf root:root 0644 nginx")
 
 changed_tags=""
 
@@ -100,14 +100,14 @@ for entry in "${MANIFEST[@]}"; do
         exit 1
     fi
     # Parameterize the service account: the manifest carries the default group
-    # `csrapi`; swap it for the configured group, and render the chosen
-    # User=/Group= into the systemd units. With the csrapi default all of this is
+    # `certinel`; swap it for the configured group, and render the chosen
+    # User=/Group= into the systemd units. With the certinel default all of this is
     # a no-op (rendered output is byte-identical to the repo file).
-    og="${og//csrapi/$SERVICE_GROUP}"
+    og="${og//certinel/$SERVICE_GROUP}"
     render="$src"; tmp=""
     if [[ "$tag" == systemd && "$dest" == *.service ]]; then
         tmp="$(mktemp)"
-        sed "s/^User=csrapi\$/User=$SERVICE_USER/; s/^Group=csrapi\$/Group=$SERVICE_GROUP/" \
+        sed "s/^User=certinel\$/User=$SERVICE_USER/; s/^Group=certinel\$/Group=$SERVICE_GROUP/" \
             "$src" > "$tmp"
         render="$tmp"
     fi
@@ -136,22 +136,22 @@ fi
 
 # Seed the per-deployment env file from the example if it does not exist yet.
 # The live env file is operator-managed (like email.conf) and is never
-# overwritten by deploy - edit /etc/csr-dashboard/csr-dashboard.env directly.
-if [[ ! -f /etc/csr-dashboard/csr-dashboard.env && -f config/csr-dashboard.env.example ]]; then
-    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/csr-dashboard
+# overwritten by deploy - edit /etc/certinel/certinel.env directly.
+if [[ ! -f /etc/certinel/certinel.env && -f config/certinel.env.example ]]; then
+    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/certinel
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0640 \
-        config/csr-dashboard.env.example /etc/csr-dashboard/csr-dashboard.env
-    echo "seeded /etc/csr-dashboard/csr-dashboard.env from example - review it"
+        config/certinel.env.example /etc/certinel/certinel.env
+    echo "seeded /etc/certinel/certinel.env from example - review it"
 fi
-if [[ ! -f /etc/csr-dashboard/email.conf && -f config/email.conf.example ]]; then
-    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/csr-dashboard
+if [[ ! -f /etc/certinel/email.conf && -f config/email.conf.example ]]; then
+    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/certinel
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0640 \
-        config/email.conf.example /etc/csr-dashboard/email.conf
-    echo "seeded /etc/csr-dashboard/email.conf from example - set the SMG host"
+        config/email.conf.example /etc/certinel/email.conf
+    echo "seeded /etc/certinel/email.conf from example - set the SMG host"
 fi
 
 # Certinel data root (FHS /var/opt for add-on app data). issued/ holds signed
-# certs (written by the app as csrapi + chowned by the helper); requests/ holds
+# certs (written by the app as certinel + chowned by the helper); requests/ holds
 # generated CSRs (written by the helper as root). var_lib_t lets the confined
 # certinel-api service write here, matching the DB dir's context.
 install -d -o root              -g root            -m 0755 /var/opt/certinel
@@ -182,13 +182,13 @@ if [[ "$changed_tags" == *helper* ]] && command -v fapolicyd-cli >/dev/null 2>&1
 fi
 
 # Pre-deploy DB/file backup (after diffing, before service restart)
-command -v csrbackup >/dev/null && csrbackup || echo "WARN: csrbackup not found"
+command -v certinel-backup >/dev/null && certinel-backup || echo "WARN: certinel-backup not found"
 
 if [[ "$changed_tags" == *frontend* ]]; then
-    restorecon -Rv /var/www/csr/ || true
+    restorecon -Rv /var/www/certinel/ || true
 fi
 if [[ "$changed_tags" == *backend* ]]; then
-    fapolicyd-cli --file update /opt/csr-dashboard/ || true
+    fapolicyd-cli --file update /opt/certinel/ || true
     fapolicyd-cli --update || true
 fi
 if [[ "$changed_tags" == *systemd* ]]; then
@@ -240,7 +240,7 @@ if [[ "$changed_tags" == *nginx* ]]; then
     else
         echo "nginx -t FAILED - config NOT (re)loaded; the new file is on disk" >&2
         echo "fix it and run: nginx -t && systemctl reload-or-restart nginx" >&2
-        echo "(on first install also ensure nginx.conf includes csr-dashboard.d/*.conf" >&2
+        echo "(on first install also ensure nginx.conf includes certinel.d/*.conf" >&2
         echo " and that nginx is enabled - see OFFLINE-INSTALL.md)" >&2
         exit 1
     fi
@@ -257,8 +257,8 @@ if $RESTART && [[ "$changed_tags" == *backend* || "$changed_tags" == *systemd* ]
     # Verify the running app reports the deployed VERSION. app.py reads VERSION
     # once at startup, so a stale process is the classic "UI shows old version"
     # bug. This makes the mismatch loud instead of silent.
-    if [[ -f /opt/csr-dashboard/VERSION ]]; then
-        want="$(cat /opt/csr-dashboard/VERSION 2>/dev/null)"
+    if [[ -f /opt/certinel/VERSION ]]; then
+        want="$(cat /opt/certinel/VERSION 2>/dev/null)"
         # give gunicorn a moment, then ask the unauth health endpoint
         got=""
         for _ in 1 2 3; do

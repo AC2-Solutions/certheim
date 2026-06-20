@@ -24,7 +24,7 @@ CAC = {  # mTLS identity headers; with bootstrap, the first user becomes admin
     "X-Client-DN": "CN=TEST.ADMIN.0000000001,OU=PKI,OU=IT,O=Example Org,C=US",
     "X-Client-Serial": "AA11",
 }
-CSRF = {"X-Requested-With": "csr-dashboard"}
+CSRF = {"X-Requested-With": "certinel"}
 WRITE = {**CAC, **CSRF, "Content-Type": "application/json"}
 
 # Route groups every refactor must keep intact (method, path).
@@ -74,7 +74,7 @@ CRITICAL_ROUTES = [
 def client():
     tmp = tempfile.mkdtemp(prefix="csr-smoke-")
     os.environ["CSR_DB_PATH"] = os.path.join(tmp, "jobs.db")
-    os.environ["CSR_DASHBOARD_ENV"] = os.path.join(tmp, "absent.env")
+    os.environ["CERTINEL_ENV"] = os.path.join(tmp, "absent.env")
     os.environ["CSR_BOOTSTRAP_FIRST_ADMIN"] = "1"
     os.environ["CSR_CAP_EGRESS_INTERNET"] = "1"
     os.environ["CSR_CAP_ACME_SERVER"] = "1"      # entitle the ACME-server tests
@@ -681,7 +681,7 @@ def test_template_signing_policy(client):
     # the auto-renew opt-in + per-template window
     ok = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                     data=json.dumps({"signer_backend": "openbao",
-                                     "openbao_role": "csr-dashboard",
+                                     "openbao_role": "certinel",
                                      "max_ttl": 3600, "auto_sign": True,
                                      "auto_renew": True, "renew_before_days": 21}))
     assert ok.status_code == 200, ok.get_data(as_text=True)

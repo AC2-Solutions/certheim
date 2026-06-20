@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=csrapi
-Group=csrapi
-WorkingDirectory=/opt/csr-dashboard
-EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
-ExecStart=/opt/csr-dashboard/venv/bin/gunicorn --workers 1 --threads 4 --bind 127.0.0.1:5002 --access-logfile - --error-logfile - app:app
+User=certinel
+Group=certinel
+WorkingDirectory=/opt/certinel
+EnvironmentFile=-/etc/certinel/certinel.env
+ExecStart=/opt/certinel/venv/bin/gunicorn --workers 1 --threads 4 --bind 127.0.0.1:5002 --access-logfile - --error-logfile - app:app
 Restart=on-failure
 RestartSec=5
 
@@ -21,10 +21,10 @@ ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
 # ProtectSystem=full makes /etc read-only; the (sudo'd) helper needs to write
-# the app-managed nginx mTLS fragment (/etc/nginx/csr-dashboard.d) and the host
+# the app-managed nginx mTLS fragment (/etc/nginx/certinel.d) and the host
 # trust anchors (/etc/pki/ca-trust, Trust store -> Install on this host), so
 # carve those two out as writable. Everything else under /etc stays read-only.
-ReadWritePaths=/opt/csr-dashboard /var/lib/csr-dashboard /var/opt/certinel /etc/csr-dashboard /etc/nginx /etc/pki/ca-trust
+ReadWritePaths=/opt/certinel /var/lib/certinel /var/opt/certinel /etc/certinel /etc/nginx /etc/pki/ca-trust
 NoNewPrivileges=false
 
 # Resource limits

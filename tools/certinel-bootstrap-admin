@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""csr-bootstrap-admin - create or promote the first admin by CAC DN.
+"""certinel-bootstrap-admin - create or promote the first admin by CAC DN.
 
 On a fresh database there are no admins and the app only ever inserts users
 with is_admin=0, so there is no in-app way to make the first one. Run this
 once as root on the dashboard host:
 
-    csr-bootstrap-admin "CN=DOE.JANE.1234567890,OU=PKI,O=Example Org,C=US"
+    certinel-bootstrap-admin "CN=DOE.JANE.1234567890,OU=PKI,O=Example Org,C=US"
 
 It inserts the DN if absent (or promotes it if present), is_admin=1,
 is_active=1. Idempotent. Reads the DB path from the same env the app uses
-(CSR_DB_PATH / the csr-dashboard.env), falling back to the default.
+(CSR_DB_PATH / the certinel.env), falling back to the default.
 """
 import os
 import sqlite3
@@ -19,8 +19,8 @@ import time
 
 def _load_db_path():
     # honour the same env file the app reads, then CSR_DB_PATH, then default
-    env_path = os.environ.get("CSR_DASHBOARD_ENV",
-                              "/etc/csr-dashboard/csr-dashboard.env")
+    env_path = os.environ.get("CERTINEL_ENV",
+                              "/etc/certinel/certinel.env")
     val = os.environ.get("CSR_DB_PATH")
     if not val:
         try:
@@ -32,7 +32,7 @@ def _load_db_path():
                         break
         except OSError:
             pass
-    return val or "/var/lib/csr-dashboard/jobs.db"
+    return val or "/var/lib/certinel/jobs.db"
 
 
 def _cn_from_dn(dn):
@@ -45,8 +45,8 @@ def _cn_from_dn(dn):
 
 def main():
     if len(sys.argv) != 2 or not sys.argv[1].strip():
-        print('usage: csr-bootstrap-admin "<full CAC DN>"', file=sys.stderr)
-        print('example: csr-bootstrap-admin "CN=DOE.JANE.A.1234567890,OU=...,C=US"',
+        print('usage: certinel-bootstrap-admin "<full CAC DN>"', file=sys.stderr)
+        print('example: certinel-bootstrap-admin "CN=DOE.JANE.A.1234567890,OU=...,C=US"',
               file=sys.stderr)
         return 2
 

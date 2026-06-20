@@ -1,24 +1,24 @@
 #!/bin/bash
-# csr-uninstall.sh - cleanly remove the Certinel from this host.
+# certinel-uninstall.sh - cleanly remove the Certinel from this host.
 #
-#   sudo ./csr-uninstall.sh            Guided uninstall (prompts before each
+#   sudo ./certinel-uninstall.sh            Guided uninstall (prompts before each
 #                                      destructive choice; safe defaults).
-#   sudo ./csr-uninstall.sh --help     Show this help.
-#   sudo ./csr-uninstall.sh --dry-run  Show what WOULD be removed; change
+#   sudo ./certinel-uninstall.sh --help     Show this help.
+#   sudo ./certinel-uninstall.sh --dry-run  Show what WOULD be removed; change
 #                                      nothing.
 #
 # What it does:
 #   - stops + disables the systemd units (certinel-api, certinel-expiry-warn .service
 #     and .timer) and removes the unit files
-#   - removes the application code (/opt/csr-dashboard), frontend
-#     (/var/www/csr), helper scripts, and the installed tools
-#   - removes ONLY the app's nginx fragment (/etc/nginx/csr-dashboard.d/30-csr.conf);
+#   - removes the application code (/opt/certinel), frontend
+#     (/var/www/certinel), helper scripts, and the installed tools
+#   - removes ONLY the app's nginx fragment (/etc/nginx/certinel.d/30-csr.conf);
 #     leaves PKI (client CA bundle, server certs) and the rest of nginx alone
 #   - PROMPTS about the database (default: preserve via timestamped backup)
-#   - PROMPTS about removing the csrapi service account
+#   - PROMPTS about removing the certinel service account
 #
 # What it deliberately does NOT touch:
-#   - PKI material (/etc/pki/csr-dashboard, client CA bundle) - site-managed
+#   - PKI material (/etc/pki/certinel, client CA bundle) - site-managed
 #   - nginx itself or any other service's config
 #   - firewalld rules (port 443 may be shared)
 #   - /home/ansible/issued (managed outside this app)
@@ -28,17 +28,17 @@
 set -uo pipefail   # NOT -e: uninstall should continue past a missing item
 
 # ---- paths (match deploy.sh / the installer) ------------------------------
-APP_DIR="/opt/csr-dashboard"
-WWW_DIR="/var/www/csr"
-DB_DIR="/var/lib/csr-dashboard"
+APP_DIR="/opt/certinel"
+WWW_DIR="/var/www/certinel"
+DB_DIR="/var/lib/certinel"
 DB_FILE="${DB_DIR}/jobs.db"
-CFG_DIR="/etc/csr-dashboard"
+CFG_DIR="/etc/certinel"
 HELPER_DIR="/opt/certinel/helper"
-NGINX_FRAG="/etc/nginx/csr-dashboard.d/30-csr.conf"
-SUDOERS="/etc/sudoers.d/csr-dashboard"
-SVC_USER="csrapi"
+NGINX_FRAG="/etc/nginx/certinel.d/30-csr.conf"
+SUDOERS="/etc/sudoers.d/certinel"
+SVC_USER="certinel"
 UNITS=(certinel-api.service certinel-expiry-warn.service certinel-expiry-warn.timer)
-TOOLS=(/usr/local/sbin/csrbackup /usr/local/sbin/csr-bootstrap-admin)
+TOOLS=(/usr/local/sbin/certinel-backup /usr/local/sbin/certinel-bootstrap-admin)
 
 DRY=false
 usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -146,7 +146,7 @@ if [[ -f "$DB_FILE" ]]; then
         esac
         if [[ "${dbans:-k}" != [Dd]* ]]; then
             ts="$(date +%Y%m%d-%H%M%S)"
-            bk="/root/csr-dashboard-db-backup-${ts}"
+            bk="/root/certinel-db-backup-${ts}"
             mkdir -p "$bk"
             cp -p "$DB_FILE" "$bk/" 2>/dev/null
             [[ -f "${DB_FILE}-wal" ]] && cp -p "${DB_FILE}-wal" "$bk/" 2>/dev/null
@@ -163,13 +163,13 @@ echo
 # --- 5. config dir ---------------------------------------------------------
 say "5) config"
 if [[ -d "$CFG_DIR" ]]; then
-    # email.conf / csr-dashboard.env are operator state; back them up rather
+    # email.conf / certinel.env are operator state; back them up rather
     # than silently deleting credentials/relay settings.
     if $DRY; then
         echo "  [dry-run] would back up + remove $CFG_DIR"
     else
         ts="$(date +%Y%m%d-%H%M%S)"
-        bk="/root/csr-dashboard-config-backup-${ts}"
+        bk="/root/certinel-config-backup-${ts}"
         mkdir -p "$bk"; cp -rp "$CFG_DIR/." "$bk/" 2>/dev/null
         rm -rf "$CFG_DIR"
         echo "  config backed up -> $bk, then removed"

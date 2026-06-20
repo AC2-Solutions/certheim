@@ -6,7 +6,7 @@
 # and architecture MATCH THE OFFLINE TARGET (e.g. RHEL 9 / python3.9 /
 # x86_64), because the downloaded wheels are version- and arch-specific.
 #
-# Produces:  csr-dashboard-offline-<version>.tar.gz
+# Produces:  certinel-offline-<version>.tar.gz
 # containing: the repo code, a wheelhouse of all Python deps, this repo's
 # requirements.txt, and the offline install script + docs.
 #
@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
 PYBIN="${PYBIN:-python3.9}"          # MUST match the offline target's python
 STAGE="$(mktemp -d)"
-BUNDLE="csr-dashboard-offline-${VERSION}"
+BUNDLE="certinel-offline-${VERSION}"
 OUT="${STAGE}/${BUNDLE}"
 
 echo "=== Building offline bundle for v${VERSION} using ${PYBIN} ==="
@@ -61,7 +61,7 @@ gunicorn
 REQ
     echo "  WARNING: no requirements.txt found - wrote minimal flask+gunicorn."
     echo "  For reproducibility, generate from the live venv instead:"
-    echo "    /opt/csr-dashboard/venv/bin/pip freeze > requirements.txt"
+    echo "    /opt/certinel/venv/bin/pip freeze > requirements.txt"
 fi
 
 # --- 3. wheelhouse: download every wheel for offline pip install ---
@@ -127,7 +127,7 @@ GLOBAL_CC=""
 # (empty) database an admin automatically - convenient for initial stand-up.
 # Self-disables once any user exists. Only enable if mTLS is verifying real
 # CACs on this box (so "first user" is genuinely you). Otherwise leave 0 and
-# use csr-bootstrap-admin after first login.
+# use certinel-bootstrap-admin after first login.
 BOOTSTRAP_FIRST_ADMIN="0"
 
 # Authentication mode: "mtls" (CAC, default) or "local" (username/password,
@@ -141,7 +141,7 @@ REQUIRE_APPROVAL="0"
 # --- DATA MIGRATION (optional) ---------------------------------------------
 
 # To migrate an existing instance, set this to the path of a jobs.db you
-# carried over (e.g. from `csrbackup` on the source box). It will be
+# carried over (e.g. from `certinel-backup` on the source box). It will be
 # restored before first start. Leave BLANK for a fresh, empty database.
 RESTORE_DB=""
 STARTHERE
@@ -163,7 +163,7 @@ cat > "$OUT/install/offline-install.sh" <<'INSTALL'
 #     sudo ./offline-install.sh --unattended
 #   Reads install/START_HERE instead of prompting (for scripted deploys).
 #
-# Either way it then automates everything mechanical: the csrapi service
+# Either way it then automates everything mechanical: the certinel service
 # account, all directories, the Python venv (from the bundled wheelhouse, no
 # network), fapolicyd trust, config files written from your answers, optional
 # data restore, and the app deploy. It STOPS with a clear message if an OS
@@ -177,7 +177,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PYBIN="${PYBIN:-python3.9}"
-SVC_USER="csrapi"
+SVC_USER="certinel"
 log()  { echo -e "\n=== $* ==="; }
 warn() { echo "  WARN: $*" >&2; }
 die()  { echo "  ERROR: $*" >&2; exit 1; }
@@ -197,7 +197,7 @@ Usage:
   ./offline-install.sh --help            Show this help.
 
 What it does (both modes):
-  Creates the csrapi service account, all directories and the sudoers
+  Creates the certinel service account, all directories and the sudoers
   drop-in, builds the Python venv from the bundled wheelhouse (no network),
   writes the config from your answers, optionally restores a database,
   refreshes fapolicyd trust, deploys the app, and starts the service.
@@ -404,12 +404,12 @@ getent group nginx >/dev/null || warn "group 'nginx' missing - is nginx installe
 log "3/8  Directories"
 # ---------------------------------------------------------------------------
 DIRS=(
-  "/opt/csr-dashboard|root:${SVC_USER}|0750"
-  "/var/lib/csr-dashboard|${SVC_USER}:${SVC_USER}|0750"
-  "/var/www/csr|root:nginx|0750"
-  "/etc/csr-dashboard|root:${SVC_USER}|0750"
+  "/opt/certinel|root:${SVC_USER}|0750"
+  "/var/lib/certinel|${SVC_USER}:${SVC_USER}|0750"
+  "/var/www/certinel|root:nginx|0750"
+  "/etc/certinel|root:${SVC_USER}|0750"
   "/root/sslcerts/scripts|root:root|0750"
-  "/root/sslcerts/scripts/csr_dashboard_helper.d|root:root|0750"
+  "/root/sslcerts/scripts/certinel_helper.d|root:root|0750"
   "/root/sslcerts/private|root:root|0700"
   "/home/ansible/new_request|root:root|0755"
   "/home/ansible/issued|root:${SVC_USER}|0750"
@@ -421,16 +421,16 @@ for entry in "${DIRS[@]}"; do
     install -d -o "$own" -g "$grp" -m "$mode" "$d"
     echo "  $d ($own:$grp $mode)"
 done
-chmod o+x /home/ansible 2>/dev/null || warn "could not chmod /home/ansible - ensure csrapi can traverse it"
+chmod o+x /home/ansible 2>/dev/null || warn "could not chmod /home/ansible - ensure certinel can traverse it"
 
 # ---------------------------------------------------------------------------
 log "4/8  Sudoers drop-in"
 # ---------------------------------------------------------------------------
-SUDOERS=/etc/sudoers.d/csr-dashboard
+SUDOERS=/etc/sudoers.d/certinel
 if [[ -f "$SUDOERS" ]]; then
     echo "  exists - leaving as-is"
 else
-    printf '# Certinel: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh\n' \
+    printf '# Certinel: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/certinel_helper.sh\n' \
         "$SVC_USER" > "$SUDOERS"
     chmod 0440 "$SUDOERS"
     visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
@@ -440,7 +440,7 @@ fi
 # ---------------------------------------------------------------------------
 log "5/8  Python venv from bundled wheelhouse (offline)"
 # ---------------------------------------------------------------------------
-VENV=/opt/csr-dashboard/venv
+VENV=/opt/certinel/venv
 [[ -x "$VENV/bin/python3" ]] || "$PYBIN" -m venv "$VENV"
 [[ -d wheelhouse ]] || die "wheelhouse/ missing from bundle"
 "$VENV/bin/pip" install --no-index --find-links wheelhouse --upgrade pip setuptools wheel
@@ -448,10 +448,10 @@ VENV=/opt/csr-dashboard/venv
 echo "  deps installed"
 
 # CRITICAL: python -m venv creates the venv dir 0700 under root's STIG umask
-# (077). That locks out the csrapi group, so the service cannot traverse into
+# (077). That locks out the certinel group, so the service cannot traverse into
 # venv/ to exec gunicorn/python. Set group ownership AND traversal bits.
-chown -R root:csrapi "$VENV"
-chmod 0750 /opt/csr-dashboard
+chown -R root:certinel "$VENV"
+chmod 0750 /opt/certinel
 # group must READ all venv files (pyvenv.cfg + every site-packages .py are
 # created 0600 under root umask 077) and TRAVERSE all dirs. g+rX does exactly
 # that: read for files, and execute/search only where already set (dirs +
@@ -464,9 +464,9 @@ echo "  venv ownership/modes set for ${SVC_USER} (g+rX recursive)"
 # gunicorn/python on STIG hosts. deploy.sh later UPDATES trust for known
 # files; the brand-new venv binaries must be ADDED here first.
 if command -v fapolicyd-cli >/dev/null; then
-    fapolicyd-cli --file add /opt/csr-dashboard/venv/ 2>/dev/null || true
+    fapolicyd-cli --file add /opt/certinel/venv/ 2>/dev/null || true
     fapolicyd-cli --update 2>/dev/null || true
-    echo "  fapolicyd: trusted /opt/csr-dashboard/venv/"
+    echo "  fapolicyd: trusted /opt/certinel/venv/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -475,8 +475,8 @@ log "6/8  Config files"
 # email.conf - written from your answers. Empty host = email disabled, which
 # the app honours (no notifications sent). Writing it either way keeps the
 # file present and UI-manageable later.
-cat > /etc/csr-dashboard/email.conf <<EMAILCONF
-# /etc/csr-dashboard/email.conf  -  generated by offline-install
+cat > /etc/certinel/email.conf <<EMAILCONF
+# /etc/certinel/email.conf  -  generated by offline-install
 # Empty [smtp] host = email disabled. Set a relay here or via the admin UI.
 [smtp]
 host = ${SMG_HOST:-}
@@ -492,29 +492,29 @@ cc = ${GLOBAL_CC:-}
 [content]
 dashboard_url = ${DASHBOARD_URL}
 EMAILCONF
-chown "${SVC_USER}:${SVC_USER}" /etc/csr-dashboard/email.conf
-chmod 0640 /etc/csr-dashboard/email.conf
+chown "${SVC_USER}:${SVC_USER}" /etc/certinel/email.conf
+chmod 0640 /etc/certinel/email.conf
 if [[ -n "${SMG_HOST:-}" ]]; then
-    echo "  wrote /etc/csr-dashboard/email.conf (relay ${SMG_HOST}:${SMG_PORT:-25})"
+    echo "  wrote /etc/certinel/email.conf (relay ${SMG_HOST}:${SMG_PORT:-25})"
 else
-    echo "  wrote /etc/csr-dashboard/email.conf (email DISABLED - no relay)"
+    echo "  wrote /etc/certinel/email.conf (email DISABLED - no relay)"
 fi
 
-# csr-dashboard.env - seed from example if absent (paths are defaults)
-if [[ ! -f /etc/csr-dashboard/csr-dashboard.env && -f config/csr-dashboard.env.example ]]; then
+# certinel.env - seed from example if absent (paths are defaults)
+if [[ ! -f /etc/certinel/certinel.env && -f config/certinel.env.example ]]; then
     install -o "$SVC_USER" -g "$SVC_USER" -m 0640 \
-        config/csr-dashboard.env.example /etc/csr-dashboard/csr-dashboard.env
-    echo "  seeded /etc/csr-dashboard/csr-dashboard.env"
+        config/certinel.env.example /etc/certinel/certinel.env
+    echo "  seeded /etc/certinel/certinel.env"
 fi
 # Reflect the START_HERE first-admin choice into the live env file (set or
 # replace the line so the app picks it up). Only the value the operator chose.
-if [[ -f /etc/csr-dashboard/csr-dashboard.env ]]; then
+if [[ -f /etc/certinel/certinel.env ]]; then
     want="${BOOTSTRAP_FIRST_ADMIN:-0}"
-    if grep -q '^CSR_BOOTSTRAP_FIRST_ADMIN=' /etc/csr-dashboard/csr-dashboard.env; then
+    if grep -q '^CSR_BOOTSTRAP_FIRST_ADMIN=' /etc/certinel/certinel.env; then
         sed -i "s/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=${want}/" \
-            /etc/csr-dashboard/csr-dashboard.env
+            /etc/certinel/certinel.env
     else
-        echo "CSR_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/csr-dashboard/csr-dashboard.env
+        echo "CSR_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/certinel/certinel.env
     fi
     echo "  first-admin bootstrap: CSR_BOOTSTRAP_FIRST_ADMIN=${want}"
 fi
@@ -533,7 +533,7 @@ if [[ "$CSR_DOMAIN" != "$DEF_DOMAIN" || "$CSR_HOSTNAME" != "$DEF_HOST" ]]; then
     files=(
         backend/app.py backend/notify.py
         frontend/app.js frontend/index.html
-        helper/csr_dashboard_helper.d/00-common.sh
+        helper/certinel_helper.d/00-common.sh
         nginx/30-csr.conf
     )
     for f in "${files[@]}"; do
@@ -553,8 +553,8 @@ log "7/8  Deploy code + optional data restore"
 # ---------------------------------------------------------------------------
 if [[ -n "${RESTORE_DB:-}" ]]; then
     [[ -f "$RESTORE_DB" ]] || die "RESTORE_DB set but file not found: $RESTORE_DB"
-    install -o "$SVC_USER" -g "$SVC_USER" -m 0640 "$RESTORE_DB" /var/lib/csr-dashboard/jobs.db
-    rm -f /var/lib/csr-dashboard/jobs.db-wal /var/lib/csr-dashboard/jobs.db-shm
+    install -o "$SVC_USER" -g "$SVC_USER" -m 0640 "$RESTORE_DB" /var/lib/certinel/jobs.db
+    rm -f /var/lib/certinel/jobs.db-wal /var/lib/certinel/jobs.db-shm
     echo "  restored database from $RESTORE_DB"
 fi
 # Use -f (presence), not -x: the bundle preserves the build user's 0700 and
@@ -568,33 +568,33 @@ log "7.5/8  Authentication mode"
 # ---------------------------------------------------------------------------
 # deploy.sh started certinel-api, which created the schema (incl. app_settings).
 # Now write the auth settings into the DB via the helper. Default mtls needs
-# nothing (app default), but we set it explicitly so `csr-set-auth --show`
+# nothing (app default), but we set it explicitly so `certinel-set-auth --show`
 # always reflects the install choice.
-if command -v csr-set-auth >/dev/null 2>&1; then
-    SETAUTH=csr-set-auth
-elif [[ -f tools/csr-set-auth ]]; then
-    SETAUTH="$PYBIN tools/csr-set-auth"
+if command -v certinel-set-auth >/dev/null 2>&1; then
+    SETAUTH=certinel-set-auth
+elif [[ -f tools/certinel-set-auth ]]; then
+    SETAUTH="$PYBIN tools/certinel-set-auth"
 else
     SETAUTH=""
 fi
 if [[ -n "$SETAUTH" ]]; then
     # brief wait so the app has created the schema on first start
     for _ in 1 2 3 4 5; do
-        [[ -f /var/lib/csr-dashboard/jobs.db ]] && break; sleep 1
+        [[ -f /var/lib/certinel/jobs.db ]] && break; sleep 1
     done
     if [[ "$AUTH_MODE" == "local" ]]; then
         $SETAUTH --mode local --domain "${TRUSTED_EMAIL_DOMAIN:-}" \
             $( [[ "${REQUIRE_APPROVAL:-0}" == "1" ]] && echo --require-approval || echo --no-require-approval ) \
-            || warn "could not set auth mode (run csr-set-auth manually)"
+            || warn "could not set auth mode (run certinel-set-auth manually)"
         echo "  auth mode: username/password (domain=${TRUSTED_EMAIL_DOMAIN:-<none>})"
     else
         $SETAUTH --mode mtls || warn "could not set auth mode"
         echo "  auth mode: CAC mTLS"
     fi
 else
-    warn "csr-set-auth not found - auth mode left at app default (mtls)."
+    warn "certinel-set-auth not found - auth mode left at app default (mtls)."
     [[ "$AUTH_MODE" == "local" ]] && \
-        warn "to enable password auth: csr-set-auth --mode local --domain <domain>"
+        warn "to enable password auth: certinel-set-auth --mode local --domain <domain>"
 fi
 
 # ---------------------------------------------------------------------------
@@ -618,7 +618,7 @@ fi
 if [[ -z "${RESTORE_DB:-}" ]]; then
 cat <<MAN
  [ ] ADMIN: fresh empty database - bootstrap your CAC as the first admin
-         (csr-bootstrap-admin) or you will have no admin rights.
+         (certinel-bootstrap-admin) or you will have no admin rights.
 MAN
 fi
 cat <<MAN
@@ -632,12 +632,12 @@ chmod +x "$OUT/install/offline-install.sh"
 
 # uninstaller: ship it in install/ next to the installer. It's tracked in the
 # repo under tools/, so copy it in (fall back to a note if absent).
-if [[ -f tools/csr-uninstall.sh ]]; then
-    cp tools/csr-uninstall.sh "$OUT/install/csr-uninstall.sh"
-    chmod +x "$OUT/install/csr-uninstall.sh"
-    echo "  included install/csr-uninstall.sh"
+if [[ -f tools/certinel-uninstall.sh ]]; then
+    cp tools/certinel-uninstall.sh "$OUT/install/certinel-uninstall.sh"
+    chmod +x "$OUT/install/certinel-uninstall.sh"
+    echo "  included install/certinel-uninstall.sh"
 else
-    echo "  (tools/csr-uninstall.sh not found - uninstaller not bundled)"
+    echo "  (tools/certinel-uninstall.sh not found - uninstaller not bundled)"
 fi
 
 cat > "$OUT/OFFLINE-INSTALL.md" <<DOC
@@ -654,16 +654,16 @@ enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
 
 ## Environment prep (one time, as root)
 1. **Service account**
-   - Create \`csrapi\` (system account, no login shell).
-   - Install the sudoers drop-in granting csrapi NOPASSWD on the helper
+   - Create \`certinel\` (system account, no login shell).
+   - Install the sudoers drop-in granting certinel NOPASSWD on the helper
      dispatcher only. (See \`docs/runbook.md\`.)
 2. **Directories**
-   - \`/opt/csr-dashboard/\`            (app + venv)        root:csrapi
-   - \`/var/lib/csr-dashboard/\`        (SQLite DB)         csrapi:csrapi 0750
-   - \`/var/www/csr/\`                  (frontend)          root:nginx
-   - \`/etc/csr-dashboard/\`            (email.conf)        csrapi:csrapi
+   - \`/opt/certinel/\`            (app + venv)        root:certinel
+   - \`/var/lib/certinel/\`        (SQLite DB)         certinel:certinel 0750
+   - \`/var/www/certinel/\`                  (frontend)          root:nginx
+   - \`/etc/certinel/\`            (email.conf)        certinel:certinel
    - \`/root/sslcerts/scripts/\` + \`...d/\`, \`new_request/\`, \`private/\`
-   - \`/home/ansible/issued/\`          (issued certs)      traversable by csrapi
+   - \`/home/ansible/issued/\`          (issued certs)      traversable by certinel
 3. **PKI / mTLS**
    - Install the enclave's DoD CA bundle into the system trust store.
    - Place the dashboard's server cert + key for nginx.
@@ -671,8 +671,8 @@ enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
      \`ssl_verify_client\` for CAC mTLS (see \`nginx/30-csr.conf\` and the
      runbook).
 4. **email.conf**
-   - Copy \`config/email.conf.example\` to \`/etc/csr-dashboard/email.conf\`
-     and set the enclave's SMG relay host. Owner csrapi:csrapi, mode 0640.
+   - Copy \`config/email.conf.example\` to \`/etc/certinel/email.conf\`
+     and set the enclave's SMG relay host. Owner certinel:certinel, mode 0640.
 
 ## Install (three steps)
 1. Edit the variables for THIS site:
@@ -695,9 +695,9 @@ sudo fapolicyd-cli --update
 cd install
 sudo bash ./offline-install.sh
 \`\`\`
-It reads START_HERE, then creates the csrapi account, all directories,
+It reads START_HERE, then creates the certinel account, all directories,
 sudoers drop-in, the venv (from the bundled wheelhouse, no network),
-writes email.conf + csr-dashboard.env with YOUR values, optionally
+writes email.conf + certinel.env with YOUR values, optionally
 restores a migrated database, refreshes fapolicyd trust for the venv,
 deploys the code (\`bash ./deploy.sh\`), and starts the service.
 Idempotent. When done it prints the only items it cannot script -
@@ -708,9 +708,9 @@ On a box that has never run this app, before/around install:
 \`\`\`bash
 # OS packages from the enclave repo (NOT in the bundle):
 #   ${PYBIN} nginx sqlite fapolicyd openssl policycoreutils sudo
-# nginx must include the csr-dashboard.d drop-in and be enabled (F9):
-grep -q 'csr-dashboard.d' /etc/nginx/nginx.conf || \\
-  sed -i '/http {/a\\    include /etc/nginx/csr-dashboard.d/*.conf;' /etc/nginx/nginx.conf
+# nginx must include the certinel.d drop-in and be enabled (F9):
+grep -q 'certinel.d' /etc/nginx/nginx.conf || \\
+  sed -i '/http {/a\\    include /etc/nginx/certinel.d/*.conf;' /etc/nginx/nginx.conf
 systemctl enable --now nginx
 # open 443 (the installer does NOT touch firewalld) (F11):
 firewall-cmd --permanent --add-service=https && firewall-cmd --reload
@@ -720,10 +720,10 @@ firewall-cmd --permanent --add-service=https && firewall-cmd --reload
 deploy.sh refreshes trust for existing files, but the FIRST install needs
 the venv + app trusted:
 \`\`\`bash
-fapolicyd-cli --file add /opt/csr-dashboard/
+fapolicyd-cli --file add /opt/certinel/
 fapolicyd-cli --update
 \`\`\`
-Also add the rules.d allow for any Ansible/automation that runs as csrapi.
+Also add the rules.d allow for any Ansible/automation that runs as certinel.
 
 ## Build box requirements (where you run make-offline-bundle.sh)
 This bundle must be BUILT on a connected box that:
@@ -738,13 +738,13 @@ wheels are compatible.
 A fresh DB has no admins and the app has no built-in promotion. After you
 authenticate once over mTLS (so your DN row exists), promote yourself:
 \`\`\`bash
-sqlite3 /var/lib/csr-dashboard/jobs.db \\
+sqlite3 /var/lib/certinel/jobs.db \\
   "UPDATE users SET is_admin=1 WHERE dn='<YOUR CAC DN>';"
 systemctl restart certinel-api
 \`\`\`
 Preferred: the bundled tool does this for you (no prior login needed):
 \`\`\`bash
-csr-bootstrap-admin "<YOUR CAC DN>"
+certinel-bootstrap-admin "<YOUR CAC DN>"
 \`\`\`
 
 ## Verify
@@ -755,9 +755,9 @@ curl -sk https://localhost/csr/api/health        # {"ok":true,"version":"${VERSI
 The admin Overview tile should show v${VERSION}.
 
 ## Data migration (if moving an existing instance, not a fresh stand-up)
-On the SOURCE box: \`csrbackup\` (or copy /var/lib/csr-dashboard/jobs.db).
-Carry the backup across; restore to /var/lib/csr-dashboard/jobs.db,
-owner csrapi:csrapi, BEFORE first start. WAL files (-wal/-shm) can be
+On the SOURCE box: \`certinel-backup\` (or copy /var/lib/certinel/jobs.db).
+Carry the backup across; restore to /var/lib/certinel/jobs.db,
+owner certinel:certinel, BEFORE first start. WAL files (-wal/-shm) can be
 omitted if the source app was stopped cleanly.
 DOC
 

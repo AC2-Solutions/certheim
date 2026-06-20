@@ -128,7 +128,7 @@ keys gated like the signing backends. Community keeps manual download.
 
 ## 10. Open questions
 
-- **SSH auth model for `ssh` push:** a single dashboard SSH identity (csrapi key)
+- **SSH auth model for `ssh` push:** a single dashboard SSH identity (certinel key)
   authorized on destinations, vs per-destination creds from Vault? (Blast-radius
   + STIG egress decision before building host-push.)
 - Default `delivery_target` = the job's `target_host` (the cert's CN/SAN) — ship

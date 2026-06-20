@@ -4,9 +4,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=csrapi
-Group=csrapi
-WorkingDirectory=/opt/csr-dashboard
-EnvironmentFile=-/etc/csr-dashboard/csr-dashboard.env
-ExecStart=/opt/csr-dashboard/venv/bin/python3 -c 'import app; r,s,e = app.run_auto_renew(); print(f"auto-renew: renewed={r} skipped={s} errors={e}")'
+User=certinel
+Group=certinel
+WorkingDirectory=/opt/certinel
+EnvironmentFile=-/etc/certinel/certinel.env
+ExecStart=/opt/certinel/venv/bin/python3 -c 'import app; r,s,e = app.run_auto_renew(); print(f"auto-renew: renewed={r} skipped={s} errors={e}")'
 Environment=PYTHONUNBUFFERED=1

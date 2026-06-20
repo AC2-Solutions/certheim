@@ -14,8 +14,8 @@ changed since the last run (cert was renewed on-host), the expiry-warning
 tier is reset so warnings re-arm for the new cert. CA certificates
 (basicConstraints CA:TRUE) are skipped by default.
 
-Run as the csrapi user (the DB owner):
-    sudo -u csrapi python3 /opt/csr-dashboard/import_certs.py /tmp/fleet-certs.json
+Run as the certinel user (the DB owner):
+    sudo -u certinel python3 /opt/certinel/import_certs.py /tmp/fleet-certs.json
 
 Stdlib only - no Flask/venv required, though running under the venv python
 is also fine.
@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-DB_PATH = "/var/lib/csr-dashboard/jobs.db"
+DB_PATH = "/var/lib/certinel/jobs.db"
 
 EKU_TYPE_MAP = {
     "TLS Web Server Authentication": "web",

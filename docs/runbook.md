@@ -1,8 +1,8 @@
 # Certinel — Operations Runbook
 
 Flask/SQLite certificate request + lifecycle dashboard for a RHEL fleet.
-Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `csrapi` service
-account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/csr-dashboard/jobs.db`.
+Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certinel` service
+account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/certinel/jobs.db`.
 Hardened RHEL 9 target: FIPS, SELinux enforcing, fapolicyd enforcing.
 
 This runbook reflects the proven installs on `csr-host` (production)
@@ -14,25 +14,25 @@ and a fresh STIG offline VM.
 
 | Path | Owner / mode | Purpose |
 |---|---|---|
-| `/opt/csr-dashboard/` | root:csrapi 0750 | app code + `venv/` |
-| `/opt/csr-dashboard/{app,notify,gitlab_integration,import_certs}.py` | root:csrapi 0640 | backend |
-| `/var/www/csr/{index.html,app.js}` | root:nginx 0640 | frontend |
-| `/var/lib/csr-dashboard/jobs.db` | csrapi:csrapi 0640 | SQLite (WAL) |
-| `/var/lib/csr-dashboard/trust/` | csrapi:csrapi | published CA certs (trust portal) |
-| `/etc/csr-dashboard/email.conf` | csrapi:csrapi 0640 | mail config (UI-managed) |
-| `/etc/csr-dashboard/integrations.conf` | csrapi:csrapi 0640 | GitLab config (UI-managed) |
-| `/etc/csr-dashboard/csr-dashboard.env` | csrapi:csrapi 0640 | app env (paths, flags) |
-| `/opt/certinel/helper/csr_dashboard_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
+| `/opt/certinel/` | root:certinel 0750 | app code + `venv/` |
+| `/opt/certinel/{app,notify,gitlab_integration,import_certs}.py` | root:certinel 0640 | backend |
+| `/var/www/certinel/{index.html,app.js}` | root:nginx 0640 | frontend |
+| `/var/lib/certinel/jobs.db` | certinel:certinel 0640 | SQLite (WAL) |
+| `/var/lib/certinel/trust/` | certinel:certinel | published CA certs (trust portal) |
+| `/etc/certinel/email.conf` | certinel:certinel 0640 | mail config (UI-managed) |
+| `/etc/certinel/integrations.conf` | certinel:certinel 0640 | GitLab config (UI-managed) |
+| `/etc/certinel/certinel.env` | certinel:certinel 0640 | app env (paths, flags) |
+| `/opt/certinel/helper/certinel_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
 | `/etc/systemd/system/certinel-api.service` | root:root 0644 | gunicorn unit |
-| `/etc/nginx/csr-dashboard.d/30-csr.conf` | root:root 0644 | **location fragment** |
-| `/etc/nginx/conf.d/csr-dashboard.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
-| `/usr/local/sbin/{csrbackup,csr-bootstrap-admin}` | root:root 0750 | tools |
+| `/etc/nginx/certinel.d/30-csr.conf` | root:root 0644 | **location fragment** |
+| `/etc/nginx/conf.d/certinel.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
+| `/usr/local/sbin/{certinel-backup,certinel-bootstrap-admin}` | root:root 0750 | tools |
 
-**Service account.** `csrapi` is a system account, no login shell, no home.
+**Service account.** `certinel` is a system account, no login shell, no home.
 It runs ONLY the helper as root via a single sudoers rule
-(`/etc/sudoers.d/csr-dashboard`):
+(`/etc/sudoers.d/certinel`):
 ```
-csrapi ALL=(root) NOPASSWD: /opt/certinel/helper/csr_dashboard_helper.sh
+certinel ALL=(root) NOPASSWD: /opt/certinel/helper/certinel_helper.sh
 ```
 
 ---
@@ -53,12 +53,12 @@ boolean, then runs `deploy.sh`.
 On a **connected** box matching the target (RHEL major / python / arch), and
 NOT fapolicyd-enforcing (or as root):
 ```bash
-./make-offline-bundle.sh           # -> csr-dashboard-offline-<ver>.tar.gz (+ .sha256)
+./make-offline-bundle.sh           # -> certinel-offline-<ver>.tar.gz (+ .sha256)
 ```
 Carry the tarball across. On the target:
 ```bash
-sha256sum -c csr-dashboard-offline-<ver>.tar.gz.sha256
-tar xzf csr-dashboard-offline-<ver>.tar.gz && cd csr-dashboard-offline-<ver>/install
+sha256sum -c certinel-offline-<ver>.tar.gz.sha256
+tar xzf certinel-offline-<ver>.tar.gz && cd certinel-offline-<ver>/install
 sudo bash ./offline-install.sh     # guided prompts; or --unattended (reads START_HERE)
 ```
 The guided installer asks domain, hostname, optional email relay, **CAC mTLS
@@ -68,7 +68,7 @@ trust, deploy, start). Run via `bash` so fapolicyd doesn't block exec-by-path.
 
 ### Change workflow (existing install)
 ```bash
-git clone <repo> && cd csr-dashboard
+git clone <repo> && cd certinel
 # edit...
 sudo ./deploy.sh --diff      # preview
 sudo ./deploy.sh             # backup, install changed files, perms, fapolicyd,
@@ -80,9 +80,9 @@ git commit -am "..." && git push
 
 ## 3. PKI / CAC mTLS
 
-- **Server cert**: `/etc/pki/csr-dashboard/server.{crt,key}` (installer drops a
+- **Server cert**: `/etc/pki/certinel/server.{crt,key}` (installer drops a
   self-signed placeholder; replace with the site cert).
-- **mTLS lives at the SERVER level** (`conf.d/csr-dashboard.conf`), NOT in the
+- **mTLS lives at the SERVER level** (`conf.d/certinel.conf`), NOT in the
   fragment. To enforce:
   ```nginx
   ssl_client_certificate /etc/pki/dod/dod-cas.pem;   # root+intermediate, no CRLF
@@ -104,8 +104,8 @@ git commit -am "..." && git push
 ## 4. First admin
 
 A fresh DB has no admins. Either:
-- **Preferred**: `sudo csr-bootstrap-admin "<YOUR CAC DN>"` (promotes a DN; no
-  prior login needed). `csr-bootstrap-admin --list` shows admins.
+- **Preferred**: `sudo certinel-bootstrap-admin "<YOUR CAC DN>"` (promotes a DN; no
+  prior login needed). `certinel-bootstrap-admin --list` shows admins.
 - Or set `CSR_BOOTSTRAP_FIRST_ADMIN=1` BEFORE first login (first user becomes
   admin, self-disables). Only safe under real mTLS.
 
@@ -113,7 +113,7 @@ A fresh DB has no admins. Either:
 
 ## 5. Email
 
-UI-managed at Admin → Email (written to `/etc/csr-dashboard/email.conf`,
+UI-managed at Admin → Email (written to `/etc/certinel/email.conf`,
 hot-reloaded). Pick one method: **SMG** (plain :25), **SMTP** (STARTTLS/SSL +
 auth), or **Mailgun** (API). Blank SMG host = email disabled. "Send test
 email" verifies wiring.
@@ -122,24 +122,24 @@ email" verifies wiring.
 
 ## 6. STIG specifics that bite
 
-- **fapolicyd**: new files under `/opt/csr-dashboard` need
+- **fapolicyd**: new files under `/opt/certinel` need
   `fapolicyd-cli --file add <f> && --update` once (the installer trusts the
   venv; `deploy.sh` updates trust for existing files). Untrusted bundle
   scripts can't exec-by-path → run via `bash`.
-- **venv perms**: `python -m venv` is 0700 under root umask 077 → csrapi can't
-  traverse → `chmod -R g+rX /opt/csr-dashboard/venv` (installer does this).
+- **venv perms**: `python -m venv` is 0700 under root umask 077 → certinel can't
+  traverse → `chmod -R g+rX /opt/certinel/venv` (installer does this).
 - **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
-  `ReadWritePaths` covering `/opt/csr-dashboard /var/lib/csr-dashboard
-  /var/opt/certinel /etc/csr-dashboard`. `ProtectHome=true` (helper under
+  `ReadWritePaths` covering `/opt/certinel /var/lib/certinel
+  /var/opt/certinel /etc/certinel`. `ProtectHome=true` (helper under
   `/opt/certinel`, keys in the vault — nothing under `/home` or `/root`). `deploy.sh` runs
   `systemd-analyze verify` before restart.
 - **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
   (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.
   `deploy.sh` creates them and sets `var_lib_t` so the confined service can
   write (matches the DB dir). The helper's `ISSUED_DIR`/`CSRDIR`
-  (`csr_dashboard_helper.d/00-common.sh`) must match `CSR_ISSUED_DIR`.
+  (`certinel_helper.d/00-common.sh`) must match `CSR_ISSUED_DIR`.
 - **SELinux**: `setsebool -P httpd_can_network_connect 1` (else nginx→backend
-  502s); `restorecon` on `/var/www/csr` + `/var/opt/certinel` (deploy.sh does this).
+  502s); `restorecon` on `/var/www/certinel` + `/var/opt/certinel` (deploy.sh does this).
 - **firewalld**: open 443 (`firewall-cmd --permanent --add-service=https`).
 - **nginx**: the fragment must stay location-only; mTLS at server level.
 - **VERSION**: read once at startup → bump VERSION, restart, confirm via
@@ -149,7 +149,7 @@ email" verifies wiring.
 
 ## 7. Operations
 
-- **Backup before risk**: `csrbackup` (snapshots deploy files + DB to
+- **Backup before risk**: `certinel-backup` (snapshots deploy files + DB to
   `/root/csr-backup-*`). `deploy.sh` runs it pre-deploy.
 - **Health**: `curl -sk https://localhost/csr/api/health` → `{"ok":true,...}`.
 - **Logs**: `journalctl -u certinel-api`; audit events also land in the DB
@@ -190,7 +190,7 @@ email" verifies wiring.
 |---|---|
 | 502 on every request | `httpd_can_network_connect` off, or gunicorn down (`journalctl -u certinel-api`) |
 | UI shows old version | stale process — `deploy.sh` version check warns; `systemctl restart certinel-api` |
-| Admin email save 500 "read-only" | `/etc/csr-dashboard` not in unit `ReadWritePaths` |
+| Admin email save 500 "read-only" | `/etc/certinel` not in unit `ReadWritePaths` |
 | App logs `ip=` under mTLS | server-level `ssl_verify_client`/DoD bundle, not the app |
 | `/csr/` 404s to default docroot | fragment used `alias` instead of `root /var/www` |
 | orphan-certs 500 | reading issued dir directly — must go through helper `list-issued` |
