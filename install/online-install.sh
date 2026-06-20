@@ -95,11 +95,13 @@ case "${TLS_MODE,,}" in
   stepca)
     ask STEP_CA_URL         "  step-ca base URL" "https://ca.example.com"
     ask STEP_CA_FINGERPRINT "  step-ca root fingerprint" ""
-    # Guard against a truncated/ellipsis paste: a step-ca root fingerprint is
-    # exactly 64 hex chars (SHA-256). Reject anything else up front.
-    STEP_CA_FINGERPRINT="${STEP_CA_FINGERPRINT//[[:space:]]/}"
+    # A step-ca root fingerprint is exactly 64 hex chars (SHA-256). Tolerate a
+    # pasted annotation / 'sha256:' prefix / surrounding text by extracting the
+    # first 64-hex token from whatever was entered, then validate it.
+    _fp="$(printf '%s' "$STEP_CA_FINGERPRINT" | grep -oiE '[0-9a-f]{64}' | head -1 || true)"
+    [[ -n "$_fp" ]] && STEP_CA_FINGERPRINT="$_fp"
     [[ "$STEP_CA_FINGERPRINT" =~ ^[0-9a-fA-F]{64}$ ]] \
-        || die "step-ca fingerprint must be 64 hex chars (got: '${STEP_CA_FINGERPRINT}'). Get it with: step certificate fingerprint root_ca.crt"
+        || die "step-ca fingerprint must contain 64 hex chars (got: '${STEP_CA_FINGERPRINT}'). Get it with: step certificate fingerprint root_ca.crt"
     ask STEP_PROVISIONER    "  step-ca provisioner" "acme"
     ask_secret STEP_PROV_PASSWORD "  provisioner password (JWK provisioners only)"
     ;;
