@@ -28,7 +28,7 @@ admin UI; `config/email.conf.example` documents the shape).
 ## Change workflow
 
 ```
-git clone git@<your-git-host>:<group>/csr-dashboard.git
+git clone git@<your-git-host>:<group>/certinel.git
 cd csr-dashboard
 # edit files...
 sudo ./deploy.sh --diff      # review exactly what will change on the box
