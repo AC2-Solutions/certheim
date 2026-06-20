@@ -254,8 +254,16 @@ def admin_set_auth_settings():
         mmode = (payload.get("mtls_mode") or "off").strip()
         if mmode not in ("off", "optional", "enforce"):
             return jsonify(error="mtls_mode must be off|optional|enforce"), 400
-        if mmode in ("optional", "enforce") and not capabilities.available("auth.cac"):
-            return jsonify(error=_CAC_LICENSED_ERR), 403
+        if not capabilities.available("auth.cac"):
+            # Unlicensed: mTLS can't be enabled. Only reject an ACTIVE enable
+            # (a real change to optional/enforce); a save that merely echoes a
+            # stale value - e.g. editing trusted domains - is coerced to off so
+            # it still lands instead of 403ing. Also self-heals boxes seeded
+            # with mtls_mode=optional by older installers.
+            cur = get_setting("mtls_mode") or "off"
+            if mmode in ("optional", "enforce") and mmode != cur:
+                return jsonify(error=_CAC_LICENSED_ERR), 403
+            mmode = "off"
         mpath = (payload.get("mtls_ca_bundle_path") or "").strip()
         if mmode == "enforce":
             ok_path = (mpath.startswith("/") and
