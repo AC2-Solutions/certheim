@@ -3,6 +3,28 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.1 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v3.0.0._
+
+### Fixes & improvements
+
+- app dir SELinux label (203/EXEC) and /csr/ static root after rename (`f8759b6`)
+  Two regressions surfaced by the csr-dashboard->certinel rename when the app moved into
+  /opt/certinel:
+  - deploy.sh labelled /opt/certinel as var_lib_t (a stale data-root rule). Harmless while the app
+    lived at /opt/csr-dashboard, but once the venv moved into /opt/certinel, systemd could no
+    longer exec gunicorn (status=203/EXEC, 'Permission denied'; runs fine via sudo -u, i.e. DAC ok
+    / SELinux deny). Drop the bad rule, self-heal it on upgrade with 'semanage fcontext -d', and
+    force-restorecon so the app dir returns to an exec-able type. Only the writable data root
+    stays var_lib_t.
+  - The static frontend is served by nginx 'location /csr/ { root /var/www; }' which resolves to
+    /var/www/csr. The rename moved the docroot to /var/www/certinel, breaking /csr/ with 404.
+    /var/www/csr is the CSR-acronym docroot coupled to the kept /csr/ URL (like 30-csr.conf), so
+    revert it.
+  Both verified live on the certinel VM: certinel-api active, /csr/ -> 200, /csr/api/me -> 200,
+  first admin bootstrapped.
+
 ## 3.0.0 — 2026-06-20
 
 _Released 2026-06-20. 4 changes since v2.32.0._
