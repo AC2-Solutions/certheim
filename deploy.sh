@@ -63,13 +63,13 @@ MANIFEST=(
   "backend/routes_admin.py   /opt/certinel/routes_admin.py                root:certinel 0640 backend"
   "backend/routes_signing.py /opt/certinel/routes_signing.py              root:certinel 0640 backend"
   "backend/import_certs.py   /opt/certinel/import_certs.py                root:certinel 0640 backend"
-  "frontend/index.html       /var/www/certinel/index.html                           root:nginx  0640 frontend"
-  "frontend/app.css          /var/www/certinel/app.css                              root:nginx  0640 frontend"
-  "frontend/app.1-core.js    /var/www/certinel/app.1-core.js                        root:nginx  0640 frontend"
-  "frontend/app.2-jobs.js    /var/www/certinel/app.2-jobs.js                        root:nginx  0640 frontend"
-  "frontend/app.3-admin.js   /var/www/certinel/app.3-admin.js                       root:nginx  0640 frontend"
-  "frontend/app.4-misc-boot.js /var/www/certinel/app.4-misc-boot.js                 root:nginx  0640 frontend"
-  "frontend/app.5-guide.js   /var/www/certinel/app.5-guide.js                       root:nginx  0640 frontend"
+  "frontend/index.html       /var/www/csr/index.html                           root:nginx  0640 frontend"
+  "frontend/app.css          /var/www/csr/app.css                              root:nginx  0640 frontend"
+  "frontend/app.1-core.js    /var/www/csr/app.1-core.js                        root:nginx  0640 frontend"
+  "frontend/app.2-jobs.js    /var/www/csr/app.2-jobs.js                        root:nginx  0640 frontend"
+  "frontend/app.3-admin.js   /var/www/csr/app.3-admin.js                       root:nginx  0640 frontend"
+  "frontend/app.4-misc-boot.js /var/www/csr/app.4-misc-boot.js                 root:nginx  0640 frontend"
+  "frontend/app.5-guide.js   /var/www/csr/app.5-guide.js                       root:nginx  0640 frontend"
   "helper/certinel_helper.sh /opt/certinel/helper/certinel_helper.sh root:root 0750 helper"
   "helper/certinel_helper.d/00-common.sh    /opt/certinel/helper/certinel_helper.d/00-common.sh    root:root 0640 helper"
   "helper/certinel_helper.d/10-certtypes.sh /opt/certinel/helper/certinel_helper.d/10-certtypes.sh root:root 0640 helper"
@@ -163,17 +163,19 @@ install -d -o root -g root -m 0755 /opt/certinel
 install -d -o root -g root -m 0750 /opt/certinel/helper
 install -d -o root -g root -m 0700 /var/opt/certinel/private
 if command -v semanage >/dev/null 2>&1; then
-    # Some RHEL variants ship an SELinux equivalency '/var/opt = /opt' (the
-    # /var/opt/certinel rule is then rejected and the /opt/certinel rule applies
-    # via the equivalency); others don't (the /var/opt/certinel rule applies
-    # directly). Register both — whichever is valid on this host wins, the other
-    # is a harmless no-op — so the data root always relabels to var_lib_t.
-    semanage fcontext -a -t var_lib_t '/opt/certinel(/.*)?'     2>/dev/null || true
+    # /opt/certinel holds the APP (code + venv) and MUST stay executable by
+    # systemd, so leave it at the /opt default (usr_t/bin_t). A prior release
+    # wrongly labelled it var_lib_t (that type is for the writable data root);
+    # once the app moved into /opt/certinel the venv became unexecutable and the
+    # service died with 203/EXEC ("Permission denied" on gunicorn). Purge that
+    # stale rule on upgrade so the app dir relabels back to an exec-able type.
+    semanage fcontext -d '/opt/certinel(/.*)?'                  2>/dev/null || true
+    # Only the writable data root is service state -> var_lib_t.
     semanage fcontext -a -t var_lib_t '/var/opt/certinel(/.*)?' 2>/dev/null || true
-    # The helper is executable: a more-specific bin_t rule wins over var_lib_t.
+    # The helper is exec'd as root via sudo: a more-specific bin_t rule.
     semanage fcontext -a -t bin_t     '/opt/certinel/helper(/.*)?' 2>/dev/null || true
     command -v restorecon >/dev/null 2>&1 && {
-        restorecon -R /var/opt/certinel /opt/certinel || true; }
+        restorecon -RF /var/opt/certinel /opt/certinel 2>/dev/null || true; }
 fi
 # fapolicyd must trust the relocated helper (exec + sourced parts).
 if [[ "$changed_tags" == *helper* ]] && command -v fapolicyd-cli >/dev/null 2>&1; then
@@ -185,7 +187,7 @@ fi
 command -v certinel-backup >/dev/null && certinel-backup || echo "WARN: certinel-backup not found"
 
 if [[ "$changed_tags" == *frontend* ]]; then
-    restorecon -Rv /var/www/certinel/ || true
+    restorecon -Rv /var/www/csr/ || true
 fi
 if [[ "$changed_tags" == *backend* ]]; then
     fapolicyd-cli --file update /opt/certinel/ || true

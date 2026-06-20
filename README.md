@@ -14,7 +14,7 @@ with PKI/CAC mTLS (or local accounts).
 | Repo | Deploys to | Owner / mode |
 |---|---|---|
 | `backend/` | `/opt/certinel/` | root:certinel 0640 |
-| `frontend/` | `/var/www/certinel/` | root:nginx 0640 (+restorecon) |
+| `frontend/` | `/var/www/csr/` | root:nginx 0640 (+restorecon) |
 | `helper/` | `/root/sslcerts/scripts/` | root:root 0750 / 0640 |
 | `systemd/` | `/etc/systemd/system/` | root:root 0644 |
 | `nginx/` | `/etc/nginx/certinel.d/` | root:root 0644 |

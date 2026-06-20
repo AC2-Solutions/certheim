@@ -406,7 +406,7 @@ log "3/8  Directories"
 DIRS=(
   "/opt/certinel|root:${SVC_USER}|0750"
   "/var/lib/certinel|${SVC_USER}:${SVC_USER}|0750"
-  "/var/www/certinel|root:nginx|0750"
+  "/var/www/csr|root:nginx|0750"
   "/etc/certinel|root:${SVC_USER}|0750"
   "/root/sslcerts/scripts|root:root|0750"
   "/root/sslcerts/scripts/certinel_helper.d|root:root|0750"
@@ -660,7 +660,7 @@ enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
 2. **Directories**
    - \`/opt/certinel/\`            (app + venv)        root:certinel
    - \`/var/lib/certinel/\`        (SQLite DB)         certinel:certinel 0750
-   - \`/var/www/certinel/\`                  (frontend)          root:nginx
+   - \`/var/www/csr/\`                  (frontend)          root:nginx
    - \`/etc/certinel/\`            (email.conf)        certinel:certinel
    - \`/root/sslcerts/scripts/\` + \`...d/\`, \`new_request/\`, \`private/\`
    - \`/home/ansible/issued/\`          (issued certs)      traversable by certinel

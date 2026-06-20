@@ -10,8 +10,8 @@ cp -v /opt/certinel/VERSION           ./        2>/dev/null || true
 cp -v /opt/certinel/app.py            backend/
 cp -v /opt/certinel/notify.py         backend/
 cp -v /opt/certinel/import_certs.py   backend/
-cp -v /var/www/certinel/index.html              frontend/
-cp -v /var/www/certinel/app.js                  frontend/
+cp -v /var/www/csr/index.html              frontend/
+cp -v /var/www/csr/app.js                  frontend/
 cp -v /root/sslcerts/scripts/certinel_helper.sh helper/
 cp -v /root/sslcerts/scripts/certinel_helper.d/*.sh helper/certinel_helper.d/
 cp -v /etc/systemd/system/certinel-expiry-warn.service systemd/
