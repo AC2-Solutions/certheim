@@ -91,21 +91,40 @@ release:
         echo "RELEASE_TOKEN not set — skipping auto-release (set a write_repository token to enable)."
         exit 0
       fi
-      git fetch --tags --quiet || true
-      ver="$(bash tools/release.sh)"
-      if [ "$ver" = "none" ]; then
-        echo "No release-worthy commits since the last tag — nothing to cut."
-        exit 0
-      fi
-      echo "Cutting v$ver"
       git config user.email "release-bot@csr-dashboard.local"
       git config user.name  "release-bot"
-      git add VERSION CHANGELOG.md "RELEASE-NOTES-v$ver.md"
-      git commit -m "release: v$ver [skip ci]"
-      git tag -a "v$ver" -m "CSR Dashboard v$ver"
       git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      git push origin "HEAD:${CI_DEFAULT_BRANCH}"
-      git push origin "v$ver"
+      # Rapid back-to-back merges run a `release` job each. They race on the push
+      # to the protected default branch — the loser sees a non-fast-forward and
+      # used to fail the pipeline. Retry: re-sync to the latest tip, recompute the
+      # version (which now sees the other merge's commits AND its release tag), and
+      # re-push. The loser typically recomputes to "none" and no-ops cleanly.
+      ver=""
+      for attempt in 1 2 3 4 5; do
+        git fetch --quiet --tags origin "$CI_DEFAULT_BRANCH" || true
+        git reset --hard "origin/${CI_DEFAULT_BRANCH}"
+        ver="$(bash tools/release.sh)"
+        if [ "$ver" = "none" ]; then
+          echo "No release-worthy commits since the last tag — nothing to cut."
+          exit 0
+        fi
+        echo "Cutting v$ver (attempt $attempt)"
+        git add VERSION CHANGELOG.md "RELEASE-NOTES-v$ver.md"
+        git commit -m "release: v$ver [skip ci]"
+        git tag -a "v$ver" -m "CSR Dashboard v$ver"
+        if git push origin "HEAD:${CI_DEFAULT_BRANCH}" && git push origin "v$ver"; then
+          echo "Pushed v$ver on attempt $attempt"
+          break
+        fi
+        echo "Push raced (non-fast-forward); re-syncing and retrying."
+        git tag -d "v$ver" || true   # drop the local tag; recompute on the new tip
+        ver=""
+        sleep 3
+      done
+      if [ -z "$ver" ]; then
+        echo "Could not cut a release after 5 attempts (persistent push contention)."
+        exit 1
+      fi
       # Create the GitLab Release object (tag + notes shown under Deploy>Releases).
       # Non-fatal: the tag is already pushed; the release object is secondary.
       # NOTE: this needs RELEASE_TOKEN to have the `api` scope - `write_repository`
