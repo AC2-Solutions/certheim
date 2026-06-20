@@ -12,6 +12,7 @@ async function refreshAdminView() {
     loadSigningConfig(),
     loadCsrSubject(),
     loadLicense(),
+    refreshTrustStore(),
   ]);
 }
 
@@ -91,6 +92,18 @@ function applyCapabilityHints() {
   note("cap-note-email-api", "notify.email.api");
   note("cap-note-chat", "integrations.chat");
   note("cap-note-slack", "integrations.slack.interactive");
+  // Trust store: gate the SSH-push controls when no credential manager is wired
+  // (the pull script + local install still work everywhere).
+  const sshOk = capAvail("trust.distribute.ssh");
+  const pushHint = document.getElementById("ts-push-hint");
+  ["ts-target-host", "ts-target-label", "ts-target-add-btn", "ts-push-all-btn"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !sshOk;
+  });
+  if (pushHint && !sshOk && _capCache && _capCache["trust.distribute.ssh"]) {
+    pushHint.innerHTML = "⚠ " + escapeHtml(_capCache["trust.distribute.ssh"].reason) +
+      " — use the pull install script above instead.";
+  }
   // Disable the HTTP email providers in the dropdown when unavailable.
   const emailApiOk = capAvail("notify.email.api");
   ["mailgun", "sendgrid"].forEach(v => {
@@ -2390,3 +2403,148 @@ document.getElementById("csrsubject-save-btn")?.addEventListener("click", async 
   setStatus(status, "Saved — new CSRs will use this subject.", "ok");
   loadCsrSubject();
 });
+
+// ===== Admin: Trust store =====
+// Build a CA bundle from uploaded roots/intermediates and distribute it.
+async function refreshTrustStore() {
+  const rows = document.getElementById("ts-cert-rows");
+  if (!rows) return;
+  applyCapabilityHints();  // refresh cap-note-truststore + push gating
+  const r = await jsonReq("/admin/truststore");
+  if (!r.ok) { rows.innerHTML = '<tr><td colspan="6" class="hint">Failed to load.</td></tr>'; return; }
+  _tsRenderCerts(r.body.certs || [], r.body.bundle || {});
+  _tsRenderTargets(r.body.targets || []);
+}
+
+function _tsRenderCerts(certs, meta) {
+  const rows = document.getElementById("ts-cert-rows");
+  const m = document.getElementById("ts-bundle-meta");
+  if (m) {
+    m.textContent = meta.count
+      ? `— bundle: ${meta.count} CA(s) (${meta.roots} root, ${meta.intermediates} intermediate), ${fmtBytes(meta.bytes || 0)}`
+      : "— empty";
+  }
+  if (!certs.length) {
+    rows.innerHTML = '<tr><td colspan="6" class="hint">No CAs uploaded yet.</td></tr>';
+    return;
+  }
+  rows.innerHTML = certs.map(c => {
+    const exp = c.expires_at ? new Date(c.expires_at * 1000).toISOString().slice(0, 10) : "—";
+    const pill = c.status === "expired" ? '<span class="pill pill-mute">expired</span>'
+      : c.status === "expiring" ? '<span class="pill pill-warn">expiring</span>' : "";
+    return `<tr>
+      <td>${escapeHtml(c.name || "—")}</td>
+      <td>${escapeHtml(c.role || "")}</td>
+      <td class="mono" title="${escapeHtml(c.subject || "")}">${escapeHtml((c.subject || "").slice(0, 60))}</td>
+      <td>${exp} ${pill}</td>
+      <td><input type="checkbox" class="ts-enabled" data-id="${c.id}" ${c.enabled ? "checked" : ""}></td>
+      <td><button class="link-btn ts-del" data-id="${c.id}">Remove</button></td>
+    </tr>`;
+  }).join("");
+  rows.querySelectorAll(".ts-enabled").forEach(cb => cb.addEventListener("change", async () => {
+    await jsonReq(`/admin/truststore/${cb.dataset.id}/enabled`,
+      { method: "POST", body: JSON.stringify({ enabled: cb.checked }) });
+    refreshTrustStore();
+  }));
+  rows.querySelectorAll(".ts-del").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("Remove this CA from the trust store?")) return;
+    await jsonReq(`/admin/truststore/${b.dataset.id}`, { method: "DELETE" });
+    refreshTrustStore();
+  }));
+}
+
+function _tsRenderTargets(targets) {
+  const rows = document.getElementById("ts-target-rows");
+  if (!targets.length) {
+    rows.innerHTML = '<tr><td colspan="5" class="hint">No targets.</td></tr>';
+    return;
+  }
+  rows.innerHTML = targets.map(t => {
+    const st = t.last_status === "ok" ? '<span class="pill pill-ok">ok</span>'
+      : t.last_status === "error" ? `<span class="pill pill-mute" title="${escapeHtml(t.last_detail || "")}">error</span>` : "—";
+    return `<tr>
+      <td class="mono">${escapeHtml(t.host)}</td>
+      <td>${escapeHtml(t.label || "—")}</td>
+      <td>${fmtTime(t.last_pushed_at)}</td>
+      <td>${st}</td>
+      <td>
+        <button class="link-btn ts-push-one" data-host="${escapeHtml(t.host)}">Push</button>
+        <button class="link-btn ts-target-del" data-id="${t.id}">Remove</button>
+      </td>
+    </tr>`;
+  }).join("");
+  rows.querySelectorAll(".ts-push-one").forEach(b => b.addEventListener("click", () => _tsPush(b.dataset.host)));
+  rows.querySelectorAll(".ts-target-del").forEach(b => b.addEventListener("click", async () => {
+    await jsonReq(`/admin/truststore/targets/${b.dataset.id}`, { method: "DELETE" });
+    refreshTrustStore();
+  }));
+}
+
+async function _tsPush(host) {
+  const status = document.getElementById("ts-target-status");
+  setStatus(status, host ? `Pushing to ${host}…` : "Pushing to all targets…");
+  const r = await jsonReq("/admin/truststore/push",
+    { method: "POST", body: JSON.stringify(host ? { host } : {}) });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Push failed", "err"); return; }
+  const res = r.body.results || [];
+  const ok = res.filter(x => x.ok).length;
+  const fail = res.filter(x => !x.ok);
+  setStatus(status, `Pushed: ${ok}/${res.length} ok` +
+    (fail.length ? ` — failed: ${fail.map(f => f.host).join(", ")}` : ""), fail.length ? "err" : "ok");
+  refreshTrustStore();
+}
+
+document.getElementById("ts-refresh-btn")?.addEventListener("click", refreshTrustStore);
+document.getElementById("ts-upload-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("ts-upload-status");
+  const pem = document.getElementById("ts-upload-pem").value.trim();
+  if (!pem) { setStatus(status, "Paste a PEM certificate first", "err"); return; }
+  setStatus(status, "Adding…");
+  const r = await jsonReq("/admin/truststore/upload", {
+    method: "POST",
+    body: JSON.stringify({ pem, name: document.getElementById("ts-upload-name").value.trim() }),
+  });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Upload failed", "err"); return; }
+  const added = (r.body.added || []).length, dup = (r.body.duplicates || []).length;
+  setStatus(status, `Added ${added}` + (dup ? `, ${dup} already present` : ""), "ok");
+  document.getElementById("ts-upload-pem").value = "";
+  document.getElementById("ts-upload-name").value = "";
+  refreshTrustStore();
+});
+document.getElementById("ts-download-btn")?.addEventListener("click", () => {
+  window.location = API + "/admin/truststore/bundle";
+});
+document.getElementById("ts-install-local-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("ts-action-status");
+  if (!confirm("Install the current bundle into THIS host's OS trust store?")) return;
+  setStatus(status, "Installing…");
+  const r = await jsonReq("/admin/truststore/install-local", { method: "POST" });
+  setStatus(status, r.ok ? "Installed on this host." : ((r.body && r.body.error) || "Install failed"),
+    r.ok ? "ok" : "err");
+});
+document.getElementById("ts-script-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("ts-script-status");
+  const out = document.getElementById("ts-script-out");
+  setStatus(status, "Generating…");
+  const r = await jsonReq("/admin/truststore/pull-token", { method: "POST" });
+  if (!r.ok) { setStatus(status, "Failed", "err"); return; }
+  out.style.display = "block";
+  out.textContent = r.body.script || "";
+  const days = Math.round((r.body.ttl || 0) / 86400);
+  setStatus(status, `Token valid ${days || 1} day(s). Run this on each host:`, "ok");
+});
+document.getElementById("ts-target-add-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("ts-target-status");
+  const host = document.getElementById("ts-target-host").value.trim();
+  if (!host) { setStatus(status, "Enter a host", "err"); return; }
+  const r = await jsonReq("/admin/truststore/targets", {
+    method: "POST",
+    body: JSON.stringify({ host, label: document.getElementById("ts-target-label").value.trim() }),
+  });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Failed", "err"); return; }
+  document.getElementById("ts-target-host").value = "";
+  document.getElementById("ts-target-label").value = "";
+  setStatus(status, "Target added", "ok");
+  _tsRenderTargets(r.body.targets || []);
+});
+document.getElementById("ts-push-all-btn")?.addEventListener("click", () => _tsPush(null));

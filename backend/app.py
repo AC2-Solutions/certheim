@@ -958,6 +958,53 @@ def init_db():
     if "revoked" not in cert_cols:
         conn.execute("ALTER TABLE acme_certs ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0")
 
+    # Trust store: admin-uploaded root/intermediate CAs, assembled into one
+    # bundle and distributed to fleet hosts (truststore.py / routes_truststore.py).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS trust_certs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            fingerprint  TEXT NOT NULL UNIQUE,
+            pem          TEXT NOT NULL,
+            role         TEXT NOT NULL DEFAULT 'intermediate',
+            subject      TEXT,
+            issuer       TEXT,
+            serial       TEXT,
+            not_before   REAL,
+            expires_at   REAL,
+            enabled      INTEGER NOT NULL DEFAULT 1,
+            created_at   REAL NOT NULL,
+            created_by   TEXT,
+            notes        TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trust_certs_exp ON trust_certs(expires_at)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS trust_targets (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            host           TEXT NOT NULL UNIQUE,
+            label          TEXT,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            last_status    TEXT,
+            last_pushed_at REAL,
+            last_detail    TEXT,
+            created_at     REAL NOT NULL,
+            created_by     TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS trust_pulls (
+            token        TEXT PRIMARY KEY,
+            created_at   REAL NOT NULL,
+            expires_at   REAL NOT NULL,
+            max_uses     INTEGER NOT NULL DEFAULT 0,
+            uses         INTEGER NOT NULL DEFAULT 0,
+            last_pull_at REAL,
+            last_pull_ip TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trust_pulls_exp ON trust_pulls(expires_at)")
+
     # One-time backfill: parse notAfter from already-issued certs that
     # pre-date the expires_at column. Best-effort.
     backfill = conn.execute(
@@ -1267,6 +1314,8 @@ import deliver  # noqa: E402
 deliver.configure(get_setting=get_setting)
 import keystore  # noqa: E402
 keystore.configure(get_setting=get_setting)
+import truststore  # noqa: E402
+truststore.configure(get_setting=get_setting)
 # Re-export the delivery-retry pass so the certinel-deliver timer can call
 # app.run_deliveries() without its own Flask context (same pattern as
 # run_auto_renew / run_expiry_warnings).
@@ -2126,6 +2175,8 @@ from routes_acme import bp as acme_bp  # noqa: E402
 app.register_blueprint(acme_bp)
 from routes_deliver import bp as deliver_bp  # noqa: E402
 app.register_blueprint(deliver_bp)
+from routes_truststore import bp as truststore_bp  # noqa: E402
+app.register_blueprint(truststore_bp)
 
 # Background-pass entrypoints for the systemd timers, re-exported onto the `app`
 # module so the units can call `app.run_expiry_warnings()` / `app.run_auto_renew()`.

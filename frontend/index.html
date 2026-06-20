@@ -414,6 +414,7 @@
       <button type="button" data-panel="webhooks">Integrations</button>
       <button type="button" data-panel="email">Email</button>
       <button type="button" data-panel="signingca">Signing / CA</button>
+      <button type="button" data-panel="truststore">Trust store</button>
       <button type="button" data-panel="csrsubject">CSR Subject</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
@@ -978,6 +979,73 @@
         <button id="signing-cfg-save-btn" type="button">Save</button>
         <span id="signing-cfg-status" class="status"></span>
       </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="truststore" hidden>
+      <div class="card-header">
+        <h2>Trust store</h2>
+        <button id="ts-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Upload your root and intermediate CA certificates here to
+         build a single trust bundle in the app &mdash; no need to SSH into a box
+         to hand-edit trust anchors. Then install it on this host, push it to
+         your fleet over SSH, or hand out a one-line install script so every VM
+         trusts the same CAs.</p>
+      <p id="cap-note-truststore" class="hint" style="color:var(--danger)" hidden></p>
+
+      <!-- Upload -->
+      <label for="ts-upload-pem" class="textarea-label">Add CA certificate(s)
+        <span class="hint">(paste one or more PEM root/intermediate certs)</span></label>
+      <textarea id="ts-upload-pem" class="form-input" rows="6"
+        placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+      <div class="bulk-row" style="margin-top:8px">
+        <input id="ts-upload-name" class="form-input" style="max-width:260px"
+               placeholder="Label (optional)">
+        <button id="ts-upload-btn" type="button">Add to trust store</button>
+        <span id="ts-upload-status" class="status"></span>
+      </div>
+
+      <!-- Stored CAs -->
+      <h3 style="margin-top:18px">Stored CAs <span id="ts-bundle-meta" class="hint"></span></h3>
+      <table class="data-table" style="margin-top:6px">
+        <thead><tr><th>Name</th><th>Role</th><th>Subject</th><th>Expires</th><th>On</th><th></th></tr></thead>
+        <tbody id="ts-cert-rows"><tr><td colspan="6" class="hint">Loading…</td></tr></tbody>
+      </table>
+      <div class="bulk-row" style="margin-top:10px">
+        <button id="ts-download-btn" class="secondary" type="button">Download bundle</button>
+        <button id="ts-install-local-btn" class="secondary" type="button">Install on this host</button>
+        <span id="ts-action-status" class="status"></span>
+      </div>
+
+      <!-- Pull script -->
+      <h3 style="margin-top:18px">Install on a host (pull)</h3>
+      <p class="hint">Generate a one-line install script a host runs to fetch and
+         trust the current bundle. Works even when the app can't reach the host.
+         Set <em>Public base URL</em> (Admin → Signing/CA) so the link is absolute.</p>
+      <div class="bulk-row">
+        <button id="ts-script-btn" class="secondary" type="button">Generate install script</button>
+        <span id="ts-script-status" class="status"></span>
+      </div>
+      <pre id="ts-script-out" class="code-block" style="display:none;white-space:pre-wrap;margin-top:8px"></pre>
+
+      <!-- Fleet push (SSH) -->
+      <h3 style="margin-top:18px">Push to fleet (SSH)</h3>
+      <p class="hint" id="ts-push-hint">Push the bundle to hosts over SSH using the
+         per-host credentials in Vault (<code>secret/csr-delivery-ssh/&lt;host&gt;</code>,
+         same as cert delivery) and run their trust-update tool.</p>
+      <div class="bulk-row">
+        <input id="ts-target-host" class="form-input" style="max-width:240px"
+               placeholder="host.example.com">
+        <input id="ts-target-label" class="form-input" style="max-width:200px"
+               placeholder="Label (optional)">
+        <button id="ts-target-add-btn" type="button">Add target</button>
+        <button id="ts-push-all-btn" class="secondary" type="button">Push to all</button>
+        <span id="ts-target-status" class="status"></span>
+      </div>
+      <table class="data-table" style="margin-top:6px">
+        <thead><tr><th>Host</th><th>Label</th><th>Last push</th><th>Status</th><th></th></tr></thead>
+        <tbody id="ts-target-rows"><tr><td colspan="5" class="hint">No targets.</td></tr></tbody>
+      </table>
     </section>
 
     <section class="card admin-panel" data-panel="csrsubject" hidden>

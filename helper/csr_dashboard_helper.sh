@@ -96,6 +96,10 @@ case "$cmd" in
     delete-issued)
         delete_file "$ISSUED_DIR" '^[A-Za-z0-9._-]+\.cer$' "${1:-}"
         ;;
+    install-ca-bundle)
+        # Install the Certinel CA trust bundle (PEM on stdin) into this host.
+        install_ca_bundle
+        ;;
     *)
         cat >&2 <<EOF
 Usage: $0 <subcommand> [args]
@@ -112,6 +116,7 @@ Usage: $0 <subcommand> [args]
   list-csrs / get-csr / delete-csr <name>
   list-keys / get-key / delete-key <name>
   chown-issued / delete-issued <name>
+  install-ca-bundle                 (reads PEM CA bundle on stdin)
 EOF
         exit 64
         ;;
