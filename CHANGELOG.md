@@ -3,6 +3,20 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.5 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v3.0.4._
+
+### Fixes & improvements
+
+- **deploy:** app dir must be group-traversable by the service account (`6b77a97`)
+  /opt/certinel is the service WorkingDirectory, so the service account has to CHDIR into it. It was
+  created root:root (and the installer listed it twice - the root:root 0755 entry shadowed the
+  correct root:$SERVICE_GROUP one), so a deploy could leave it root:root 0750 -> gunicorn died with
+  status=200/CHDIR 'Permission denied' and nginx 502'd (the UI then fell back to a CAC prompt).
+  - deploy.sh: create /opt/certinel root:$SERVICE_GROUP 0750 (was root:root 0755)
+  - online-install.sh: drop the duplicate root:root /opt/certinel dir entry
+
 ## 3.0.4 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v3.0.3._
