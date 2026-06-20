@@ -1,4 +1,4 @@
-"""Endpoint smoke tests for the CSR Dashboard.
+"""Endpoint smoke tests for the Certinel.
 
 Purpose: a fast, dependency-light safety net that exercises every route GROUP
 (auth, jobs, admin, integrations, capabilities) so a refactor - especially the

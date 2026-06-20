@@ -525,7 +525,7 @@ PROVIDERS = {
             {"key": "base_url", "setting": "venafi_base_url", "label": "TPP base URL",
              "placeholder": "https://tpp.example.com"},
             {"key": "policy_dn", "setting": "venafi_policy_dn", "label": "Policy folder (DN)",
-             "placeholder": "\\VED\\Policy\\Certificates\\CSR Dashboard"},
+             "placeholder": "\\VED\\Policy\\Certificates\\Certinel"},
         ],
     },
     "aws_pca": {

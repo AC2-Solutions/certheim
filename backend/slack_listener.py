@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""slack_listener.py - CSR Dashboard Slack interactivity over Socket Mode.
+"""slack_listener.py - Certinel Slack interactivity over Socket Mode.
 
 Outbound-only: dials OUT to Slack over a WebSocket, so it needs NO public
 exposure (no Request URL / tunnel). It activates only when the admin selects

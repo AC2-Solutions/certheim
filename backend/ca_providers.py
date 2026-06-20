@@ -137,7 +137,7 @@ def sign_venafi(csr_pem, cfg):
 
     st, body = _http("POST", f"{base}/vedsdk/certificates/request", headers=auth,
                      body=json.dumps({"PolicyDN": policy, "PKCS10": csr_pem,
-                                      "Origin": "CSR Dashboard"}).encode())
+                                      "Origin": "Certinel"}).encode())
     if st >= 300:
         raise CAProviderError(f"Venafi request HTTP {st}: {body.decode('utf-8','replace')[:200]}")
     cert_dn = json.loads(body or b"{}").get("CertificateDN")

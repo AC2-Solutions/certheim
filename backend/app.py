@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CSR Dashboard API - Linux generation, manual signing, optional cert upload-back."""
+"""Certinel API - Linux generation, manual signing, optional cert upload-back."""
 import json
 import logging
 import logging.handlers
@@ -258,7 +258,7 @@ def _webhook_summary(event, data):
         "job.failed": "CSR request failed",
         "job.expired": "Certificate expiring soon",
         "feedback.submitted": "Feedback submitted",
-        "test": "Test notification from CSR Dashboard",
+        "test": "Test notification from Certinel",
     }
     title = titles.get(event, event)
     bits = []

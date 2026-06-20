@@ -1,4 +1,4 @@
-// CSR Dashboard frontend - Linux-only flow with jobs DB
+// Certinel frontend - Linux-only flow with jobs DB
 const API = "/csr/api";
 const CSRF = { "X-Requested-With": "csr-dashboard", "Content-Type": "application/json" };
 const PAGE_SIZE = 50;

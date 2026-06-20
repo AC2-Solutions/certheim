@@ -1,7 +1,7 @@
 #!/bin/bash
 # make-offline-bundle.sh
 #
-# Builds a self-contained archive for deploying the CSR Dashboard to an
+# Builds a self-contained archive for deploying the Certinel to an
 # AIR-GAPPED RHEL host. Run this on a CONNECTED box whose Python version
 # and architecture MATCH THE OFFLINE TARGET (e.g. RHEL 9 / python3.9 /
 # x86_64), because the downloaded wheels are version- and arch-specific.
@@ -148,7 +148,7 @@ STARTHERE
 
 cat > "$OUT/install/offline-install.sh" <<'INSTALL'
 #!/bin/bash
-# offline-install.sh - one-shot offline installer for the CSR Dashboard.
+# offline-install.sh - one-shot offline installer for the Certinel.
 #
 # This script lives in the bundle's  install/  directory.
 #
@@ -184,7 +184,7 @@ die()  { echo "  ERROR: $*" >&2; exit 1; }
 
 usage() {
     cat <<USAGE
-CSR Dashboard offline installer
+Certinel offline installer
 
 Usage:
   sudo ./offline-install.sh              Guided first-time setup (prompts for
@@ -262,7 +262,7 @@ if $UNATTENDED; then
 else
     echo
     echo "=========================================================="
-    echo "  CSR Dashboard - guided first-time setup"
+    echo "  Certinel - guided first-time setup"
     echo "  Answer the prompts below. Press Enter to accept a"
     echo "  [default]. This writes the config and then installs."
     echo "=========================================================="
@@ -395,7 +395,7 @@ if id "$SVC_USER" >/dev/null 2>&1; then
     echo "  exists - leaving as-is"
 else
     useradd --system --no-create-home --shell /sbin/nologin \
-            --comment "CSR Dashboard service account" "$SVC_USER"
+            --comment "Certinel service account" "$SVC_USER"
     echo "  created"
 fi
 getent group nginx >/dev/null || warn "group 'nginx' missing - is nginx installed?"
@@ -430,7 +430,7 @@ SUDOERS=/etc/sudoers.d/csr-dashboard
 if [[ -f "$SUDOERS" ]]; then
     echo "  exists - leaving as-is"
 else
-    printf '# CSR Dashboard: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh\n' \
+    printf '# Certinel: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/csr_dashboard_helper.sh\n' \
         "$SVC_USER" > "$SUDOERS"
     chmod 0440 "$SUDOERS"
     visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
@@ -641,9 +641,9 @@ else
 fi
 
 cat > "$OUT/OFFLINE-INSTALL.md" <<DOC
-# CSR Dashboard - Offline Install (v${VERSION})
+# Certinel - Offline Install (v${VERSION})
 
-This bundle installs the CSR Dashboard on an air-gapped RHEL host with no
+This bundle installs the Certinel on an air-gapped RHEL host with no
 network access. It contains the application code, a wheelhouse of all
 Python dependencies, and this guide.
 
