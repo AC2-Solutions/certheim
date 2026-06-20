@@ -575,6 +575,11 @@ def run_deliveries(limit=100):
     context. Returns {delivered, failed, abandoned, scanned, purged}."""
     from app import db
     purged = purge_expired_pulls()
+    try:
+        import truststore
+        purged += truststore.purge_expired_pulls()
+    except Exception:
+        pass  # trust-store pull cleanup is best-effort
     now = time.time()
     with db() as conn:
         rows = conn.execute(

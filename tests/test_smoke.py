@@ -61,6 +61,12 @@ CRITICAL_ROUTES = [
     ("POST", "/api/admin/run-auto-renew"),
     ("GET", "/api/deliver/pull/<token>"),
     ("POST", "/api/admin/keys/migrate-to-vault"),
+    ("GET", "/api/admin/truststore"),
+    ("POST", "/api/admin/truststore/upload"),
+    ("GET", "/api/admin/truststore/bundle"),
+    ("POST", "/api/admin/truststore/pull-token"),
+    ("POST", "/api/admin/truststore/push"),
+    ("GET", "/api/truststore/bundle/<token>"),
 ]
 
 
@@ -1518,3 +1524,118 @@ def test_acme_server_revoke(client, monkeypatch):
     finally:
         appmod.set_setting("acme_server_enabled", "0")
         appmod.set_setting("signing_default_backend", "manual")
+
+
+# --------------------------------------------------------------------------- #
+# Trust store                                                                  #
+# --------------------------------------------------------------------------- #
+def _gen_ca(cn="Test Root CA", ca=True):
+    """Self-signed cert PEM with basicConstraints CA:TRUE/FALSE via openssl."""
+    import subprocess
+    bc = "critical,CA:TRUE" if ca else "CA:FALSE"
+    p = subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", "/dev/null", "-days", "3650", "-subj", f"/CN={cn}",
+         "-addext", f"basicConstraints={bc}"],
+        capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    return p.stdout
+
+
+def test_truststore_upload_list_bundle(client):
+    """Upload a root, reject a leaf, build/download the bundle."""
+    import json
+    root = _gen_ca("Smoke Root CA", ca=True)
+    leaf = _gen_ca("not-a-ca.example", ca=False)
+
+    # leaf (non-CA) is rejected
+    r = client.post("/api/admin/truststore/upload", headers=WRITE,
+                    data=json.dumps({"pem": leaf}))
+    assert r.status_code == 400
+
+    # root uploads; re-upload is idempotent (counted as duplicate)
+    r = client.post("/api/admin/truststore/upload", headers=WRITE,
+                    data=json.dumps({"pem": root, "name": "Smoke Root"}))
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert len(r.get_json()["added"]) == 1
+    r2 = client.post("/api/admin/truststore/upload", headers=WRITE,
+                     data=json.dumps({"pem": root}))
+    assert r2.get_json()["duplicates"] and not r2.get_json()["added"]
+
+    # listed with role=root and reflected in the bundle meta
+    lst = client.get("/api/admin/truststore", headers=CAC).get_json()
+    names = {c["name"]: c for c in lst["certs"]}
+    assert "Smoke Root" in names and names["Smoke Root"]["role"] == "root"
+    assert lst["bundle"]["count"] >= 1 and lst["bundle"]["roots"] >= 1
+
+    # downloadable PEM bundle
+    dl = client.get("/api/admin/truststore/bundle", headers=CAC)
+    assert dl.status_code == 200
+    assert "BEGIN CERTIFICATE" in dl.get_data(as_text=True)
+
+    # cleanup
+    cid = names["Smoke Root"]["id"]
+    assert client.delete(f"/api/admin/truststore/{cid}", headers=WRITE).status_code == 200
+
+
+def test_truststore_pull_token_and_public_fetch(client):
+    """Mint a pull token, fetch the bundle from the public endpoint, 404 on junk."""
+    import json
+    appmod = client._appmod
+    with appmod.app.app_context():
+        appmod.set_setting("public_base_url", "https://certinel.example")
+    root = _gen_ca("Pull Root CA", ca=True)
+    up = client.post("/api/admin/truststore/upload", headers=WRITE,
+                     data=json.dumps({"pem": root, "name": "Pull Root"}))
+    assert up.status_code == 200
+    cid = [c for c in client.get("/api/admin/truststore", headers=CAC).get_json()["certs"]
+           if c["name"] == "Pull Root"][0]["id"]
+
+    tok = client.post("/api/admin/truststore/pull-token", headers=WRITE)
+    assert tok.status_code == 200
+    body = tok.get_json()
+    assert body["url"].startswith("https://certinel.example/api/truststore/bundle/")
+    assert "Certinel trust bundle installed" in body["script"]
+    token = body["token"]
+
+    # public fetch returns the live PEM bundle (reusable within TTL)
+    pem = client.get(f"/api/truststore/bundle/{token}")
+    assert pem.status_code == 200 and "BEGIN CERTIFICATE" in pem.get_data(as_text=True)
+    assert client.get(f"/api/truststore/bundle/{token}").status_code == 200
+    # unknown token -> 404 (no oracle)
+    assert client.get("/api/truststore/bundle/" + "z" * 43).status_code == 404
+
+    client.delete(f"/api/admin/truststore/{cid}", headers=WRITE)
+
+
+def test_truststore_targets_and_distribute_gated(client):
+    """Targets CRUD; SSH push with no Vault creds fails gracefully per-host."""
+    import json
+    add = client.post("/api/admin/truststore/targets", headers=WRITE,
+                      data=json.dumps({"host": "host1.example", "label": "web"}))
+    assert add.status_code == 200
+    targets = add.get_json()["targets"]
+    assert any(t["host"] == "host1.example" for t in targets)
+
+    # need at least one enabled cert for a push to attempt the SSH path
+    root = _gen_ca("Push Root CA", ca=True)
+    client.post("/api/admin/truststore/upload", headers=WRITE,
+                data=json.dumps({"pem": root, "name": "Push Root"}))
+    # push: no Vault creds in the test env -> result recorded as not-ok, no 500
+    push = client.post("/api/admin/truststore/push", headers=WRITE,
+                       data=json.dumps({"host": "host1.example"}))
+    assert push.status_code == 200
+    res = push.get_json()["results"]
+    assert res and res[0]["host"] == "host1.example" and res[0]["ok"] is False
+
+    # invalid host rejected
+    bad = client.post("/api/admin/truststore/targets", headers=WRITE,
+                      data=json.dumps({"host": "bad host!"}))
+    assert bad.status_code == 400
+
+    # cleanup
+    tid = [t["id"] for t in targets if t["host"] == "host1.example"][0]
+    assert client.delete(f"/api/admin/truststore/targets/{tid}", headers=WRITE).status_code == 200
+    for c in client.get("/api/admin/truststore", headers=CAC).get_json()["certs"]:
+        if c["name"] == "Push Root":
+            client.delete(f"/api/admin/truststore/{c['id']}", headers=WRITE)
