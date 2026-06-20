@@ -5,7 +5,7 @@ On a fresh database there are no admins and the app only ever inserts users
 with is_admin=0, so there is no in-app way to make the first one. Run this
 once as root on the dashboard host:
 
-    csr-bootstrap-admin "CN=COLLISON.ADAM.JOSEPH.1402015051,OU=CONTRACTOR,OU=PKI,OU=DoD,O=U.S. Government,C=US"
+    csr-bootstrap-admin "CN=DOE.JANE.1234567890,OU=PKI,O=Example Org,C=US"
 
 It inserts the DN if absent (or promotes it if present), is_admin=1,
 is_active=1. Idempotent. Reads the DB path from the same env the app uses

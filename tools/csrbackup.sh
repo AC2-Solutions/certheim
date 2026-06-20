@@ -1,5 +1,5 @@
 #!/bin/bash
-# csrbackup - snapshot the CSR Dashboard deployment files and database.
+# csrbackup - snapshot the Certinel deployment files and database.
 #
 # Output goes to /root/csr-backup-YYYYMMDD-HHMMSS/
 #
@@ -13,13 +13,13 @@ set -euo pipefail
 # ----- Argument handling -----
 case "${1:-}" in
     -l|--list)
-        echo "Existing CSR Dashboard backups in /root/:"
+        echo "Existing Certinel backups in /root/:"
         ls -lhd /root/csr-backup-* 2>/dev/null || echo "  (none)"
         exit 0
         ;;
     -h|--help)
         cat <<'EOF'
-csrbackup - snapshot the CSR Dashboard deployment files and database.
+csrbackup - snapshot the Certinel deployment files and database.
 
 Output goes to /root/csr-backup-YYYYMMDD-HHMMSS/
 

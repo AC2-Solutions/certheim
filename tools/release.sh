@@ -173,7 +173,7 @@ idx = next((i for i, l in enumerate(cl) if l.startswith("## ")), len(cl))
 open("CHANGELOG.md", "w").write("".join(cl[:idx]) + block + "\n" + "".join(cl[idx:]))
 
 # Per-release notes file (# title, ## sections).
-notes = f"# CSR Dashboard v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
+notes = f"# Certinel v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
 open(f"RELEASE-NOTES-v{target}.md", "w").write(notes)
 PYEOF
 
