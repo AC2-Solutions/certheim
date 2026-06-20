@@ -238,21 +238,25 @@ def install_local():
 # --------------------------------------------------------------------------- #
 # Remote install snippet (shared by SSH push + the pull install script)        #
 # --------------------------------------------------------------------------- #
-def _install_snippet(src_path):
-    """Bash that installs the bundle at $src_path into the host OS trust,
-    auto-detecting the trust tool (RHEL update-ca-trust / Debian
+def _install_body(src):
+    """Bash that installs the bundle at shell-expression `src` into the host OS
+    trust, auto-detecting the trust tool (RHEL update-ca-trust / Debian
     update-ca-certificates). Must run as root (callers add sudo as needed)."""
     return (
-        'set -e; SRC="' + src_path + '"; '
         'if command -v update-ca-trust >/dev/null 2>&1; then '
-        '  install -m0644 "$SRC" "/etc/pki/ca-trust/source/anchors/' + ANCHOR_NAME + '"; '
+        '  install -m0644 ' + src + ' "/etc/pki/ca-trust/source/anchors/' + ANCHOR_NAME + '"; '
         '  update-ca-trust extract; '
         'elif command -v update-ca-certificates >/dev/null 2>&1; then '
         '  rm -f /usr/local/share/ca-certificates/certinel-trust-*.crt; '
-        '  awk \'/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certinel-trust-" n ".crt")}\' "$SRC"; '
+        '  awk \'/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certinel-trust-" n ".crt")}\' ' + src + '; '
         '  update-ca-certificates; '
         'else echo "no supported trust tool (update-ca-trust/update-ca-certificates)" >&2; exit 1; fi; '
-        'rm -f "$SRC"')
+        'rm -f ' + src)
+
+
+def _install_snippet(src_path):
+    """Install snippet for a file already on the host (the pull install script)."""
+    return 'set -e; SRC=' + src_path + '; ' + _install_body('"$SRC"')
 
 
 # --------------------------------------------------------------------------- #
@@ -281,27 +285,29 @@ def push_ssh(host):
     user = (cred.get("username") or "root").strip()
     port = str(cred.get("port") or "22").strip()
     sudo = "" if user == "root" else "sudo -n "
-    remote_tmp = "/tmp/certinel-trust-bundle.$$.crt"
 
     kf = tempfile.NamedTemporaryFile("w", delete=False, suffix=".key")
     try:
         kf.write(key if key.endswith("\n") else key + "\n")
         kf.close()
         os.chmod(kf.name, 0o600)
+        # UserKnownHostsFile=/dev/null: the certinel-api unit runs ProtectHome=true,
+        # so the service user's ~/.ssh is masked and ssh can't persist known_hosts
+        # anyway. Pair it with accept-new so a fresh host key is taken on first use.
         ssh = ["ssh", "-i", kf.name, "-p", port,
                "-o", "StrictHostKeyChecking=accept-new",
+               "-o", "UserKnownHostsFile=/dev/null",
                "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
                f"{user}@{host}"]
-        # 1) land the bundle in a private temp file
+        # One round trip: the bundle is piped on stdin and the remote shell
+        # mktemp's its own file, installs, and cleans up - all in a single shell
+        # so the temp path is consistent (an earlier two-call form let $$ differ
+        # between the write and the install).
+        remote = ('set -e; T="$(mktemp /tmp/certinel-trust.XXXXXX)"; '
+                  'umask 077; cat > "$T"; ' + _install_body('"$T"'))
         p = subprocess.run(
-            ssh + [f"umask 077; cat > '{remote_tmp}'"],
-            input=bundle, capture_output=True, text=True, timeout=30)
-        if p.returncode != 0:
-            raise TrustError(f"copy to {host} failed: {(p.stderr or p.stdout)[:160]}")
-        # 2) install into the OS trust
-        p = subprocess.run(
-            ssh + [sudo + "bash -c " + _shquote(_install_snippet(remote_tmp))],
-            capture_output=True, text=True, timeout=90)
+            ssh + [sudo + "bash -c " + _shquote(remote)],
+            input=bundle, capture_output=True, text=True, timeout=90)
         if p.returncode != 0:
             raise TrustError(f"trust update on {host} failed: {(p.stderr or p.stdout)[:200]}")
         return f"installed on {user}@{host}"
