@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 2.32.0 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v2.31.1._
+
+### Features
+
+- **license:** gate CAC/mTLS behind Government licensing (Commercial add-on) (`095a684`)
+  CAC / client-cert mTLS is now a licensed capability (auth.cac):
+  - capabilities: auth.cac moves into the Government edition bundle; Commercial gets it via an
+    explicit '--entitlements auth.cac' add-on (not in its base set).
+  - backend: the auth-settings route refuses to enable it (auth_mode=mtls, or mtls_mode
+    optional/enforce) without the entitlement -> 403. Turning it off needs no license.
+  - installer: asks for the license first, then only offers the CAC/mTLS prompt when the license
+    entitles it (cac_licensed via the stdlib licensing module). Unlicensed installs go local-only
+    with a note that it can be enabled later in the UI after a license upgrade.
+  - UI: Admin -> Authentication disables the CAC auth-mode option + the client-cert controls when
+    unlicensed, explaining the requirement.
+  Smoke test asserts the 403 gate (no entitlement) + acceptance with one.
+
 ## 2.31.1 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v2.31.0._
