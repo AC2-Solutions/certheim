@@ -3,6 +3,42 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.1.0 — 2026-06-20
+
+_Released 2026-06-20. 3 changes since v3.0.5._
+
+### Features
+
+- **ops:** runtime secret fetch from OpenBao/Vault (openbao-fetch) for alerts (`cfe9d6b`)
+  Adds a reusable, dependency-free openbao-fetch (AppRole login -> read one KV-v2 field -> revoke
+  token). The doctor-alert wrapper uses it when MAILGUN_OPENBAO_PATH is set, so the Mailgun key is
+  read at runtime instead of baked into a config: rotating it is 'bao kv put secret/mailgun
+  api_key=NEW' with no redeploy. A static MAILGUN_API_KEY still wins, so non-OpenBao installs are
+  unaffected. Works against OpenBao or HashiCorp Vault (same API). AppRole creds live only in
+  /etc/openbao/approle.env (0600); the secret itself never touches the box.
+- **ops:** certinel-doctor.timer - scheduled health check + Mailgun email on failure (`58a3d84`)
+  Runs certinel-doctor every ~15m (systemd timer). certinel-doctor-alert wraps it and, on FAIL,
+  emails via Mailgun - state-based so it alerts on healthy->FAIL, re-sends every RENOTIFY_HOURS
+  while down, and sends a RECOVERED notice. Config in /etc/certinel/doctor-alert.conf (Mailgun
+  key/domain/recipient); with no creds the timer still runs + journals, so it's safe to enable by
+  default.
+  deploy.sh installs the units + alert tool, seeds a blank 0600 doctor-alert.conf, and enables
+  certinel-doctor.timer alongside the others. verify.sh tracks them.
+- **ops:** certinel-doctor health check + run it at end of install (`3fc6753`)
+  Read-only health probe for a deployed host that actively tests the failure classes that bit
+  installs this cycle, so problems surface immediately rather than at first login:
+  - service active (decodes 203/EXEC and 200/CHDIR exit codes)
+  - service account can traverse /opt/certinel + exec the venv (DAC)
+  - SELinux exec label on gunicorn (flags the var_lib_t mislabel)
+  - GET /csr/ 200 + /api/health version matches deployed VERSION
+  - nginx -t, no duplicate server_name, static root present
+  - auth_mode/mtls_mode sanity (flags the unlicensed mtls_mode=optional gate)
+  - TLS expiry vs the step-ca auto-renew timer
+  - data dir writable by the service account
+  - no legacy csr-dashboard remnants Exit 1 on any FAIL. Installed as /usr/local/sbin/certinel-
+    doctor; online-install runs it as a non-fatal post-install step. Complements verify.sh (file
+    drift).
+
 ## 3.0.5 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v3.0.4._
