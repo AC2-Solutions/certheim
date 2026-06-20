@@ -31,6 +31,7 @@ config/*.local.*
 .*.swp
 
 # --- OS cruft ---
+RELEASE-NOTES*
 .DS_Store
 Thumbs.db
 desktop.ini
