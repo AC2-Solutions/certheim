@@ -3,6 +3,50 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.0 — 2026-06-20
+
+_Released 2026-06-20. 4 changes since v2.32.0._
+
+### Breaking changes
+
+- rename csr-dashboard slug to certinel across all internal identifiers (`1acda00`)
+  Full Tier-3 rebrand so a deployed system shows only Certinel naming — no legacy csr-dashboard
+  remnants in services, accounts, or paths customers can see while it runs.
+  Renamed: /opt/csr-dashboard   -> /opt/certinel /etc/csr-dashboard   -> /etc/certinel       (+
+  certinel.env) /etc/pki/csr-dashboard -> /etc/pki/certinel /etc/nginx/csr-dashboard.d ->
+  /etc/nginx/certinel.d /var/www/csr         -> /var/www/certinel service account csrapi -> certinel
+  csr_dashboard_helper.sh + .d/ -> certinel_helper.sh + .d/ CSR_DASHBOARD_ENV    -> CERTINEL_ENV
+  CSRF header value 'csr-dashboard' -> 'certinel' (frontend + backend) tools/csr-* + csrbackup.sh ->
+  tools/certinel-*
+  Kept the generic 'CSR' acronym (Certificate Signing Request), consistent with keeping the /csr/
+  URL: the /csr/ path, CSR_* app env vars, csr_subject.py, and the nginx 30-csr.conf location
+  fragment.
+  deployments are handled by fresh reinstall (no in-place migration). CHANGELOG history and README
+  'formerly' note left intact.
+
+### Fixes & improvements
+
+- rename csr-dashboard slug to certinel across all internal identifiers (`1acda00`)
+  Full Tier-3 rebrand so a deployed system shows only Certinel naming — no legacy csr-dashboard
+  remnants in services, accounts, or paths customers can see while it runs.
+  Renamed: /opt/csr-dashboard   -> /opt/certinel /etc/csr-dashboard   -> /etc/certinel       (+
+  certinel.env) /etc/pki/csr-dashboard -> /etc/pki/certinel /etc/nginx/csr-dashboard.d ->
+  /etc/nginx/certinel.d /var/www/csr         -> /var/www/certinel service account csrapi -> certinel
+  csr_dashboard_helper.sh + .d/ -> certinel_helper.sh + .d/ CSR_DASHBOARD_ENV    -> CERTINEL_ENV
+  CSRF header value 'csr-dashboard' -> 'certinel' (frontend + backend) tools/csr-* + csrbackup.sh ->
+  tools/certinel-*
+  Kept the generic 'CSR' acronym (Certificate Signing Request), consistent with keeping the /csr/
+  URL: the /csr/ path, CSR_* app env vars, csr_subject.py, and the nginx 30-csr.conf location
+  fragment.
+  deployments are handled by fresh reinstall (no in-place migration). CHANGELOG history and README
+  'formerly' note left intact.
+
+### Other changes
+
+- finish Certinel rebrand of remaining visible CSR Dashboard text (`37de649`)
+- **readme:** clone example uses the renamed certinel repo path (`8db2183`)
+- **brand:** user-visible text -> Certinel; genericize DoD tooling language (`d75b6f7`)
+
 ## 2.32.0 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v2.31.1._
