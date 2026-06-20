@@ -159,7 +159,10 @@ install -d -o "$SERVICE_USER"   -g "$SERVICE_GROUP" -m 0750 /var/opt/certinel/is
 install -d -o root              -g "$SERVICE_GROUP" -m 0750 /var/opt/certinel/requests
 # Helper lives under /opt (Phase 4b, off /root) so the sandbox can mask /root;
 # KEYDIR is a brief 0700 scratch for key generation (keys then go to the vault).
-install -d -o root -g root -m 0755 /opt/certinel
+# WorkingDirectory of the service: the account must traverse it (CHDIR), so it
+# is group-owned by the service group (0750), not root:root (which left the
+# account unable to enter -> systemd status=200/CHDIR "Permission denied").
+install -d -o root -g "$SERVICE_GROUP" -m 0750 /opt/certinel
 install -d -o root -g root -m 0750 /opt/certinel/helper
 install -d -o root -g root -m 0700 /var/opt/certinel/private
 if command -v semanage >/dev/null 2>&1; then
