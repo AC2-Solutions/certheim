@@ -289,7 +289,11 @@ COMMERCIAL_CAPABILITIES = {
     # connected integrations (basic SMTP email stays free)
     "integrations.chat", "integrations.slack.interactive", "notify.email.api",
 }
-GOVERNMENT_CAPABILITIES = {"profiles.public_sector"}
+# auth.cac (CAC / client-cert mTLS) ships in the Government edition and is
+# available to Commercial as an explicit add-on entitlement (a Commercial
+# license issued with `--entitlements auth.cac`). It is NOT in the Commercial
+# base bundle, so it only appears here.
+GOVERNMENT_CAPABILITIES = {"profiles.public_sector", "auth.cac"}
 
 # Premium capabilities: never granted by the grant-all default - only by a valid
 # license whose edition (or explicit entitlements) covers them. Everything else

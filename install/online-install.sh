@@ -53,6 +53,18 @@ ask_secret() {
 }
 is_yes() { [[ "${1,,}" =~ ^(y|yes|true|1|on)$ ]]; }
 
+# cac_licensed: true iff the chosen LICENSE_FILE entitles CAC/mTLS (capability
+# auth.cac - Government edition, or a Commercial add-on). Evaluated with the
+# repo's stdlib-only licensing/capabilities modules so the installer only offers
+# mTLS when the license allows it. Degrades to "not licensed" if no python yet.
+cac_licensed() {
+    local lf="${LICENSE_FILE:-}" py
+    [[ -n "$lf" && -r "$lf" ]] || return 1
+    py="$(command -v python3 || command -v "${PYBIN:-python3.12}" || true)"
+    [[ -n "$py" ]] || return 1
+    CSR_LICENSE_FILE="$lf" "$py" -c "import sys; sys.path.insert(0,'backend'); import capabilities; sys.exit(0 if capabilities.is_entitled('auth.cac') else 1)" 2>/dev/null
+}
+
 # ---------------------------------------------------------------------------
 log "Certinel installer - environment configuration"
 # ---------------------------------------------------------------------------
@@ -87,11 +99,19 @@ case "${TLS_MODE,,}" in
     ;;
 esac
 
-# C. Authentication
+# C. Licensing + Authentication
+# License first, so CAC/mTLS is only offered when the license entitles it.
+ask LICENSE_FILE "License file to install (blank = Community edition)" ""
 # DOD_CA_BUNDLE is referenced by the nginx stanza in BOTH mTLS modes, so default
 # it unconditionally (set -u would otherwise abort when mTLS is off).
 DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
-ask ENABLE_MTLS "Enable CAC/mTLS auth? (else local username/password)" "no"
+if cac_licensed; then
+    ask ENABLE_MTLS "Enable CAC/mTLS auth? (else local username/password)" "no"
+else
+    is_yes "${ENABLE_MTLS:-no}" && warn "CAC/mTLS is not licensed - using local auth (enable later in the UI after a license upgrade)"
+    ENABLE_MTLS=no
+    $interactive && echo "  Auth: local user/pass. CAC/mTLS is a licensed feature (Government edition, or a Commercial CAC add-on) - apply a license later and enable it in Admin -> Authentication."
+fi
 if is_yes "$ENABLE_MTLS"; then
     ask DOD_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "$DOD_CA_BUNDLE"
     AUTH_MODE=mtls        # the app stores the setting as 'mtls' or 'local'
@@ -113,7 +133,6 @@ if is_yes "$CONFIGURE_OPENBAO"; then
     ask CSR_OPENBAO_ROLE_ID "  AppRole role_id" ""
     ask_secret CSR_OPENBAO_SECRET_ID "  AppRole secret_id"
 fi
-ask LICENSE_FILE "License file to install (blank = Community edition)" ""
 
 # Derived / fixed paths (internal identifiers kept per the rebrand).
 CERT_DIR=/etc/pki/csr-dashboard

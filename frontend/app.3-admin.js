@@ -921,6 +921,7 @@ async function refreshAuthSettings() {
   _bannerToggleCustom();
   _authToggleLocalOpts();
   _mtlsToggle();
+  _gateCac();
   setStatus(status, "");
 }
 
@@ -929,6 +930,24 @@ function _mtlsToggle() {
     document.getElementById("admin-mtls-mode").value !== "enforce";
 }
 document.getElementById("admin-mtls-mode")?.addEventListener("change", _mtlsToggle);
+
+// CAC / mTLS is a licensed capability (Government edition, or a Commercial CAC
+// add-on). When unavailable, disable the CAC auth-mode option + the client-cert
+// controls and explain why.
+function _gateCac() {
+  const ok = capAvail("auth.cac");
+  const mtlsOpt = document.querySelector('#admin-auth-mode option[value="mtls"]');
+  if (mtlsOpt) {
+    mtlsOpt.disabled = !ok;
+    if (!ok && !/licensed/.test(mtlsOpt.textContent)) mtlsOpt.textContent += " — licensed";
+  }
+  ["admin-mtls-mode", "admin-mtls-bundle"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = !ok;
+  });
+  const note = document.getElementById("admin-mtls-status");
+  if (note && !ok) setStatus(note,
+    "CAC / mTLS is a licensed feature — Government edition, or a Commercial CAC add-on. Apply a license (Admin → License) to enable.", "");
+}
 
 function _bannerToggleCustom() {
   const isCustom = document.getElementById("admin-banner-select").value === "custom";
