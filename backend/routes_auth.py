@@ -214,6 +214,10 @@ def admin_get_auth_settings():
         login_banner_custom_title=get_setting("login_banner_custom_title") or "",
         login_banner_custom_text=get_setting("login_banner_custom_text") or "",
         banner_options=banner_options(),
+        # nginx client-cert (mTLS) verification - app-managed via the helper.
+        mtls_mode=get_setting("mtls_mode") or "off",
+        mtls_ca_bundle_path=get_setting("mtls_ca_bundle_path") or "",
+        mtls_modes=["off", "optional", "enforce"],
     )
 
 @bp.put("/api/admin/auth-settings")
@@ -233,6 +237,31 @@ def admin_set_auth_settings():
             return jsonify(error="enabling mTLS requires confirm_mtls=true; "
                                  "ensure CAC access works first"), 400
         set_setting("auth_mode", mode); changed["auth_mode"] = mode
+    if "mtls_mode" in payload:
+        # App-managed nginx client-cert verification. Store the choice and apply
+        # it to nginx via the helper (best-effort: the setting is the source of
+        # truth; a failed apply is reported, not fatal, so the save still lands).
+        mmode = (payload.get("mtls_mode") or "off").strip()
+        if mmode not in ("off", "optional", "enforce"):
+            return jsonify(error="mtls_mode must be off|optional|enforce"), 400
+        mpath = (payload.get("mtls_ca_bundle_path") or "").strip()
+        if mmode == "enforce":
+            ok_path = (mpath.startswith("/") and
+                       all(c.isalnum() or c in "._/-" for c in mpath))
+            if not ok_path:
+                return jsonify(error="enforce mode needs a valid absolute "
+                                     "client-CA bundle path"), 400
+        set_setting("mtls_mode", mmode)
+        set_setting("mtls_ca_bundle_path", mpath)
+        changed["mtls_mode"] = mmode
+        from app import run_helper
+        try:
+            rc, out, err = run_helper(["apply-mtls", mmode, mpath])
+        except Exception as e:  # helper/sudo absent (e.g. CI) - never 500
+            rc, out, err = 1, "", str(e)
+        changed["mtls_applied"] = (rc == 0)
+        if rc != 0:
+            changed["mtls_apply_error"] = (err or out or "").strip()[:240]
     if "trusted_email_domains" in payload or "trusted_email_domain" in payload:
         # Accept either a list (canonical) or a string that may itself hold
         # several domains (comma/space/semicolon separated). Validate each;

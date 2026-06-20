@@ -916,10 +916,19 @@ async function refreshAuthSettings() {
   sel.value = s.login_banner || "dod";
   document.getElementById("admin-banner-custom-title").value = s.login_banner_custom_title || "";
   document.getElementById("admin-banner-custom-text").value = s.login_banner_custom_text || "";
+  document.getElementById("admin-mtls-mode").value = s.mtls_mode || "off";
+  document.getElementById("admin-mtls-bundle").value = s.mtls_ca_bundle_path || "";
   _bannerToggleCustom();
   _authToggleLocalOpts();
+  _mtlsToggle();
   setStatus(status, "");
 }
+
+function _mtlsToggle() {
+  document.getElementById("admin-mtls-bundle-row").hidden =
+    document.getElementById("admin-mtls-mode").value !== "enforce";
+}
+document.getElementById("admin-mtls-mode")?.addEventListener("change", _mtlsToggle);
 
 function _bannerToggleCustom() {
   const isCustom = document.getElementById("admin-banner-select").value === "custom";
@@ -959,6 +968,8 @@ document.getElementById("admin-auth-save-btn").addEventListener("click", async (
       document.getElementById("admin-banner-custom-title").value.trim(),
     login_banner_custom_text:
       document.getElementById("admin-banner-custom-text").value,
+    mtls_mode: document.getElementById("admin-mtls-mode").value,
+    mtls_ca_bundle_path: document.getElementById("admin-mtls-bundle").value.trim(),
   };
   // Switching to mtls needs explicit confirmation (backend enforces this too).
   if (mode === "mtls") {
@@ -976,6 +987,12 @@ document.getElementById("admin-auth-save-btn").addEventListener("click", async (
   });
   if (r.ok) {
     setStatus(status, "Saved", "ok");
+    // Surface the nginx mTLS apply result (best-effort on the backend).
+    const ms = document.getElementById("admin-mtls-status");
+    if (r.body && "mtls_applied" in r.body) {
+      if (r.body.mtls_applied) setStatus(ms, "✓ nginx client-cert config applied (" + payload.mtls_mode + ")", "ok");
+      else setStatus(ms, "⚠ saved, but applying to nginx failed: " + (r.body.mtls_apply_error || "unknown"), "err");
+    }
     refreshAuthSettings();
   } else {
     setStatus(status, "Failed: " + ((r.body && r.body.error) || "unknown"), "err");

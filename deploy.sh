@@ -75,6 +75,7 @@ MANIFEST=(
   "helper/csr_dashboard_helper.d/10-certtypes.sh /opt/certinel/helper/csr_dashboard_helper.d/10-certtypes.sh root:root 0640 helper"
   "helper/csr_dashboard_helper.d/20-generate.sh  /opt/certinel/helper/csr_dashboard_helper.d/20-generate.sh  root:root 0640 helper"
   "helper/csr_dashboard_helper.d/30-truststore.sh /opt/certinel/helper/csr_dashboard_helper.d/30-truststore.sh root:root 0640 helper"
+  "helper/csr_dashboard_helper.d/40-mtls.sh       /opt/certinel/helper/csr_dashboard_helper.d/40-mtls.sh       root:root 0640 helper"
   "systemd/certinel-expiry-warn.service /etc/systemd/system/certinel-expiry-warn.service root:root 0644 systemd"
   "systemd/certinel-expiry-warn.timer   /etc/systemd/system/certinel-expiry-warn.timer   root:root 0644 systemd"
   "systemd/certinel-auto-renew.service  /etc/systemd/system/certinel-auto-renew.service  root:root 0644 systemd"
