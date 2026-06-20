@@ -178,8 +178,12 @@ def _deliver_ssh(job):
         kf.write(key if key.endswith("\n") else key + "\n")
         kf.close()
         os.chmod(kf.name, 0o600)
+        # UserKnownHostsFile=/dev/null: certinel-api runs ProtectHome=true, so the
+        # service user's ~/.ssh is masked and ssh can't persist known_hosts;
+        # accept-new takes the host key on first use.
         ssh = ["ssh", "-i", kf.name, "-p", port,
                "-o", "StrictHostKeyChecking=accept-new",
+               "-o", "UserKnownHostsFile=/dev/null",
                "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
                f"{user}@{host}"]
 
