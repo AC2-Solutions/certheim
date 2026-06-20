@@ -43,8 +43,8 @@ fi
 FILES=(
     /opt/certinel/app.py
     /opt/certinel/notify.py
-    /var/www/certinel/index.html
-    /var/www/certinel/app.js
+    /var/www/csr/index.html
+    /var/www/csr/app.js
     /opt/certinel/helper/certinel_helper.sh
     /etc/systemd/system/certinel-api.service
     /etc/sudoers.d/certinel

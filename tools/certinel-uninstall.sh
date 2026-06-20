@@ -11,7 +11,7 @@
 #   - stops + disables the systemd units (certinel-api, certinel-expiry-warn .service
 #     and .timer) and removes the unit files
 #   - removes the application code (/opt/certinel), frontend
-#     (/var/www/certinel), helper scripts, and the installed tools
+#     (/var/www/csr), helper scripts, and the installed tools
 #   - removes ONLY the app's nginx fragment (/etc/nginx/certinel.d/30-csr.conf);
 #     leaves PKI (client CA bundle, server certs) and the rest of nginx alone
 #   - PROMPTS about the database (default: preserve via timestamped backup)
@@ -29,7 +29,7 @@ set -uo pipefail   # NOT -e: uninstall should continue past a missing item
 
 # ---- paths (match deploy.sh / the installer) ------------------------------
 APP_DIR="/opt/certinel"
-WWW_DIR="/var/www/certinel"
+WWW_DIR="/var/www/csr"
 DB_DIR="/var/lib/certinel"
 DB_FILE="${DB_DIR}/jobs.db"
 CFG_DIR="/etc/certinel"

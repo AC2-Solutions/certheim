@@ -16,7 +16,7 @@ and a fresh STIG offline VM.
 |---|---|---|
 | `/opt/certinel/` | root:certinel 0750 | app code + `venv/` |
 | `/opt/certinel/{app,notify,gitlab_integration,import_certs}.py` | root:certinel 0640 | backend |
-| `/var/www/certinel/{index.html,app.js}` | root:nginx 0640 | frontend |
+| `/var/www/csr/{index.html,app.js}` | root:nginx 0640 | frontend |
 | `/var/lib/certinel/jobs.db` | certinel:certinel 0640 | SQLite (WAL) |
 | `/var/lib/certinel/trust/` | certinel:certinel | published CA certs (trust portal) |
 | `/etc/certinel/email.conf` | certinel:certinel 0640 | mail config (UI-managed) |
@@ -139,7 +139,7 @@ email" verifies wiring.
   write (matches the DB dir). The helper's `ISSUED_DIR`/`CSRDIR`
   (`certinel_helper.d/00-common.sh`) must match `CSR_ISSUED_DIR`.
 - **SELinux**: `setsebool -P httpd_can_network_connect 1` (else nginx→backend
-  502s); `restorecon` on `/var/www/certinel` + `/var/opt/certinel` (deploy.sh does this).
+  502s); `restorecon` on `/var/www/csr` + `/var/opt/certinel` (deploy.sh does this).
 - **firewalld**: open 443 (`firewall-cmd --permanent --add-service=https`).
 - **nginx**: the fragment must stay location-only; mTLS at server level.
 - **VERSION**: read once at startup → bump VERSION, restart, confirm via
