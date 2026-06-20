@@ -3,6 +3,21 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.2 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v3.0.1._
+
+### Fixes & improvements
+
+- **install:** auto-detect Python (el9 has no 3.12) + idempotent fapolicyd trust (`bf36f85`)
+  Two install failures hit during the certinel rollout:
+  - online-install.sh hardcoded PYBIN=python3.12, which does not exist on RHEL/Alma 9 (only
+    python3.9) -> install died at the venv step. Detect the newest available python3.x instead of
+    assuming 3.12.
+  - deploy.sh used 'fapolicyd-cli --file update', which errors with '<path> is not in the trust
+    database' on a fresh STIG box (the entry does not exist yet). Use 'add' first, fall back to
+    'update' on re-deploy.
+
 ## 3.0.1 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v3.0.0._
