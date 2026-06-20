@@ -199,7 +199,6 @@ DIRS=(
   "/var/lib/certinel|${SERVICE_USER}:${SERVICE_GROUP}|0750"
   "/var/www/csr|root:nginx|0750"
   "/etc/certinel|root:${SERVICE_GROUP}|0750"
-  "/opt/certinel|root:root|0755"
   "/opt/certinel/helper|root:root|0750"
   "/opt/certinel/helper/certinel_helper.d|root:root|0750"
   "/var/opt/certinel|root:root|0755"
