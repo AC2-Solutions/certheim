@@ -373,10 +373,13 @@ if is_yes "$ENABLE_MTLS"; then
     MTLS_MODE_SEED=enforce
     echo "  CAC mTLS: ENFORCED (CA bundle ${CLIENT_CA_BUNDLE})"
 else
-    printf '# managed by Certinel (Admin -> Authentication)\nssl_verify_client optional_no_ca;\nssl_verify_depth 3;\n' \
+    # mTLS disabled: client certs OFF (not optional). Seeding 'optional' here
+    # left unlicensed boxes with mtls_mode=optional, which then tripped the
+    # CAC-license gate on every unrelated Admin -> Authentication save.
+    printf '# managed by Certinel (Admin -> Authentication)\nssl_verify_client off;\n' \
         > "$NGINX_INCLUDE_DIR/10-mtls.conf"
-    MTLS_MODE_SEED=optional
-    echo "  CAC mTLS: not enforced (optional_no_ca) - change it later in Admin -> Authentication"
+    MTLS_MODE_SEED=off
+    echo "  CAC mTLS: off (local auth) - enable later in Admin -> Authentication"
 fi
 chmod 0644 "$NGINX_INCLUDE_DIR/10-mtls.conf"
 SERVER_CONF=/etc/nginx/conf.d/certinel.conf
