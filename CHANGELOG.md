@@ -3,6 +3,22 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.3 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v3.0.2._
+
+### Fixes & improvements
+
+- **auth:** unlicensed boxes can save auth settings (mtls_mode gate) (`9b04e18`)
+  Installs without a CAC license were seeded with mtls_mode=optional, so every Admin ->
+  Authentication save (e.g. adding a trusted domain) echoed that value back and tripped the license
+  gate -> 403 'CAC / mTLS is a licensed feature', even though mTLS was greyed out and untouched.
+  - online-install.sh: when mTLS is disabled, seed mtls_mode=off and write 'ssl_verify_client off'
+    (was 'optional' + optional_no_ca).
+  - routes_auth.py: only 403 on an ACTIVE enable (a real change to optional/enforce). A save that
+    merely re-sends a stale value is coerced to off so it lands - and self-heals boxes seeded
+    optional by old installers.
+
 ## 3.0.2 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v3.0.1._
