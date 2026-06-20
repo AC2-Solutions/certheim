@@ -1,5 +1,5 @@
 #!/bin/bash
-# csr-uninstall.sh - cleanly remove the CSR Dashboard from this host.
+# csr-uninstall.sh - cleanly remove the Certinel from this host.
 #
 #   sudo ./csr-uninstall.sh            Guided uninstall (prompts before each
 #                                      destructive choice; safe defaults).
@@ -13,12 +13,12 @@
 #   - removes the application code (/opt/csr-dashboard), frontend
 #     (/var/www/csr), helper scripts, and the installed tools
 #   - removes ONLY the app's nginx fragment (/etc/nginx/csr-dashboard.d/30-csr.conf);
-#     leaves PKI (DoD CA bundle, server certs) and the rest of nginx alone
+#     leaves PKI (client CA bundle, server certs) and the rest of nginx alone
 #   - PROMPTS about the database (default: preserve via timestamped backup)
 #   - PROMPTS about removing the csrapi service account
 #
 # What it deliberately does NOT touch:
-#   - PKI material (/etc/pki/csr-dashboard, DoD CA bundle) - site-managed
+#   - PKI material (/etc/pki/csr-dashboard, client CA bundle) - site-managed
 #   - nginx itself or any other service's config
 #   - firewalld rules (port 443 may be shared)
 #   - /home/ansible/issued (managed outside this app)
@@ -64,12 +64,12 @@ do_or_show() {
 }
 
 echo "=============================================================="
-echo "  CSR Dashboard uninstall"
+echo "  Certinel uninstall"
 $DRY && echo "  *** DRY RUN - nothing will be changed ***"
 echo "=============================================================="
 echo
 echo "This will stop the service and remove the application from this host."
-echo "PKI certificates and the DoD CA bundle will be LEFT in place."
+echo "PKI certificates and the client CA bundle will be LEFT in place."
 echo
 
 # --- top-level confirmation (skipped in dry-run) ---------------------------
@@ -216,6 +216,6 @@ echo
 echo "=============================================================="
 $DRY && echo "  DRY RUN complete - nothing was changed." \
      || echo "  Uninstall complete."
-echo "  Left in place: PKI certs, DoD CA bundle, nginx itself,"
+echo "  Left in place: PKI certs, client CA bundle, nginx itself,"
 echo "  firewalld rules, and any database/config backups noted above."
 echo "=============================================================="

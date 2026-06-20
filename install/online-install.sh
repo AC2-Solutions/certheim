@@ -1,5 +1,5 @@
 #!/bin/bash
-# online-install.sh - interactive online installer for Certinel (CSR Dashboard).
+# online-install.sh - interactive online installer for Certinel.
 #
 # Use this on a CONNECTED, non-STIG box (no air-gap, pip+internet available) -
 # a dev box or a fresh on-prem VM. It installs OS deps, the service account, the
@@ -102,9 +102,9 @@ esac
 # C. Licensing + Authentication
 # License first, so CAC/mTLS is only offered when the license entitles it.
 ask LICENSE_FILE "License file to install (blank = Community edition)" ""
-# DOD_CA_BUNDLE is referenced by the nginx stanza in BOTH mTLS modes, so default
+# CLIENT_CA_BUNDLE is referenced by the nginx stanza in BOTH mTLS modes, so default
 # it unconditionally (set -u would otherwise abort when mTLS is off).
-DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
+CLIENT_CA_BUNDLE="${CLIENT_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
 if cac_licensed; then
     ask ENABLE_MTLS "Enable CAC/mTLS auth? (else local username/password)" "no"
 else
@@ -113,7 +113,7 @@ else
     $interactive && echo "  Auth: local user/pass. CAC/mTLS is a licensed feature (Government edition, or a Commercial CAC add-on) - apply a license later and enable it in Admin -> Authentication."
 fi
 if is_yes "$ENABLE_MTLS"; then
-    ask DOD_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "$DOD_CA_BUNDLE"
+    ask CLIENT_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "$CLIENT_CA_BUNDLE"
     AUTH_MODE=mtls        # the app stores the setting as 'mtls' or 'local'
 else
     AUTH_MODE=local
@@ -146,7 +146,7 @@ echo "  service account : ${SERVICE_USER}:${SERVICE_GROUP}"
 echo "  python          : ${PYBIN}"
 echo "  FQDN / URL      : ${FQDN}  ->  ${DASHBOARD_URL}"
 echo "  TLS source      : ${TLS_MODE}"
-echo "  auth mode       : ${AUTH_MODE}$(is_yes "$ENABLE_MTLS" && echo " (mTLS: ${DOD_CA_BUNDLE})")"
+echo "  auth mode       : ${AUTH_MODE}$(is_yes "$ENABLE_MTLS" && echo " (mTLS: ${CLIENT_CA_BUNDLE})")"
 echo "  email           : $(is_yes "$CONFIGURE_EMAIL" && echo "${SMG_HOST}:${SMG_PORT}" || echo "(skip)")"
 echo "  openbao         : $(is_yes "$CONFIGURE_OPENBAO" && echo "${CSR_OPENBAO_ADDR}" || echo "(skip)")"
 echo "  license         : ${LICENSE_FILE:-Community}"
@@ -361,11 +361,11 @@ setup_tls
 # The server block holds only TLS + the include, so there's never a duplicate
 # ssl_verify_client. MTLS_MODE_SEED is seeded into app_settings after deploy.
 if is_yes "$ENABLE_MTLS"; then
-    [[ -s "$DOD_CA_BUNDLE" ]] || warn "ENABLE_MTLS=yes but $DOD_CA_BUNDLE is missing/empty - nginx -t will fail until the bundle is placed there"
+    [[ -s "$CLIENT_CA_BUNDLE" ]] || warn "ENABLE_MTLS=yes but $CLIENT_CA_BUNDLE is missing/empty - nginx -t will fail until the bundle is placed there"
     printf '# managed by Certinel (Admin -> Authentication)\nssl_client_certificate %s;\nssl_verify_client on;\nssl_verify_depth 3;\n' \
-        "$DOD_CA_BUNDLE" > "$NGINX_INCLUDE_DIR/10-mtls.conf"
+        "$CLIENT_CA_BUNDLE" > "$NGINX_INCLUDE_DIR/10-mtls.conf"
     MTLS_MODE_SEED=enforce
-    echo "  CAC mTLS: ENFORCED (CA bundle ${DOD_CA_BUNDLE})"
+    echo "  CAC mTLS: ENFORCED (CA bundle ${CLIENT_CA_BUNDLE})"
 else
     printf '# managed by Certinel (Admin -> Authentication)\nssl_verify_client optional_no_ca;\nssl_verify_depth 3;\n' \
         > "$NGINX_INCLUDE_DIR/10-mtls.conf"
@@ -435,7 +435,7 @@ if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$CSR_DB" ]]; then
        ${REG_SEED}
        INSERT INTO app_settings(key,value) VALUES('mtls_mode','${MTLS_MODE_SEED}')
          ON CONFLICT(key) DO UPDATE SET value=excluded.value;
-       INSERT INTO app_settings(key,value) VALUES('mtls_ca_bundle_path','${DOD_CA_BUNDLE}')
+       INSERT INTO app_settings(key,value) VALUES('mtls_ca_bundle_path','${CLIENT_CA_BUNDLE}')
          ON CONFLICT(key) DO UPDATE SET value=excluded.value;" 2>/dev/null \
       && chown "${SERVICE_USER}:${SERVICE_GROUP}" "$CSR_DB" 2>/dev/null || true
     # deploy.sh restarted the service BEFORE this seed - restart so it reads the

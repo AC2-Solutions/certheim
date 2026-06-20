@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""csr-issue-license - mint a signed CSR Dashboard license (VENDOR-side tool).
+"""csr-issue-license - mint a signed Certinel license (VENDOR-side tool).
 
 Run ONLY on the machine that holds the vendor RSA private signing key - never on
 a customer/product box. The matching public key is embedded in the app
@@ -28,7 +28,7 @@ def b64u(b):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Mint a signed CSR Dashboard license.")
+    ap = argparse.ArgumentParser(description="Mint a signed Certinel license.")
     ap.add_argument("--key", required=True, help="vendor RSA private key (PEM)")
     ap.add_argument("--customer", required=True, help="customer name (recorded in the license)")
     ap.add_argument("--edition", default="commercial",
