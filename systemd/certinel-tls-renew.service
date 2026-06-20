@@ -1,0 +1,17 @@
+[Unit]
+# Renew the Certinel nginx TLS certificate from a step-ca / ACME CA and reload
+# nginx. Installed + enabled by online-install.sh ONLY when the operator picks
+# the "step-ca (auto-renew)" TLS option; config (cert/key paths) lives in
+# /etc/default/certinel-tls-renew. Mirrors smallstep's cert-renewer pattern.
+Description=Renew the Certinel nginx TLS certificate (step-ca)
+Documentation=https://smallstep.com/docs/step-ca
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=STEPPATH=/etc/step
+EnvironmentFile=/etc/default/certinel-tls-renew
+# --force renews on every run; the timer fires daily. step writes the leaf+chain.
+ExecStart=/usr/bin/step ca renew --force ${CERT_LOCATION} ${KEY_LOCATION}
+ExecStartPost=/bin/systemctl reload nginx.service

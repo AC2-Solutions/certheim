@@ -23,6 +23,16 @@ done
 
 [[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
 
+# Service account the app runs as. online-install.sh records the operator's
+# choice in /etc/csr-dashboard/install.conf; absent that we default to csrapi, so
+# existing deployments are unaffected. deploy substitutes it into file ownership
+# (the manifest's `:csrapi` group) and into the systemd units' User=/Group=.
+INSTALL_CONF=/etc/csr-dashboard/install.conf
+# shellcheck source=/dev/null
+[[ -r "$INSTALL_CONF" ]] && . "$INSTALL_CONF"
+SERVICE_USER="${SERVICE_USER:-csrapi}"
+SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
+
 # src | dest | owner:group | mode | tag
 MANIFEST=(
   "VERSION                   /opt/csr-dashboard/VERSION                        root:csrapi 0640 backend"
@@ -88,17 +98,32 @@ for entry in "${MANIFEST[@]}"; do
         echo "MISSING in repo: $src" >&2
         exit 1
     fi
-    if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
+    # Parameterize the service account: the manifest carries the default group
+    # `csrapi`; swap it for the configured group, and render the chosen
+    # User=/Group= into the systemd units. With the csrapi default all of this is
+    # a no-op (rendered output is byte-identical to the repo file).
+    og="${og//csrapi/$SERVICE_GROUP}"
+    render="$src"; tmp=""
+    if [[ "$tag" == systemd && "$dest" == *.service ]]; then
+        tmp="$(mktemp)"
+        sed "s/^User=csrapi\$/User=$SERVICE_USER/; s/^Group=csrapi\$/Group=$SERVICE_GROUP/" \
+            "$src" > "$tmp"
+        render="$tmp"
+    fi
+    if [[ -f "$dest" ]] && cmp -s "$render" "$dest"; then
+        [[ -n "$tmp" ]] && rm -f "$tmp"
         continue
     fi
     if $DIFF_ONLY; then
         echo "=== would update: $dest ==="
-        diff -u "$dest" "$src" 2>/dev/null | head -40 || echo "  (new file)"
+        diff -u "$dest" "$render" 2>/dev/null | head -40 || echo "  (new file)"
+        [[ -n "$tmp" ]] && rm -f "$tmp"
         continue
     fi
-    install -o "${og%%:*}" -g "${og##*:}" -m "$mode" -D "$src" "$dest"
+    install -o "${og%%:*}" -g "${og##*:}" -m "$mode" -D "$render" "$dest"
     echo "installed: $dest (${og} ${mode})"
     changed_tags+=" $tag"
+    [[ -n "$tmp" ]] && rm -f "$tmp"
 done
 
 $DIFF_ONLY && exit 0
@@ -112,14 +137,14 @@ fi
 # The live env file is operator-managed (like email.conf) and is never
 # overwritten by deploy - edit /etc/csr-dashboard/csr-dashboard.env directly.
 if [[ ! -f /etc/csr-dashboard/csr-dashboard.env && -f config/csr-dashboard.env.example ]]; then
-    install -d -o root -g csrapi -m 0750 /etc/csr-dashboard
-    install -o csrapi -g csrapi -m 0640 \
+    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/csr-dashboard
+    install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0640 \
         config/csr-dashboard.env.example /etc/csr-dashboard/csr-dashboard.env
     echo "seeded /etc/csr-dashboard/csr-dashboard.env from example - review it"
 fi
 if [[ ! -f /etc/csr-dashboard/email.conf && -f config/email.conf.example ]]; then
-    install -d -o root -g csrapi -m 0750 /etc/csr-dashboard
-    install -o csrapi -g csrapi -m 0640 \
+    install -d -o root -g "$SERVICE_GROUP" -m 0750 /etc/csr-dashboard
+    install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0640 \
         config/email.conf.example /etc/csr-dashboard/email.conf
     echo "seeded /etc/csr-dashboard/email.conf from example - set the SMG host"
 fi
@@ -128,9 +153,9 @@ fi
 # certs (written by the app as csrapi + chowned by the helper); requests/ holds
 # generated CSRs (written by the helper as root). var_lib_t lets the confined
 # certinel-api service write here, matching the DB dir's context.
-install -d -o root   -g root   -m 0755 /var/opt/certinel
-install -d -o csrapi -g csrapi -m 0750 /var/opt/certinel/issued
-install -d -o root   -g csrapi -m 0750 /var/opt/certinel/requests
+install -d -o root              -g root            -m 0755 /var/opt/certinel
+install -d -o "$SERVICE_USER"   -g "$SERVICE_GROUP" -m 0750 /var/opt/certinel/issued
+install -d -o root              -g "$SERVICE_GROUP" -m 0750 /var/opt/certinel/requests
 # Helper lives under /opt (Phase 4b, off /root) so the sandbox can mask /root;
 # KEYDIR is a brief 0700 scratch for key generation (keys then go to the vault).
 install -d -o root -g root -m 0755 /opt/certinel
