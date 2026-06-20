@@ -3,6 +3,18 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.0.4 — 2026-06-20
+
+_Released 2026-06-20. 1 change since v3.0.3._
+
+### Fixes & improvements
+
+- **install:** tolerate pasted text around the step-ca fingerprint (`6df2ebd`)
+  The fingerprint prompt rejected anything that wasn't exactly 64 hex chars, so a paste that
+  included surrounding text (e.g. '<fp> (full 64 chars)') or a 'sha256:' prefix failed. Extract the
+  first 64-hex token from the input, then validate - the operator no longer has to strip annotations
+  by hand.
+
 ## 3.0.3 — 2026-06-20
 
 _Released 2026-06-20. 1 change since v3.0.2._
