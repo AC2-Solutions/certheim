@@ -94,7 +94,7 @@ DOD_CA_BUNDLE="${DOD_CA_BUNDLE:-/etc/pki/dod/dod-cas.pem}"
 ask ENABLE_MTLS "Enable CAC/mTLS auth? (else local username/password)" "no"
 if is_yes "$ENABLE_MTLS"; then
     ask DOD_CA_BUNDLE "  client-CA bundle path (mTLS verify)" "$DOD_CA_BUNDLE"
-    AUTH_MODE=cac
+    AUTH_MODE=mtls        # the app stores the setting as 'mtls' or 'local'
 else
     AUTH_MODE=local
 fi
@@ -254,7 +254,14 @@ set_env() {
     if grep -q "^${k}=" "$ENVF"; then sed -i "s|^${k}=.*|${k}=${v}|" "$ENVF";
     else echo "${k}=${v}" >> "$ENVF"; fi
 }
+# NOTE: the live auth mode is the app_settings 'auth_mode' row (seeded after
+# deploy, below) - NOT this env var, which the app does not read. Kept only as a
+# record of the install-time choice.
 set_env CSR_AUTH_MODE "$AUTH_MODE"
+# First-admin OOBE: the first user to authenticate on an empty users table is
+# made admin (self-disables once any user exists), so a fresh box has a way in -
+# the first self-registered local user, or the first CAC user in mTLS mode.
+set_env CSR_BOOTSTRAP_FIRST_ADMIN 1
 if is_yes "${CONFIGURE_OPENBAO:-no}"; then
     set_env CSR_OPENBAO_ADDR "${CSR_OPENBAO_ADDR:-}"
     set_env CSR_OPENBAO_ROLE_ID "${CSR_OPENBAO_ROLE_ID:-}"
@@ -395,27 +402,40 @@ bash ./deploy.sh
 systemctl enable certinel-api.service certinel-expiry-warn.timer certinel-auto-renew.timer >/dev/null 2>&1 || true
 systemctl start certinel-expiry-warn.timer certinel-auto-renew.timer 2>/dev/null || true
 
-# Seed the mTLS choice into app_settings so Admin -> Authentication reflects what
-# the installer wrote to 10-mtls.conf (the DB exists once deploy ran init_db).
+# Seed the auth + mTLS choices into app_settings (the LIVE source of truth the
+# app reads - auth_mode() = get_setting('auth_mode') or 'mtls'). Without this a
+# fresh DB defaults to mtls/CAC regardless of what was chosen. Local mode also
+# opens self-registration so the first-admin bootstrap has something to register.
 CSR_DB=/var/lib/csr-dashboard/jobs.db
+REG_SEED=""
+[[ "$AUTH_MODE" == "local" ]] && REG_SEED="INSERT INTO app_settings(key,value) VALUES('allow_registration','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
 if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$CSR_DB" ]]; then
     sqlite3 "$CSR_DB" \
-      "INSERT INTO app_settings(key,value) VALUES('mtls_mode','${MTLS_MODE_SEED}')
+      "INSERT INTO app_settings(key,value) VALUES('auth_mode','${AUTH_MODE}')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+       ${REG_SEED}
+       INSERT INTO app_settings(key,value) VALUES('mtls_mode','${MTLS_MODE_SEED}')
          ON CONFLICT(key) DO UPDATE SET value=excluded.value;
        INSERT INTO app_settings(key,value) VALUES('mtls_ca_bundle_path','${DOD_CA_BUNDLE}')
          ON CONFLICT(key) DO UPDATE SET value=excluded.value;" 2>/dev/null \
       && chown "${SERVICE_USER}:${SERVICE_GROUP}" "$CSR_DB" 2>/dev/null || true
+    # deploy.sh restarted the service BEFORE this seed - restart so it reads the
+    # seeded auth_mode/registration settings.
+    systemctl try-restart certinel-api.service 2>/dev/null || true
 fi
 
 echo ""
 echo "==================================================================="
 echo " Certinel online install COMPLETE for v$(cat VERSION 2>/dev/null || echo '?')"
 echo "==================================================================="
-echo " URL:     ${DASHBOARD_URL}"
-echo " Verify:  curl -sk https://localhost/csr/api/health"
-echo " Admin:   fresh DB has no admins. After one browser/API hit (local mode,"
-echo "          all non-CAC users are ip:127.0.0.1):"
-echo "            sqlite3 /var/lib/csr-dashboard/jobs.db \\"
-echo "              \"UPDATE users SET is_admin=1,is_active=1 WHERE dn='ip:127.0.0.1'\""
-echo "          systemctl restart certinel-api"
+echo " URL:      ${DASHBOARD_URL}"
+echo " Verify:   curl -sk https://localhost/csr/api/health"
+if [[ "$AUTH_MODE" == "local" ]]; then
+echo " Sign in:  open ${DASHBOARD_URL} -> Register and create your account."
+echo "           The first account becomes admin automatically; then turn"
+echo "           registration off in Admin -> Authentication."
+else
+echo " Sign in:  CAC mode - the first CAC user to authenticate becomes admin"
+echo "           (bootstrap, self-disabling). Ensure CAC verification works."
+fi
 echo "==================================================================="
