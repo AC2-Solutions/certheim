@@ -3,6 +3,47 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.4.0 — 2026-06-21
+
+_Released 2026-06-21. 2 changes since v3.3.0._
+
+### Features
+
+- **sign:** per-user OpenBao audit attribution via on-behalf-of token (`612a1c0`)
+  Each in-UI OpenBao sign now mints a short-lived child token stamped with the issuing user's
+  identity (display_name + metadata.certinel_actor), so OpenBao's own audit log attributes the
+  issuance to the individual rather than the shared AppRole — an independent, tamper-evident trail
+  for audits.
+  - sign.py: _obo_token() creates the child token from the AppRole token; sign_csr / _sign_openbao
+    take an `actor`. Attribution never blocks issuance (falls back to the AppRole token on any
+    failure).
+  - actor threaded from all call sites: manual approve-&-sign (approver DN), auto-sign (auto-
+    sign:<requester>), ACME server (acme-server), auto-renew.
+  - Works for every Certinel auth mode (CAC + local) — no Keycloak dependency.
+  - Requires the AppRole policy to allow auth/token/create (the default policy grants it unless
+    token_no_default_policy is set).
+  - tests: _obo_token stamps actor + fails safe; updated two ACME mocks for the new kwarg. Full
+    smoke suite green (98).
+- **licensing:** unlimited edition + per-edition domain quota (`bb0fe8b`)
+  Adds the `unlimited` edition (Commercial capabilities, no domain cap) and enforces a registrable-
+  domain cap on signing:
+  - licensing.py: parse `max_domains` from the license payload (default by edition — commercial=1,
+    others=0/unlimited); expose licensing.max_domains().
+  - capabilities.py: `unlimited` grants the full Commercial capability set (no gov pack); EDITIONS
+    updated.
+  - domains.py (new): dependency-free eTLD+1 extraction + pure quota math.
+  - sign.py: _enforce_domain_quota() gates every backend at sign_csr — the first domain claims the
+    slot, renewals/re-issues of it stay free, a second distinct registrable domain is refused on
+    Commercial. Licensed-domain set persists in app_settings (enforced fully offline). No-op when
+    uncapped.
+  - certinel-issue-license: `--edition unlimited` + `--max-domains N`; payload now carries
+    max_domains (byte-compatible with the portal's Go signer).
+  - deploy.sh / verify.sh: ship backend/domains.py.
+  - tests: registrable-domain, quota math, unlimited capabilities, and a commercial 1-domain
+    block/renew/upgrade flow. Full smoke suite green (97).
+  Verified: licenses minted with the real vendor key (CLI tool) verify against the embedded pubkey
+  with max_domains flowing through (unlimited→0, commercial --max-domains 3→3).
+
 ## 3.3.0 — 2026-06-21
 
 _Released 2026-06-21. 1 change since v3.2.2._
