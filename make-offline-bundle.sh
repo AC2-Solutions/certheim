@@ -90,13 +90,13 @@ cat > "$OUT/install/START_HERE" <<'STARTHERE'
 # --- REQUIRED: this site's values ------------------------------------------
 
 # This deployment's domain and hostname. The installer rewrites the bundled
-# files to use these in place of the defaults (example.com / csr-host):
+# files to use these in place of the defaults (example.com / certinel-host):
 #   - CSR_DOMAIN   = the domain appended to bare hostnames on cert requests
 #                    (the helper's DOMAIN_SUFFIX) and shown in the UI.
 #   - CSR_HOSTNAME = this server's short hostname, shown in UI titles and
 #                    used to build the FQDN (CSR_HOSTNAME.CSR_DOMAIN).
 CSR_DOMAIN="example.com"
-CSR_HOSTNAME="csr-host"
+CSR_HOSTNAME="certinel-host"
 
 # SMG relay IP or hostname (the mail relay this server sends through).
 # OPTIONAL: leave BLANK to disable email entirely (the dashboard works fine
@@ -270,7 +270,7 @@ else
 
     ask CSR_DOMAIN "Domain to append to bare hostnames" "example.com" \
         "Bare cert names get this appended (e.g. 'web' -> 'web.<domain>')."
-    ask CSR_HOSTNAME "This server's short hostname" "csr-host" \
+    ask CSR_HOSTNAME "This server's short hostname" "certinel-host" \
         "Shown in UI titles; combined with the domain to form the FQDN."
 
     DASHBOARD_URL_DEFAULT="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
@@ -365,7 +365,7 @@ cd "$BUNDLE_ROOT"
 log "0/8  Validating configuration"
 # ---------------------------------------------------------------------------
 : "${CSR_DOMAIN:=example.com}"
-: "${CSR_HOSTNAME:=csr-host}"
+: "${CSR_HOSTNAME:=certinel-host}"
 [[ -n "${DASHBOARD_URL:-}" ]] || DASHBOARD_URL="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
 [[ "$DASHBOARD_URL" != *CHANGEME* ]] || die "DASHBOARD_URL not set"
 # Email is OPTIONAL: empty SMG_HOST = email disabled (valid).
@@ -522,13 +522,13 @@ fi
 # ---------------------------------------------------------------------------
 log "6.5/8  Rewriting domain/hostname in bundle files"
 # ---------------------------------------------------------------------------
-# Substitute the build-time defaults (example.com / csr-host) with this
+# Substitute the build-time defaults (example.com / certinel-host) with this
 # deployment's values across the DEPLOYABLE files, before deploy.sh copies
 # them live. Scoped to the specific files that carry these strings; skipped
 # entirely if the operator left the defaults. Hostname is replaced first so
 # the FQDN (host.domain) composes correctly, then the domain.
 DEF_DOMAIN="example.com"
-DEF_HOST="csr-host"
+DEF_HOST="certinel-host"
 if [[ "$CSR_DOMAIN" != "$DEF_DOMAIN" || "$CSR_HOSTNAME" != "$DEF_HOST" ]]; then
     files=(
         backend/app.py backend/notify.py

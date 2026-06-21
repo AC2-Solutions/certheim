@@ -5,7 +5,7 @@ Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certinel` service
 account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/certinel/jobs.db`.
 Hardened RHEL 9 target: FIPS, SELinux enforcing, fapolicyd enforcing.
 
-This runbook reflects the proven installs on `csr-host` (production)
+This runbook reflects the proven installs on `certinel-host` (production)
 and a fresh STIG offline VM.
 
 ---
@@ -150,7 +150,7 @@ email" verifies wiring.
 ## 7. Operations
 
 - **Backup before risk**: `certinel-backup` (snapshots deploy files + DB to
-  `/root/csr-backup-*`). `deploy.sh` runs it pre-deploy.
+  `/root/certinel-backup-*`). `deploy.sh` runs it pre-deploy.
 - **Health**: `curl -sk https://localhost/csr/api/health` → `{"ok":true,...}`.
 - **Logs**: `journalctl -u certinel-api`; audit events also land in the DB
   `audit_log` table (admin Audit panel).

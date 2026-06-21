@@ -1,7 +1,7 @@
 #!/bin/bash
 # certinel-backup - snapshot the Certinel deployment files and database.
 #
-# Output goes to /root/csr-backup-YYYYMMDD-HHMMSS/
+# Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/
 #
 # Usage:
 #   certinel-backup            # take a backup now
@@ -14,14 +14,14 @@ set -euo pipefail
 case "${1:-}" in
     -l|--list)
         echo "Existing Certinel backups in /root/:"
-        ls -lhd /root/csr-backup-* 2>/dev/null || echo "  (none)"
+        ls -lhd /root/certinel-backup-* 2>/dev/null || echo "  (none)"
         exit 0
         ;;
     -h|--help)
         cat <<'EOF'
 certinel-backup - snapshot the Certinel deployment files and database.
 
-Output goes to /root/csr-backup-YYYYMMDD-HHMMSS/
+Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/
 
 Usage:
   certinel-backup            # take a backup now
@@ -55,7 +55,7 @@ FILES=(
 DB="/var/lib/certinel/jobs.db"
 
 TS="$(date +%Y%m%d-%H%M%S)"
-DEST="/root/csr-backup-$TS"
+DEST="/root/certinel-backup-$TS"
 
 # ----- Run -----
 echo "certinel-backup: snapshot to $DEST"
