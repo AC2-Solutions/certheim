@@ -3,6 +3,30 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.2.0 — 2026-06-21
+
+_Released 2026-06-21. 2 changes since v3.1.0._
+
+### Features
+
+- **guide:** interactive OpenBao/CyberArk connection setup wizard (`aceea01`)
+  Adds an in-app wizard so admins don't have to reverse-engineer which knobs a secrets-manager
+  connection needs. Pick an integration, fill in your values, and it generates tailored, copy-
+  pasteable setup steps end to end:
+  - OpenBao/Vault signing (PKI): enable engine, role, least-privilege policy, AppRole mint, the
+    env vars, and the Admin -> Signing/CA fields
+  - OpenBao cert delivery (KV v2): policy extension + per-template delivery config
+  - OpenBao private-key storage (vault / return_once) policy + UI setting
+  - CyberArk Conjur delivery: policy YAML, host API key, env + template config All values are
+    generic placeholders - no environment specifics.
+  Self-contained: appended to app.5-guide.js, injects its own modal + scoped styles + launcher (into
+  the Signing/CA and Templates admin panels) via JS, so it touches no other file - deliberately
+  avoids the files in open MR !84. Validated: esprima AST parse clean; served 200 on a live box.
+
+### Other changes
+
+- **fips:** accreditation checklist + correct RHEL 10 CMVP status (`844ed1b`)
+
 ## 3.1.0 — 2026-06-20
 
 _Released 2026-06-20. 3 changes since v3.0.5._
