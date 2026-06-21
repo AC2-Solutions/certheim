@@ -23,9 +23,12 @@ import base64
 import json
 import math
 import os
+import socket
 import subprocess
 import tempfile
 import time
+
+import build_mode
 
 # The vendor's PUBLIC key. The matching PRIVATE key never ships - it lives only
 # on the vendor's issuing machine and signs customer licenses. Rotating it means
@@ -53,9 +56,17 @@ def configure(get_setting=None):
 
 
 def _pubkey():
-    # An env override lets a test (or a customer running their own key) swap the
-    # trust anchor without editing code; defaults to the embedded vendor key.
-    return os.environ.get("CSR_LICENSE_PUBKEY") or VENDOR_PUBLIC_KEY
+    # In a DEVELOPMENT build, an env override lets a test (or a deliberate
+    # bring-your-own-key deployment) swap the trust anchor without editing code.
+    # A hardened RELEASE build ignores it entirely: the embedded vendor key is
+    # the only anchor, so a thief can't point verification at their own keypair
+    # and self-issue licenses. See build_mode.py for why this is env-tightenable
+    # but not env-loosenable.
+    if build_mode.dev_overrides_allowed():
+        override = os.environ.get("CSR_LICENSE_PUBKEY")
+        if override:
+            return override
+    return VENDOR_PUBLIC_KEY
 
 
 def _b64u_decode(s):
@@ -126,6 +137,27 @@ def _payload_for(blob):
     return cached
 
 
+def _deployment_host():
+    # CSR_LICENSE_HOST lets a containerized/renamed deployment declare the name a
+    # license was bound to; otherwise the OS hostname is used.
+    return (os.environ.get("CSR_LICENSE_HOST") or socket.gethostname() or "").strip()
+
+
+def _binding_warnings(payload):
+    """Soft, non-fatal binding tripwires. A license MAY carry a 'bind_host' claim
+    (minted with `certinel-issue-license --bind-host`); if it doesn't match this
+    deployment we WARN and surface it, but do NOT revoke entitlements - a
+    legitimate host move shouldn't brick the app, and the mismatch makes a copied
+    license self-evident in the logs and the admin UI."""
+    warnings = []
+    want = (payload.get("bind_host") or "").strip()
+    if want and want.lower() != _deployment_host().lower():
+        warnings.append(
+            f"license is bound to host '{want}' but this deployment reports "
+            f"'{_deployment_host() or 'unknown'}'")
+    return warnings
+
+
 def _community(reason):
     # The unlicensed baseline is the free Community edition.
     return {"valid": False, "licensed": False, "edition": "community",
@@ -152,6 +184,7 @@ def info():
         "customer": p.get("customer"), "edition": p.get("edition") or "commercial",
         "entitlements": list(p.get("entitlements", [])),
         "issued": p.get("issued"), "expires": exp, "expired": False,
+        "bind_host": p.get("bind_host"), "warnings": _binding_warnings(p),
     }
 
 

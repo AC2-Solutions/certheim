@@ -38,6 +38,7 @@ MANIFEST=(
   "VERSION                   /opt/certinel/VERSION                        root:certinel 0640 backend"
   "backend/app.py            /opt/certinel/app.py                         root:certinel 0640 backend"
   "backend/notify.py         /opt/certinel/notify.py                      root:certinel 0640 backend"
+  "backend/build_mode.py     /opt/certinel/build_mode.py                  root:certinel 0640 backend"
   "backend/capabilities.py   /opt/certinel/capabilities.py                root:certinel 0640 backend"
   "backend/licensing.py      /opt/certinel/licensing.py                   root:certinel 0640 backend"
   "backend/sign.py           /opt/certinel/sign.py                        root:certinel 0640 backend"
@@ -131,6 +132,17 @@ for entry in "${MANIFEST[@]}"; do
     changed_tags+=" $tag"
     [[ -n "$tmp" ]] && rm -f "$tmp"
 done
+
+# Stamp the DEPLOYED build_mode.py as a hardened release build so the insecure
+# dev-only env overrides (CSR_ENTITLEMENTS=*, CSR_LICENSE_PUBKEY) are inert on
+# an installed instance - regardless of what environment is later set. The repo
+# copy stays RELEASE_BUILD=False so source checkouts and tests run in dev mode.
+# Set CERTINEL_DEV_DEPLOY=1 to deploy an evaluation box that keeps the overrides
+# (e.g. to demo premium features without installing a license).
+if ! $DIFF_ONLY && [[ -f /opt/certinel/build_mode.py && "${CERTINEL_DEV_DEPLOY:-0}" != "1" ]]; then
+    sed -i 's/^RELEASE_BUILD = False/RELEASE_BUILD = True/' /opt/certinel/build_mode.py
+    echo "stamped: /opt/certinel/build_mode.py -> release build (dev overrides disabled)"
+fi
 
 $DIFF_ONLY && exit 0
 

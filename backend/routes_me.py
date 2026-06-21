@@ -16,6 +16,7 @@ def get_me():
     # act; regular users only inside 30 days. The UI further confines the 60-day
     # window to the Admin view (the main dashboard shows it only inside 30 days).
     notice = licensing.expiry_notice(60 if is_admin else 30)
+    li = licensing.info()
     return jsonify({
         "dn":           g.user["dn"],
         "cn":           g.user["cn"],
@@ -30,6 +31,11 @@ def get_me():
         # how this request authenticated: "cac" | "local" | "none"
         "via":          (g.identity or {}).get("via", "none"),
         "license_notice": notice,
+        # Persistent edition watermark for the UI chrome. licensed_to is null on
+        # the free Community baseline; a named customer means a valid license.
+        "edition": li.get("edition") or "community",
+        "licensed_to": li.get("customer") if li.get("valid") else None,
+        "license_warnings": li.get("warnings") or [],
         "version": APP_VERSION,
     })
 

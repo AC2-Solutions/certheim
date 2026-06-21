@@ -2152,6 +2152,67 @@ def resolve_signing_policy(template_id=None):
 
 init_db()
 
+
+def _startup_license_banner():
+    """Log the license / edition / build posture once at startup.
+
+    This is the cheap half of "tamper-evidence over tamper-proofing": a running
+    instance announces, in the audit stream and on the console, exactly which
+    customer it is licensed to (a watermark - a leaked license names its owner)
+    and loudly flags an UNLICENSED deployment or an active dev-only override.
+    Wrapped so a license problem can never stop the app from booting."""
+    try:
+        import build_mode
+        import licensing
+        info = licensing.info()
+        rel = build_mode.is_release()
+        boot = logging.getLogger("certinel.boot")
+        if not boot.handlers:
+            _bh = logging.StreamHandler()  # stderr -> journald/console
+            _bh.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
+            boot.addHandler(_bh)
+            boot.setLevel(logging.INFO)
+            boot.propagate = False
+
+        def emit(level, msg):
+            boot.log(level, msg)
+            try:                       # mirror to the tamper-evident audit stream
+                audit.log(level, msg)
+            except Exception:
+                pass
+
+        emit(logging.INFO, f"Certinel {APP_VERSION} starting - {build_mode.describe()} build")
+        if info.get("valid"):
+            cust = info.get("customer") or "(unnamed)"
+            edition = (info.get("edition") or "commercial").capitalize()
+            exp = info.get("expires")
+            when = ("perpetual" if not exp
+                    else time.strftime("%Y-%m-%d", time.gmtime(float(exp))))
+            emit(logging.INFO, f"{edition} edition - licensed to {cust} (expires {when})")
+            for w in info.get("warnings") or []:
+                emit(logging.WARNING, f"LICENSE WARNING: {w}")
+        else:
+            emit(logging.WARNING,
+                 f"running UNLICENSED (Community) - premium features disabled "
+                 f"[{info.get('reason')}]")
+        # A release build must never honor the env backdoors; a dev build that
+        # has them set is fine but should say so out loud.
+        if not rel:
+            for var in ("CSR_ENTITLEMENTS", "CSR_LICENSE_PUBKEY"):
+                if os.environ.get(var):
+                    emit(logging.WARNING,
+                         f"DEV OVERRIDE ACTIVE: {var} is set and honored "
+                         f"(development build) - it would be IGNORED in a release build")
+    except Exception as e:  # never let licensing logging stop boot
+        try:
+            logging.getLogger("certinel.boot").warning(
+                "license banner failed: %s", e)
+        except Exception:
+            pass
+
+
+_startup_license_banner()
+
 # --- Blueprints (incremental app.py split) ---
 from routes_integrations import bp as integrations_bp  # noqa: E402
 app.register_blueprint(integrations_bp)

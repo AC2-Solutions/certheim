@@ -10,6 +10,7 @@ PAIRS=(
   "VERSION|/opt/certinel/VERSION"
   "backend/app.py|/opt/certinel/app.py"
   "backend/notify.py|/opt/certinel/notify.py"
+  "backend/build_mode.py|/opt/certinel/build_mode.py"
   "backend/capabilities.py|/opt/certinel/capabilities.py"
   "backend/licensing.py|/opt/certinel/licensing.py"
   "backend/sign.py|/opt/certinel/sign.py"

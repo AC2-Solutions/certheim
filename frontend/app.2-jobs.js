@@ -551,6 +551,26 @@ async function loadMe() {
   if (sqBtn) sqBtn.hidden = !(currentUser && (currentUser.is_signer || currentUser.is_admin));
   _licenseNotice = currentUser ? (currentUser.license_notice || null) : null;
   updateLicenseBanner();
+  updateEditionBadge();
+}
+
+// ===== Edition / license watermark =====
+// A persistent badge in the header: the edition, and - when licensed - the
+// customer the license was issued to. Surfacing the licensee makes a copied
+// license self-identifying. A host-binding mismatch (license_warnings) flips
+// the badge to a warning style.
+function updateEditionBadge() {
+  const el = document.getElementById("edition-badge");
+  if (!el) return;
+  const ed = (currentUser && currentUser.edition) || "community";
+  const who = currentUser && currentUser.licensed_to;
+  const warns = (currentUser && currentUser.license_warnings) || [];
+  const label = ed.charAt(0).toUpperCase() + ed.slice(1);
+  el.textContent = who ? `${label} · Licensed to ${who}` : label;
+  el.classList.toggle("edition-badge-licensed", !!who);
+  el.classList.toggle("edition-badge-warn", warns.length > 0);
+  el.title = warns.length ? warns.join(" ") : `${label} edition`;
+  el.hidden = false;
 }
 
 // ===== License-renewal banner =====
