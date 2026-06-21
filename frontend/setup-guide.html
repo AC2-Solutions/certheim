@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certinel — Setup Guide</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --ink:#e8ebf0; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#4f8cff; --accent-ink:#fff; --ok:#3ecf8e; --warn:#f0b450;
+    --code-bg:#0b0d11; --code-ink:#d6e2ff; --chip:#222836;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f3f5f9; --panel:#fff; --panel2:#f7f9fc; --ink:#1b2230; --muted:#5a6678;
+      --line:#e2e7ef; --accent:#2563eb; --code-bg:#0f1320; --code-ink:#d6e2ff; --chip:#eef2f8; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:880px;margin:0 auto;padding:24px 18px 96px;}
+  header.hero{padding:28px 0 8px;}
+  .hero h1{font-size:30px;margin:0 0 6px;letter-spacing:-.2px;}
+  .hero p{color:var(--muted);margin:0;font-size:17px;}
+  .badge{display:inline-block;background:var(--chip);color:var(--muted);border:1px solid var(--line);
+    border-radius:999px;padding:2px 10px;font-size:12px;margin-bottom:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin:18px 0;}
+  .card h2{margin:0 0 4px;font-size:20px;}
+  .card h2 .num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;
+    border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:14px;margin-right:10px;vertical-align:middle;}
+  .sub{color:var(--muted);font-size:14px;margin:.2em 0 1em;}
+  label{display:block;font-weight:600;margin:12px 0 4px;font-size:14px;}
+  .hint{font-weight:400;color:var(--muted);font-size:12px;}
+  input[type=text],select,input[type=password]{width:100%;padding:10px 12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:15px;}
+  input::placeholder{color:#6b7588}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media(max-width:560px){.row{grid-template-columns:1fr;}}
+  .choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .choices button{flex:1;min-width:120px;padding:12px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);cursor:pointer;text-align:left;font-size:14px;}
+  .choices button .t{font-weight:700;display:block;}
+  .choices button .d{color:var(--muted);font-size:12px;}
+  .choices button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,140,255,.25) inset;}
+  ol.steps{counter-reset:none;list-style:none;margin:0;padding:0;}
+  ol.steps>li{margin:0 0 10px;padding-left:0;}
+  .do{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:8px;padding:12px 14px;margin:8px 0;}
+  .do b{color:var(--ink)}
+  .where{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:6px;
+    padding:1px 8px;font-size:12px;color:var(--muted);margin-right:6px;}
+  .term{background:var(--code-bg);color:var(--code-ink);border-radius:9px;padding:0;margin:10px 0;overflow:hidden;
+    border:1px solid #1c2333;}
+  .term .bar{display:flex;justify-content:space-between;align-items:center;background:#11161f;
+    padding:6px 10px;font-size:12px;color:#7f8aa3;border-bottom:1px solid #1c2333;}
+  .term pre{margin:0;padding:12px 14px;overflow:auto;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    white-space:pre-wrap;word-break:break-word;}
+  .copy{background:#26314a;color:#cfe0ff;border:1px solid #33405e;border-radius:6px;padding:3px 10px;
+    font-size:12px;cursor:pointer;}
+  .copy:active{transform:translateY(1px)}
+  .var{color:#ffd27d;}
+  .note{border-left:3px solid var(--warn);background:rgba(240,180,80,.08);padding:10px 14px;border-radius:8px;margin:10px 0;font-size:14px;}
+  .tip{border-left:3px solid var(--ok);background:rgba(62,207,142,.08);padding:10px 14px;border-radius:8px;margin:10px 0;font-size:14px;}
+  .when-gov,.when-commercial,.when-openbao,.when-local,.when-cac,.when-email{}
+  [hidden]{display:none !important;}
+  .toc{font-size:14px;color:var(--muted);}
+  .toc a{color:var(--accent);text-decoration:none;display:inline-block;margin:2px 10px 2px 0;}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin-top:40px;}
+  .glossary dt{font-weight:700;margin-top:8px}
+  .glossary dd{margin:0 0 4px;color:var(--muted);font-size:14px}
+  a.skip{color:var(--accent)}
+  @media print{ body{background:#fff;color:#000} .card{break-inside:avoid} .copy{display:none} .setup-form{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="badge">Certinel · Start-to-Finish Setup</span>
+    <h1>Get Certinel up and running</h1>
+    <p>A plain-English checklist. Fill in your details below and every step &amp; command on this page
+       updates to match — then just follow them top to bottom. No technical background needed.</p>
+  </header>
+
+  <div class="tip">
+    <b>Two kinds of steps.</b> 🖥️ <b>Web steps</b> happen in the Certinel website (point &amp; click).
+    ⌨️ <b>Terminal steps</b> happen once, in a black command window on your server — copy the box exactly
+    and paste it in. We fill in your details for you, so you can&rsquo;t get them wrong.
+  </div>
+
+  <!-- ─────────────  YOUR DETAILS  ───────────── -->
+  <div class="card setup-form">
+    <h2>Your details</h2>
+    <p class="sub">Everything here stays in your browser — nothing is sent anywhere. Leave anything blank
+       and we&rsquo;ll show a clearly-marked placeholder you can fill in later.</p>
+
+    <label>Which edition did you buy? <span class="hint">(it&rsquo;s on your license)</span></label>
+    <div class="choices" id="edition">
+      <button data-val="commercial" aria-pressed="true"><span class="t">Commercial</span><span class="d">Businesses. One managed domain.</span></button>
+      <button data-val="government"><span class="t">Government</span><span class="d">DoD/agency. CAC sign-in, gov profiles.</span></button>
+      <button data-val="community"><span class="t">Community</span><span class="d">Free / evaluation.</span></button>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Your server&rsquo;s web address <span class="hint">(FQDN)</span></label>
+        <input type="text" id="fqdn" placeholder="certinel.example.com">
+      </div>
+      <div>
+        <label>Organization name <span class="hint">(on certificates)</span></label>
+        <input type="text" id="org" placeholder="Acme Corporation">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>How will people sign in?</label>
+        <select id="auth">
+          <option value="local">Username &amp; password (simplest)</option>
+          <option value="mtls">CAC / smart card (mTLS)</option>
+        </select>
+      </div>
+      <div>
+        <label>Service account name <span class="hint">(advanced — leave as is)</span></label>
+        <input type="text" id="svc" placeholder="certinel">
+      </div>
+    </div>
+
+    <label>Do you want Certinel to sign certificates automatically using OpenBao / Vault?</label>
+    <div class="choices" id="ob">
+      <button data-val="yes" aria-pressed="true"><span class="t">Yes</span><span class="d">Auto-issue in the web app.</span></button>
+      <button data-val="no"><span class="t">Not yet</span><span class="d">I&rsquo;ll upload signed certs by hand.</span></button>
+    </div>
+
+    <div class="when-openbao">
+      <div class="row">
+        <div><label>OpenBao address</label><input type="text" id="ob_addr" placeholder="https://openbao.example.com"></div>
+        <div><label>PKI mount <span class="hint">(default pki_csr)</span></label><input type="text" id="ob_mount" placeholder="pki_csr"></div>
+      </div>
+      <div class="row">
+        <div><label>Signing role <span class="hint">(default certinel)</span></label><input type="text" id="ob_role" placeholder="certinel"></div>
+        <div><label>AppRole role_id <span class="hint">(from your Vault admin)</span></label><input type="text" id="ob_rid" placeholder="xxxxxxxx-xxxx-..."></div>
+      </div>
+      <label>AppRole secret_id <span class="hint">(treat like a password)</span></label>
+      <input type="password" id="ob_sid" placeholder="yyyyyyyy-yyyy-...">
+    </div>
+
+    <label>Email notifications <span class="hint">(optional)</span></label>
+    <select id="email">
+      <option value="none">None — skip email</option>
+      <option value="smtp">Company mail relay (SMTP)</option>
+      <option value="mailgun">Mailgun (cloud)</option>
+    </select>
+  </div>
+
+  <p class="toc">Jump to:
+    <a href="#s0">What you need</a><a href="#s1">Install</a><a href="#s2">First admin</a>
+    <a href="#s3">License</a><a href="#s4">Org identity</a><a href="#s5">Sign-in</a>
+    <a class="when-openbao" href="#s6">Auto-signing</a><a class="when-email" href="#s7">Email</a>
+    <a href="#s8">First certificate</a><a href="#s9">Confirm it works</a><a href="#help">Help</a>
+  </p>
+
+  <!-- ─────────────  STEP 0  ───────────── -->
+  <div class="card" id="s0">
+    <h2><span class="num">0</span>What you need first</h2>
+    <p class="sub">Gather these before you start. If you don&rsquo;t have one, ask the person who gave you Certinel.</p>
+    <div class="do">✅ A <b>Linux server</b> (RHEL or AlmaLinux 9) that you can sign into, with <b>administrator (sudo)</b> rights.</div>
+    <div class="do">✅ The <b>Certinel installer files</b> (a folder, or an <code>certinel-offline-*.tar.gz</code> file for sealed/offline networks).</div>
+    <div class="do">✅ Your <b>license file</b> — a short text blob you received after purchase (issued from your vendor&rsquo;s License portal). <span class="when-community" hidden>Community edition needs no license — skip the license step.</span></div>
+    <div class="do when-openbao">✅ Your <b>OpenBao/Vault details</b> (address + an AppRole <i>role_id</i> and <i>secret_id</i>) from whoever runs your Vault.</div>
+    <div class="do when-cac">✅ For CAC sign-in: your <b>client-certificate CA bundle</b> (e.g., the DoD root/intermediate chain) for the web server.</div>
+    <div class="note">Don&rsquo;t have a server yet? That part is a one-time job for an IT admin. Once it exists, everything below is copy-paste or point-and-click.</div>
+  </div>
+
+  <!-- ─────────────  STEP 1  ───────────── -->
+  <div class="card" id="s1">
+    <h2><span class="num">1</span>Install Certinel ⌨️</h2>
+    <p class="sub">One terminal command sets up the whole application. Sign in to your server, then paste the box that matches your situation.</p>
+
+    <h3 style="font-size:15px;margin:10px 0 2px">A · Normal (internet-connected) server</h3>
+    <p class="sub">Run this from inside the Certinel files folder. It asks a few simple questions and does the rest.</p>
+    <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
+<pre>sudo bash install/online-install.sh</pre></div>
+    <p class="sub">Prefer no questions? This pre-answers everything from <i>your details</i> above:</p>
+    <div class="term"><div class="bar"><span>unattended install — your details filled in</span><button class="copy">Copy</button></div>
+<pre data-tpl="install">sudo FQDN=<span class="var">{{FQDN}}</span> \
+     AUTH_MODE=<span class="var">{{AUTH}}</span> \
+     SERVICE_USER=<span class="var">{{SVC}}</span> \
+{{OBINSTALL}}     ASSUME_DEFAULTS=yes \
+     bash install/online-install.sh</pre></div>
+
+    <h3 style="font-size:15px;margin:16px 0 2px">B · Sealed / offline network</h3>
+    <p class="sub">On a connected machine, build a self-contained bundle, copy it across, then run its installer.</p>
+    <div class="term"><div class="bar"><span>on a connected machine</span><button class="copy">Copy</button></div>
+<pre>./make-offline-bundle.sh        # makes certinel-offline-&lt;version&gt;.tar.gz</pre></div>
+    <div class="term"><div class="bar"><span>on the offline server</span><button class="copy">Copy</button></div>
+<pre>tar xzf certinel-offline-*.tar.gz
+cd certinel-offline-*
+sudo bash install/online-install.sh   # the bundle carries everything it needs</pre></div>
+
+    <div class="tip">When it finishes, Certinel is running at
+      <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b>. Open that in a browser to continue.</div>
+  </div>
+
+  <!-- ─────────────  STEP 2  ───────────── -->
+  <div class="card" id="s2">
+    <h2><span class="num">2</span>Create the first administrator</h2>
+    <p class="sub">The very first person to sign in becomes the administrator. You turn this on for the initial setup, and it switches itself off automatically once you exist.</p>
+
+    <div class="do">⌨️ <b>Turn on first-admin mode.</b> On the server, open the settings file and set the bootstrap line to <code>1</code>:</div>
+    <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
+<pre data-tpl="bootstrap">sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env
+sudo systemctl restart certinel-api</pre></div>
+
+    <div class="do when-local">🖥️ <b>Make your account.</b> Go to <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> → <b>Register</b> →
+       enter your name, email, and a password. You&rsquo;re now the admin.</div>
+    <div class="do when-cac">🖥️ <b>Sign in with your CAC.</b> Go to <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> with your card inserted.
+       Your identity is read from the card and the first one in becomes the admin.</div>
+
+    <div class="note">Already created a normal account and need to promote it? On the server run
+      <code>sudo certinel-bootstrap-admin <span class="var">your-username</span></code>.</div>
+    <div class="tip">Security tip: once you can see the <b>Admin</b> menu, set
+      <code>CSR_BOOTSTRAP_FIRST_ADMIN=0</code> again (same file as above) so nobody else can self-promote.</div>
+  </div>
+
+  <!-- ─────────────  STEP 3  ───────────── -->
+  <div class="card" id="s3">
+    <h2><span class="num">3</span>Install your license <span class="when-community" hidden>(not needed)</span></h2>
+    <div class="when-community" hidden><p class="sub">You chose <b>Community</b> — it&rsquo;s free and needs no license. Skip to the next step.</p></div>
+    <div class="when-licensed">
+      <p class="sub">Your license unlocks your edition&rsquo;s features. It&rsquo;s verified right on your server — nothing phones home.</p>
+      <div class="do">🖥️ In Certinel, open <span class="where">Admin → License</span>, paste your license blob into the box, and click <b>Save</b>.</div>
+      <div class="tip">It should immediately show <b data-tpl="editionName">Commercial</b> Edition with a green check. If it says
+        &ldquo;invalid,&rdquo; you probably copied an extra space — paste it again cleanly.</div>
+      <div class="note">Prefer a file instead of pasting? Put the blob in <code>/etc/certinel/license.txt</code>, add
+        <code>CSR_LICENSE_FILE=/etc/certinel/license.txt</code> to <code>/etc/certinel/certinel.env</code>, and restart with
+        <code>sudo systemctl restart certinel-api</code>.</div>
+    </div>
+  </div>
+
+  <!-- ─────────────  STEP 4  ───────────── -->
+  <div class="card" id="s4">
+    <h2><span class="num">4</span>Set your organization identity</h2>
+    <p class="sub">This fills in the &ldquo;who&rdquo; on every certificate (country, organization, units). Set it once.</p>
+    <div class="do">🖥️ Open <span class="where">Admin → CSR Subject</span>.</div>
+    <div class="do when-government">🖥️ Pick a <b>profile</b> from the list (e.g., <b>U.S. Department of Defense</b>, Army, Navy…). It pre-fills
+      Country = US and Organization = U.S. Government, and offers DoD/command unit tags (USEUCOM, DISA, …).</div>
+    <div class="do">🖥️ Fill in <b>Organization</b> (<span data-tpl="orgShow">your organization</span>), Country, State/Province, City,
+      and any <b>Organizational Units</b> (e.g., IT, Security). Click <b>Save</b>.</div>
+    <div class="tip">There&rsquo;s a live preview of the certificate &ldquo;subject&rdquo; line so you can see exactly what it&rsquo;ll look like.</div>
+  </div>
+
+  <!-- ─────────────  STEP 5  ───────────── -->
+  <div class="card" id="s5">
+    <h2><span class="num">5</span>Choose how people sign in</h2>
+    <div class="when-local">
+      <p class="sub">You chose <b>username &amp; password</b>. It&rsquo;s already on — nothing more to do here. Optional extras:</p>
+      <div class="do">🖥️ <span class="where">Admin → Authentication</span> — turn self-registration on/off, require admin approval of
+        new accounts, or restrict sign-ups to your email domain.</div>
+    </div>
+    <div class="when-cac">
+      <p class="sub">You chose <b>CAC / smart card</b>. Two parts: the web server must check the card, then Certinel switches to card mode.</p>
+      <div class="do">⌨️ <b>One-time:</b> point the web server at your card-issuer CA bundle (the DoD chain). Your IT admin sets the
+        client-certificate CA bundle on the Certinel web server (nginx).</div>
+      <div class="do">🖥️ In Certinel, open <span class="where">Admin → Authentication</span>, set <b>Sign-in method</b> to
+        <b>CAC / smart card (mTLS)</b>, confirm, and Save.</div>
+      <div class="note">CAC sign-in is included in <b>Government</b>. On <b>Commercial</b> it needs a CAC add-on on your license.</div>
+    </div>
+    <div class="do when-government">🖥️ <b>Consent banner (gov):</b> in <span class="where">Admin → Authentication</span> pick a
+      <b>Login Banner</b> — e.g. <b>DoD</b> — so users must accept the standard notice before signing in. (HIPAA, NSA, or a
+      custom banner are also available.)</div>
+  </div>
+
+  <!-- ─────────────  STEP 6 (OpenBao)  ───────────── -->
+  <div class="card when-openbao" id="s6">
+    <h2><span class="num">6</span>Turn on automatic signing (OpenBao)</h2>
+    <p class="sub">This lets Certinel issue certificates itself in the web app, instead of you uploading signed files by hand.</p>
+
+    <div class="do">⌨️ <b>Add your Vault details</b> to the settings file on the server, then restart. (These live only on the
+      server, never in the web app — that&rsquo;s deliberate.)</div>
+    <div class="term"><div class="bar"><span>run on your server — your details filled in</span><button class="copy">Copy</button></div>
+<pre data-tpl="obenv">sudo tee -a /etc/certinel/certinel.env >/dev/null &lt;&lt;'EOF'
+CSR_OPENBAO_ADDR=<span class="var">{{OB_ADDR}}</span>
+CSR_OPENBAO_PKI_MOUNT=<span class="var">{{OB_MOUNT}}</span>
+CSR_OPENBAO_ROLE=<span class="var">{{OB_ROLE}}</span>
+CSR_OPENBAO_ROLE_ID=<span class="var">{{OB_RID}}</span>
+CSR_OPENBAO_SECRET_ID=<span class="var">{{OB_SID}}</span>
+CSR_CAP_OPENBAO=1
+EOF
+sudo systemctl restart certinel-api</pre></div>
+
+    <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>OpenBao PKI</b>,
+      confirm the address / mount / role, set it as the <b>default</b>, and click <b>Save &amp; Test</b>.</div>
+    <div class="tip"><b>Save &amp; Test</b> does a real test sign. A green &ldquo;OK&rdquo; means you&rsquo;re fully wired — Certinel can
+      now issue certificates on its own.</div>
+    <div class="do">🖥️ <b>Hands-off issuing (optional):</b> on a certificate template, turn on <b>Auto-sign</b> so matching requests
+      are issued instantly with no approval click.</div>
+    <div class="note">Need the Vault side built (the PKI role + AppRole)? That&rsquo;s a one-time job for your Vault admin:
+      a policy allowing <code>&lt;mount&gt;/sign/&lt;role&gt;</code> (and, for per-user audit, <code>auth/token/create</code>),
+      an AppRole, and its role_id/secret_id.</div>
+  </div>
+
+  <!-- ─────────────  STEP 7 (email)  ───────────── -->
+  <div class="card when-email" id="s7">
+    <h2><span class="num">7</span>Email notifications <span class="hint" style="font-weight:400">(optional)</span></h2>
+    <div class="do">🖥️ Open <span class="where">Admin → Email</span> and pick your method:
+      <b data-tpl="emailName">Company mail relay (SMTP)</b>.</div>
+    <div class="do when-email-smtp">Enter your relay <b>host</b> and <b>port</b> (often 25) and a <b>From</b> address your relay accepts. Save, then send a test.</div>
+    <div class="do when-email-mailgun">Enter your Mailgun <b>domain</b> and <b>API key</b> and a <b>From</b> address. Save, then send a test. (Needs outbound internet.)</div>
+    <div class="tip">No mail server? Choose <b>None</b> — Certinel works perfectly without email; you just won&rsquo;t get notices.</div>
+  </div>
+
+  <!-- ─────────────  STEP 8  ───────────── -->
+  <div class="card" id="s8">
+    <h2><span class="num">8</span>Issue your first certificate 🎉</h2>
+    <div class="do">🖥️ <span class="where">Create requests</span> → fill in the host name(s) you need a certificate for → submit.
+      It appears as a <b>pending</b> request.</div>
+    <div class="do when-openbao">🖥️ Open the request and click <b>Approve &amp; sign</b>. Certinel signs it through OpenBao and it flips to
+      <b>issued</b> — download the certificate and chain right there.</div>
+    <div class="do when-manual" hidden>🖥️ Send the request to your certificate authority, then come back and <b>upload</b> the signed certificate to finish it.</div>
+    <div class="tip">That&rsquo;s the everyday loop your team will use. You&rsquo;re done setting up!</div>
+  </div>
+
+  <!-- ─────────────  STEP 9  ───────────── -->
+  <div class="card" id="s9">
+    <h2><span class="num">9</span>Confirm everything works</h2>
+    <div class="do">🖥️ The app is healthy if the dashboard loads and the top shows your edition. </div>
+    <div class="do when-openbao">🖥️ <span class="where">Admin → Signing / CA → Save &amp; Test</span> shows a green <b>OK</b>.</div>
+    <div class="do">⌨️ Quick server health check (should print <code>"ok":true</code>):</div>
+    <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
+<pre data-tpl="health">curl -sk https://<span class="var">{{FQDN}}</span>/csr/api/health</pre></div>
+    <div class="tip">All green? You&rsquo;re live. Bookmark <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> and share it with your team.</div>
+  </div>
+
+  <!-- ─────────────  edition extras  ───────────── -->
+  <div class="card when-commercial">
+    <h2>Good to know — Commercial</h2>
+    <p class="sub">Commercial covers <b>one</b> managed domain. If you try to sign for a second different domain, Certinel
+      will stop and tell you. Need more? Ask your vendor for additional domains (or the <b>Unlimited</b> edition), then
+      paste the new license in <span class="where">Admin → License</span> — the new limit applies right away.</p>
+  </div>
+  <div class="card when-government">
+    <h2>Good to know — Government</h2>
+    <p class="sub">Government includes everything plus: <b>CAC / smart-card sign-in</b>, <b>DoD/HIPAA/NSA consent banners</b>,
+      and <b>public-sector certificate profiles</b> (DoD, Army, Navy, Air Force, Space Force, Marines, federal civilian) with
+      command unit tags. Set the banner and profile in <span class="where">Admin → Authentication</span> and
+      <span class="where">Admin → CSR Subject</span>. No domain limit.</p>
+  </div>
+
+  <!-- ─────────────  help  ───────────── -->
+  <div class="card" id="help">
+    <h2>If something looks wrong</h2>
+    <div class="do"><b>The website won&rsquo;t load.</b> On the server run <code>sudo systemctl status certinel-api</code>;
+      if it&rsquo;s stopped, <code>sudo systemctl restart certinel-api</code>.</div>
+    <div class="do"><b>&ldquo;Save &amp; Test&rdquo; for signing fails.</b> Re-check the five <code>CSR_OPENBAO_*</code> lines in
+      <code>/etc/certinel/certinel.env</code> (Step 6) and that the server can reach the OpenBao address.</div>
+    <div class="do"><b>Can&rsquo;t see the Admin menu.</b> You&rsquo;re not an admin yet — redo Step 2 (first-admin mode), or have an
+      existing admin promote you.</div>
+    <div class="do"><b>License says invalid.</b> Copy the blob again with no extra spaces or line breaks, and make sure it&rsquo;s the
+      one issued for <i>this</i> customer.</div>
+
+    <h3 style="font-size:15px;margin:16px 0 4px">Plain-English glossary</h3>
+    <dl class="glossary">
+      <dt>CSR</dt><dd>&ldquo;Certificate Signing Request&rdquo; — a request asking a Certificate Authority to issue a certificate.</dd>
+      <dt>OpenBao / Vault</dt><dd>A secure system that holds the signing key and actually issues the certificates for you.</dd>
+      <dt>AppRole (role_id / secret_id)</dt><dd>A username/password pair Certinel uses to talk to OpenBao. Keep the secret_id private.</dd>
+      <dt>CAC / mTLS</dt><dd>Signing in with a smart card / client certificate instead of a password.</dd>
+      <dt>FQDN</dt><dd>Your server&rsquo;s full web address, like <code>certinel.example.com</code>.</dd>
+    </dl>
+  </div>
+
+  <footer>Certinel setup guide · this page tailors itself to your details · safe to print or save</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s,c){return (c||document).querySelector(s);};
+  var $$ = function(s,c){return Array.prototype.slice.call((c||document).querySelectorAll(s));};
+
+  // ---- state ----
+  var st = { edition:"commercial", ob:"yes", fqdn:"", org:"", auth:"local", svc:"",
+             ob_addr:"", ob_mount:"", ob_role:"", ob_rid:"", ob_sid:"", email:"none" };
+
+  function ph(v, placeholder){ return v && v.trim() ? esc(v.trim()) : '<span class="var">'+esc(placeholder)+'</span>'; }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // ---- templates (return HTML; {{X}} placeholders pre-escaped) ----
+  function tpl(name){
+    var F = st.fqdn ? esc(st.fqdn) : '<span class="var">your-server.example.com</span>';
+    var url = st.fqdn ? esc(st.fqdn) : '<span class="var">your-server.example.com</span>';
+    switch(name){
+      case "url": return url;
+      case "health": return 'curl -sk https://'+(st.fqdn?esc(st.fqdn):'<span class="var">your-server.example.com</span>')+'/csr/api/health';
+      case "orgShow": return st.org ? esc(st.org) : 'your organization';
+      case "editionName": return ({commercial:"Commercial",government:"Government",community:"Community"})[st.edition];
+      case "emailName": return ({none:"None",smtp:"Company mail relay (SMTP)",mailgun:"Mailgun (cloud)"})[st.email];
+      case "install":{
+        var ob = st.ob==="yes"
+          ? '     CONFIGURE_OPENBAO=yes \\\n'
+          + '     CSR_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+' \\\n'
+          + '     CSR_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+' \\\n'
+          + '     CSR_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+' \\\n'
+          : '';
+        return 'sudo FQDN='+ph(st.fqdn,"certinel.example.com")+' \\\n'
+             + '     AUTH_MODE='+esc(st.auth)+' \\\n'
+             + '     SERVICE_USER='+ph(st.svc,"certinel")+' \\\n'
+             + ob
+             + '     ASSUME_DEFAULTS=yes \\\n'
+             + '     bash install/online-install.sh';
+      }
+      case "obenv":
+        return 'sudo tee -a /etc/certinel/certinel.env >/dev/null &lt;&lt;\'EOF\'\n'
+             + 'CSR_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+'\n'
+             + 'CSR_OPENBAO_PKI_MOUNT='+ph(st.ob_mount,"pki_csr")+'\n'
+             + 'CSR_OPENBAO_ROLE='+ph(st.ob_role,"certinel")+'\n'
+             + 'CSR_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+'\n'
+             + 'CSR_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+'\n'
+             + 'CSR_CAP_OPENBAO=1\n'
+             + 'EOF\n'
+             + 'sudo systemctl restart certinel-api';
+      case "bootstrap":
+        return "sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env\n"
+             + "sudo systemctl restart certinel-api";
+    }
+    return "";
+  }
+
+  function render(){
+    $$("[data-tpl]").forEach(function(el){ el.innerHTML = tpl(el.getAttribute("data-tpl")); });
+    // conditional sections
+    var show = {
+      "when-government": st.edition==="government",
+      "when-commercial": st.edition==="commercial",
+      "when-community":  st.edition==="community",
+      "when-licensed":   st.edition!=="community",
+      "when-openbao":    st.ob==="yes",
+      "when-manual":     st.ob!=="yes",
+      "when-local":      st.auth==="local",
+      "when-cac":        st.auth==="mtls",
+      "when-email":      st.email!=="none",
+      "when-email-smtp": st.email==="smtp",
+      "when-email-mailgun": st.email==="mailgun"
+    };
+    Object.keys(show).forEach(function(cls){
+      $$("."+cls).forEach(function(el){ el.hidden = !show[cls]; });
+    });
+  }
+
+  // ---- wire inputs ----
+  function bind(id, key){ var el=$("#"+id); if(!el) return;
+    el.addEventListener("input", function(){ st[key]=el.value; render(); });
+    el.addEventListener("change", function(){ st[key]=el.value; render(); });
+  }
+  ["fqdn","org","svc","ob_addr","ob_mount","ob_role","ob_rid","ob_sid"].forEach(function(id){bind(id,id);});
+  bind("auth","auth"); bind("email","email");
+
+  function group(id, key){
+    $$("#"+id+" button").forEach(function(b){
+      b.addEventListener("click", function(){
+        st[key]=b.getAttribute("data-val");
+        $$("#"+id+" button").forEach(function(x){x.setAttribute("aria-pressed", x===b ? "true":"false");});
+        render();
+      });
+    });
+  }
+  group("edition","edition"); group("ob","ob");
+
+  // ---- copy buttons ----
+  document.addEventListener("click", function(e){
+    if(!e.target.classList || !e.target.classList.contains("copy")) return;
+    var pre = e.target.closest(".term").querySelector("pre");
+    var text = pre.innerText;
+    navigator.clipboard.writeText(text).then(function(){
+      var o=e.target.textContent; e.target.textContent="Copied ✓";
+      setTimeout(function(){e.target.textContent=o;},1400);
+    });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

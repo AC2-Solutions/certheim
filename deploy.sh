@@ -72,6 +72,7 @@ MANIFEST=(
   "frontend/app.3-admin.js   /var/www/csr/app.3-admin.js                       root:nginx  0640 frontend"
   "frontend/app.4-misc-boot.js /var/www/csr/app.4-misc-boot.js                 root:nginx  0640 frontend"
   "frontend/app.5-guide.js   /var/www/csr/app.5-guide.js                       root:nginx  0640 frontend"
+  "frontend/setup-guide.html /var/www/csr/setup-guide.html                     root:nginx  0640 frontend"
   "helper/certinel_helper.sh /opt/certinel/helper/certinel_helper.sh root:root 0750 helper"
   "helper/certinel_helper.d/00-common.sh    /opt/certinel/helper/certinel_helper.d/00-common.sh    root:root 0640 helper"
   "helper/certinel_helper.d/10-certtypes.sh /opt/certinel/helper/certinel_helper.d/10-certtypes.sh root:root 0640 helper"

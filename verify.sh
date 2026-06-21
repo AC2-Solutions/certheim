@@ -44,6 +44,7 @@ PAIRS=(
   "frontend/app.3-admin.js|/var/www/csr/app.3-admin.js"
   "frontend/app.4-misc-boot.js|/var/www/csr/app.4-misc-boot.js"
   "frontend/app.5-guide.js|/var/www/csr/app.5-guide.js"
+  "frontend/setup-guide.html|/var/www/csr/setup-guide.html"
   "helper/certinel_helper.sh|/opt/certinel/helper/certinel_helper.sh"
   "helper/certinel_helper.d/00-common.sh|/opt/certinel/helper/certinel_helper.d/00-common.sh"
   "helper/certinel_helper.d/10-certtypes.sh|/opt/certinel/helper/certinel_helper.d/10-certtypes.sh"
