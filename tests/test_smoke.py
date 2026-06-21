@@ -989,6 +989,134 @@ def test_license_renewal_notice(client, monkeypatch, tmp_path):
         licensing.reset_cache()
 
 
+# --- registrable domains + per-edition signing quota -----------------------
+def test_registrable_domain():
+    import domains
+    assert domains.registrable_domain("app.example.com") == "example.com"
+    assert domains.registrable_domain("EXAMPLE.com.") == "example.com"   # case/trailing dot
+    assert domains.registrable_domain("*.wild.example.com") == "example.com"
+    assert domains.registrable_domain("foo.bar.co.uk") == "bar.co.uk"    # multi-label suffix
+    assert domains.registrable_domain("host.ac2.lan") == "ac2.lan"       # internal TLD
+    # not countable: IP literal, single label, empty
+    assert domains.registrable_domain("10.0.0.1") == ""
+    assert domains.registrable_domain("localhost") == ""
+    assert domains.registrable_domain("") == ""
+
+
+def test_over_quota_math():
+    import domains
+    # uncapped (0) never blocks
+    assert domains.over_quota({"a.com", "b.net"}, set(), 0)[0] is False
+    # first domain under a cap of 1: allowed, recorded
+    blocked, union, _ = domains.over_quota({"a.com"}, set(), 1)
+    assert blocked is False and union == {"a.com"}
+    # renewal of an already-licensed domain: allowed even at the cap
+    assert domains.over_quota({"a.com"}, {"a.com"}, 1)[0] is False
+    # a NEW second domain at cap 1: blocked, names the offender
+    blocked, _, offending = domains.over_quota({"b.net"}, {"a.com"}, 1)
+    assert blocked is True and offending == {"b.net"}
+
+
+def test_unlimited_edition_capabilities():
+    import capabilities
+    assert "unlimited" in capabilities.EDITIONS
+    # Unlimited grants the full Commercial capability set, but NOT the gov pack.
+    assert capabilities.edition_capabilities("unlimited") == capabilities.COMMERCIAL_CAPABILITIES
+    assert "profiles.public_sector" not in capabilities.edition_capabilities("unlimited")
+    assert "lifecycle.auto_renew" in capabilities.edition_capabilities("unlimited")
+
+
+def test_commercial_domain_quota_blocks_second_domain(monkeypatch, tmp_path):
+    """A Commercial license meters signing at one registrable domain: the first
+    domain claims the slot, renewals of it keep working, and a second distinct
+    domain is refused. Unlimited lifts the cap entirely."""
+    import json
+    import subprocess
+    import licensing
+    import sign
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+
+    lic = tmp_path / "lic"
+    lic.write_text(_mint_license(priv, edition="commercial"))   # max_domains defaults to 1
+    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic))
+    licensing.reset_cache()
+    assert licensing.max_domains() == 1
+
+    # in-memory app_settings so sign.py can persist the licensed-domain set.
+    # Snapshot the real getter/setter and restore them after (configure() won't
+    # take None, so reset the module globals directly).
+    prev_get, prev_set = sign._get_setting, sign._set_setting
+    store = {}
+    sign.configure(get_setting=store.get,
+                   set_setting=lambda k, v: store.__setitem__(k, v))
+
+    def csr_for(cn):
+        key = str(tmp_path / (cn + ".key"))
+        out = str(tmp_path / (cn + ".csr"))
+        subprocess.run(["openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes",
+                        "-keyout", key, "-out", out, "-subj", "/CN=" + cn,
+                        "-addext", "subjectAltName=DNS:" + cn], capture_output=True)
+        return open(out).read()
+
+    try:
+        # first domain: allowed, claims the single slot
+        sign._enforce_domain_quota(csr_for("app.example.com"))
+        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
+        # same registrable domain again (renewal / another subdomain): allowed
+        sign._enforce_domain_quota(csr_for("api.example.com"))
+        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
+        # a SECOND distinct registrable domain: refused
+        import pytest
+        with pytest.raises(sign.SignError):
+            sign._enforce_domain_quota(csr_for("other.org"))
+
+        # Unlimited license lifts the cap -> the second domain now signs
+        lic.write_text(_mint_license(priv, edition="unlimited"))
+        licensing.reset_cache()
+        assert licensing.max_domains() == 0
+        sign._enforce_domain_quota(csr_for("other.org"))   # no raise
+    finally:
+        sign._get_setting, sign._set_setting = prev_get, prev_set
+        licensing.reset_cache()
+
+
+def test_obo_token_stamps_actor(monkeypatch):
+    """The OpenBao signer mints a short-lived on-behalf-of child token carrying
+    the issuing user's identity, so OpenBao's own audit log attributes the sign
+    to the individual rather than the shared AppRole. Attribution must never
+    block issuance, so a creation failure falls back to the parent token."""
+    import sign
+    calls = []
+
+    def fake_http(url, payload=None, token=None, timeout=15, raw=False):
+        calls.append({"url": url, "payload": payload, "token": token})
+        return {"auth": {"client_token": "child-tok-123"}}
+    monkeypatch.setattr(sign, "_http", fake_http)
+
+    # no actor -> parent token unchanged, no token/create call
+    assert sign._obo_token("https://bao", "parent-tok", None) == "parent-tok"
+    assert calls == []
+
+    # with actor -> child token minted, stamped with the actor
+    out = sign._obo_token("https://bao", "parent-tok", "CN=Alice,OU=Org")
+    assert out == "child-tok-123"
+    assert len(calls) == 1 and calls[0]["url"].endswith("/v1/auth/token/create")
+    assert calls[0]["token"] == "parent-tok"                 # minted via the AppRole token
+    assert calls[0]["payload"]["metadata"]["certinel_actor"] == "CN=Alice,OU=Org"
+    assert calls[0]["payload"]["display_name"].startswith("certinel-")
+    assert calls[0]["payload"]["ttl"] == "3m"
+
+    # creation failure must not block issuance -> fall back to the parent token
+    def boom(*a, **k):
+        raise RuntimeError("bao down")
+    monkeypatch.setattr(sign, "_http", boom)
+    assert sign._obo_token("https://bao", "parent-tok", "Bob") == "parent-tok"
+
+
 def test_multi_trusted_domains_registration(client):
     """Admin can configure MULTIPLE trusted email domains; self-registration is
     allowed at any of them and rejected elsewhere."""
@@ -1435,7 +1563,7 @@ def test_acme_server_full_flow(client, monkeypatch):
     appmod.set_setting("signing_default_backend", "openbao")   # != manual
     # stub challenge validation + the CA signing
     monkeypatch.setattr(acme_server, "validate_http01", lambda *a, **k: (True, "valid"))
-    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol: sign.SignResult(
+    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol, actor=None: sign.SignResult(
         "-----BEGIN CERTIFICATE-----\nFAKELEAF\n-----END CERTIFICATE-----\n",
         "-----BEGIN CERTIFICATE-----\nFAKECHAIN\n-----END CERTIFICATE-----\n"))
     try:
@@ -1564,7 +1692,7 @@ def test_acme_server_revoke(client, monkeypatch):
         ["openssl", "req", "-new", "-x509", "-key", "/dev/stdin", "-subj",
          "/CN=rev.example.com", "-days", "1", "-addext", "subjectAltName=DNS:rev.example.com"],
         input=ckey, capture_output=True).stdout.decode()
-    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol: sign.SignResult(realcert, ""))
+    monkeypatch.setattr(sign, "sign_csr", lambda csr, pol, actor=None: sign.SignResult(realcert, ""))
     seen = {}
     monkeypatch.setattr(sign, "revoke_cert",
                         lambda serial, backend="openbao": seen.update(serial=serial))

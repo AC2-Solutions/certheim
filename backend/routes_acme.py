@@ -376,7 +376,7 @@ def finalize(oid):
             raise AcmeServerError("no automated signing backend configured on the "
                                   "dashboard", "serverInternal", 500)
         try:
-            result = sign.sign_csr(csr_pem, policy)
+            result = sign.sign_csr(csr_pem, policy, actor="acme-server")
         except sign.SignError as e:
             with db() as c:
                 c.execute("UPDATE acme_orders SET status='invalid', error=? WHERE id=?",

@@ -32,12 +32,19 @@ def main():
     ap.add_argument("--key", required=True, help="vendor RSA private key (PEM)")
     ap.add_argument("--customer", required=True, help="customer name (recorded in the license)")
     ap.add_argument("--edition", default="commercial",
-                    choices=["community", "commercial", "government"],
-                    help="edition tier (community<commercial<government); the app "
-                         "expands it to capabilities (default commercial)")
+                    choices=["community", "commercial", "unlimited", "government"],
+                    help="edition tier; the app expands it to capabilities. "
+                         "commercial/unlimited share the same capabilities but "
+                         "differ in the domain cap (see --max-domains); government "
+                         "adds the public-sector pack (default commercial)")
     ap.add_argument("--entitlements", default="",
                     help="optional EXTRA capability keys (comma-separated) on top "
                          "of the edition's bundle")
+    ap.add_argument("--max-domains", type=int, default=None,
+                    help="cap on distinct registrable (eTLD+1) domains the "
+                         "deployment may sign for; 0 = unlimited. Default by "
+                         "edition: commercial=1, everything else=0. Use this to "
+                         "sell a commercial customer extra domains (e.g. 3)")
     ap.add_argument("--days", type=int, default=365, help="validity in days (default 365)")
     ap.add_argument("--bind-host", default="",
                     help="optional: bind the license to a deployment hostname. A "
@@ -49,12 +56,16 @@ def main():
     a = ap.parse_args()
 
     issued = int(a.issued if a.issued is not None else time.time())
+    max_domains = a.max_domains
+    if max_domains is None:
+        max_domains = 1 if a.edition == "commercial" else 0
     payload = {
         "customer": a.customer,
         "edition": a.edition,
         "entitlements": [e.strip() for e in a.entitlements.split(",") if e.strip()],
         "issued": issued,
         "expires": issued + a.days * 86400,
+        "max_domains": max_domains,
     }
     if a.bind_host.strip():
         payload["bind_host"] = a.bind_host.strip()

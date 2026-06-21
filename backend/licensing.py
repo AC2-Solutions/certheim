@@ -159,9 +159,18 @@ def _binding_warnings(payload):
 
 
 def _community(reason):
-    # The unlicensed baseline is the free Community edition.
+    # The unlicensed baseline is the free Community edition. max_domains 0 =
+    # uncapped: the domain limit is a paid-tier (Commercial) construct.
     return {"valid": False, "licensed": False, "edition": "community",
-            "reason": reason, "entitlements": [], "expired": False}
+            "reason": reason, "entitlements": [], "expired": False,
+            "max_domains": 0}
+
+
+def _default_max_domains(edition):
+    """Per-edition default cap on distinct registrable domains the deployment may
+    sign for. Commercial meters at a single domain (additional domains are sold
+    separately); Unlimited and Government are uncapped. 0 = unlimited."""
+    return 1 if edition == "commercial" else 0
 
 
 def info():
@@ -179,11 +188,15 @@ def info():
     expired = bool(exp and now > float(exp))
     if expired:
         return _community("license expired")
+    edition = p.get("edition") or "commercial"
+    md = p.get("max_domains")
+    md = int(md) if md is not None else _default_max_domains(edition)
     return {
         "valid": True, "licensed": True, "reason": "ok",
-        "customer": p.get("customer"), "edition": p.get("edition") or "commercial",
+        "customer": p.get("customer"), "edition": edition,
         "entitlements": list(p.get("entitlements", [])),
         "issued": p.get("issued"), "expires": exp, "expired": False,
+        "max_domains": md,
         "bind_host": p.get("bind_host"), "warnings": _binding_warnings(p),
     }
 
@@ -192,6 +205,13 @@ def entitlements():
     """Explicit entitlement keys from a currently-valid license (edition-derived
     grants are expanded by capabilities.edition_capabilities)."""
     return set(info().get("entitlements", []))
+
+
+def max_domains():
+    """Effective cap on distinct registrable (eTLD+1) domains this deployment may
+    sign certificates for. 0 = unlimited. No/invalid/expired license (Community)
+    => 0, since the cap is a paid-tier construct. sign.py enforces it offline."""
+    return int(info().get("max_domains") or 0)
 
 
 _SECONDS_PER_DAY = 86400

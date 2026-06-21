@@ -23,7 +23,8 @@ def _auto_sign_jobs(job_ids, template_id):
         try:
             with db() as conn:
                 jr = conn.execute("SELECT csr_pem FROM jobs WHERE id=?", (jid,)).fetchone()
-            res = sign.sign_csr(jr["csr_pem"], policy)
+            res = sign.sign_csr(jr["csr_pem"], policy,
+                                actor="auto-sign:" + g.identity["dn"])
             _attach_signed_cert(jid, res.cert_pem, actor_dn=g.identity["dn"],
                                 signed_via=policy["signer_backend"],
                                 approver_dn=None, log_action="auto_sign")
