@@ -3,6 +3,21 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.2.1 — 2026-06-21
+
+_Released 2026-06-21. 1 change since v3.2.0._
+
+### Fixes & improvements
+
+- **brand:** backup dir + offline placeholder use certinel, not csr (`ba0593d`)
+  Rebrand remnants the rename missed (separate string literals, not the csr-dashboard slug):
+  - certinel-backup wrote snapshots to /root/csr-backup-* -> /root/certinel-backup-*
+  - offline bundle default hostname placeholder csr-host -> certinel-host
+  - nginx fragment + runbook comments referencing csr-host
+  Kept (the generic CSR = Certificate Signing Request acronym): the /csr/ URL, csr-subject / csr-
+  info API endpoints, the csr-certs OpenBao delivery base path (changing it would break existing
+  Vault policies), and CHANGELOG history.
+
 ## 3.2.0 — 2026-06-21
 
 _Released 2026-06-21. 2 changes since v3.1.0._
