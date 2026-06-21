@@ -9,6 +9,11 @@ Flask/SQLite certificate request & lifecycle dashboard for an
 Platforms RHEL fleet. Runs behind nginx
 with PKI/CAC mTLS (or local accounts).
 
+> **New operator?** Open **`frontend/setup-guide.html`** in any browser for a
+> plain-English, start-to-finish setup runbook that tailors every step and
+> command to your details (edition, hostname, OpenBao, etc.). It's also linked
+> in-app as **Setup Guide** (top bar) and served at `/csr/setup-guide.html`.
+
 ## Repo layout → live paths
 
 | Repo | Deploys to | Owner / mode |
