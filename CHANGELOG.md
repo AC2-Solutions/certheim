@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.5.0 — 2026-06-21
+
+_Released 2026-06-21. 1 change since v3.4.0._
+
+### Features
+
+- **guide:** interactive start-to-finish setup runbook (`4b11a6a`)
+  Adds frontend/setup-guide.html — a self-contained, dependency-free interactive guide written for a
+  non-technical operator. The reader fills in their details (edition, hostname, sign-in method,
+  OpenBao, org, email) and every step + copy- paste command live-tailors to match; blanks render
+  highlighted placeholders.
+  Covers the whole path: prerequisites → install (online + offline) → first admin bootstrap →
+  license → org identity → sign-in (local/CAC + gov banner) → OpenBao auto-signing → email → first
+  cert → verify, plus commercial/government extras, troubleshooting, and a glossary. Works offline
+  and before the app is installed.
+  - Linked in-app as "Setup Guide" in the header (opens /csr/setup-guide.html).
+  - Added to deploy.sh manifest + verify.sh; README pointer.
+  - Inline JS validated (esprima); all data-tpl bindings have matching cases.
+
 ## 3.4.0 — 2026-06-21
 
 _Released 2026-06-21. 2 changes since v3.3.0._
