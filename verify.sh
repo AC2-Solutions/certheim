@@ -13,6 +13,7 @@ PAIRS=(
   "backend/build_mode.py|/opt/certinel/build_mode.py"
   "backend/capabilities.py|/opt/certinel/capabilities.py"
   "backend/licensing.py|/opt/certinel/licensing.py"
+  "backend/domains.py|/opt/certinel/domains.py"
   "backend/sign.py|/opt/certinel/sign.py"
   "backend/deliver.py|/opt/certinel/deliver.py"
   "backend/keystore.py|/opt/certinel/keystore.py"

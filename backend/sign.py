@@ -61,6 +61,57 @@ def configure(get_setting=None, set_setting=None):
         _set_setting = set_setting
 
 
+def _licensed_domains():
+    """The set of distinct registrable domains this deployment has already been
+    licensed to sign for (persisted in app_settings, so the cap survives restarts
+    and is enforced fully offline)."""
+    if _get_setting is None:
+        return set()
+    try:
+        return set(json.loads(_get_setting("licensed_domains") or "[]"))
+    except Exception:
+        return set()
+
+
+def _set_licensed_domains(domain_set):
+    if _set_setting is None:
+        return
+    try:
+        _set_setting("licensed_domains", json.dumps(sorted(domain_set)))
+    except Exception:
+        pass
+
+
+def _enforce_domain_quota(csr_pem):
+    """Gate signing on the license's registrable-domain cap (Commercial = 1;
+    Unlimited/Government uncapped). Renewals/re-issues of an already-licensed
+    domain are always allowed; the first time a new domain is signed it claims a
+    slot. Raises SignError when a new domain would exceed the cap. A no-op when
+    the license is uncapped (max_domains 0) or the CSR names nothing DNS-like."""
+    try:
+        import licensing
+        cap = licensing.max_domains()
+    except Exception:
+        cap = 0
+    if not cap:
+        return
+    import domains as _domains
+    new = _domains.csr_domains(csr_pem)
+    if not new:
+        return
+    current = _licensed_domains()
+    blocked, union, offending = _domains.over_quota(new, current, cap)
+    if blocked:
+        covered = ", ".join(sorted(current)) or "none yet"
+        raise SignError(
+            f"license domain limit reached: this license covers {cap} "
+            f"registrable domain{'s' if cap != 1 else ''} ({covered}); signing "
+            f"for {', '.join(sorted(offending))} would exceed it. Upgrade to the "
+            f"Unlimited edition or purchase additional domains to manage more.")
+    if union != current:
+        _set_licensed_domains(union)
+
+
 def _cfg(setting_key, env_var, default=""):
     """Env var wins (operator/secret), then app_settings, then default."""
     v = os.environ.get(env_var)
@@ -613,6 +664,7 @@ def sign_csr(csr_pem, template):
         raise BackendUnavailable("manual signing - use the cert-upload path")
     if not csr_pem or "REQUEST" not in csr_pem:
         raise SignError("no CSR to sign")
+    _enforce_domain_quota(csr_pem)
     if backend == "openbao":
         return _sign_openbao(csr_pem, template)
     if backend == "cyberark":

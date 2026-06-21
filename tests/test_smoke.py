@@ -989,6 +989,101 @@ def test_license_renewal_notice(client, monkeypatch, tmp_path):
         licensing.reset_cache()
 
 
+# --- registrable domains + per-edition signing quota -----------------------
+def test_registrable_domain():
+    import domains
+    assert domains.registrable_domain("app.example.com") == "example.com"
+    assert domains.registrable_domain("EXAMPLE.com.") == "example.com"   # case/trailing dot
+    assert domains.registrable_domain("*.wild.example.com") == "example.com"
+    assert domains.registrable_domain("foo.bar.co.uk") == "bar.co.uk"    # multi-label suffix
+    assert domains.registrable_domain("host.ac2.lan") == "ac2.lan"       # internal TLD
+    # not countable: IP literal, single label, empty
+    assert domains.registrable_domain("10.0.0.1") == ""
+    assert domains.registrable_domain("localhost") == ""
+    assert domains.registrable_domain("") == ""
+
+
+def test_over_quota_math():
+    import domains
+    # uncapped (0) never blocks
+    assert domains.over_quota({"a.com", "b.net"}, set(), 0)[0] is False
+    # first domain under a cap of 1: allowed, recorded
+    blocked, union, _ = domains.over_quota({"a.com"}, set(), 1)
+    assert blocked is False and union == {"a.com"}
+    # renewal of an already-licensed domain: allowed even at the cap
+    assert domains.over_quota({"a.com"}, {"a.com"}, 1)[0] is False
+    # a NEW second domain at cap 1: blocked, names the offender
+    blocked, _, offending = domains.over_quota({"b.net"}, {"a.com"}, 1)
+    assert blocked is True and offending == {"b.net"}
+
+
+def test_unlimited_edition_capabilities():
+    import capabilities
+    assert "unlimited" in capabilities.EDITIONS
+    # Unlimited grants the full Commercial capability set, but NOT the gov pack.
+    assert capabilities.edition_capabilities("unlimited") == capabilities.COMMERCIAL_CAPABILITIES
+    assert "profiles.public_sector" not in capabilities.edition_capabilities("unlimited")
+    assert "lifecycle.auto_renew" in capabilities.edition_capabilities("unlimited")
+
+
+def test_commercial_domain_quota_blocks_second_domain(monkeypatch, tmp_path):
+    """A Commercial license meters signing at one registrable domain: the first
+    domain claims the slot, renewals of it keep working, and a second distinct
+    domain is refused. Unlimited lifts the cap entirely."""
+    import json
+    import subprocess
+    import licensing
+    import sign
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+
+    lic = tmp_path / "lic"
+    lic.write_text(_mint_license(priv, edition="commercial"))   # max_domains defaults to 1
+    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic))
+    licensing.reset_cache()
+    assert licensing.max_domains() == 1
+
+    # in-memory app_settings so sign.py can persist the licensed-domain set.
+    # Snapshot the real getter/setter and restore them after (configure() won't
+    # take None, so reset the module globals directly).
+    prev_get, prev_set = sign._get_setting, sign._set_setting
+    store = {}
+    sign.configure(get_setting=store.get,
+                   set_setting=lambda k, v: store.__setitem__(k, v))
+
+    def csr_for(cn):
+        key = str(tmp_path / (cn + ".key"))
+        out = str(tmp_path / (cn + ".csr"))
+        subprocess.run(["openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes",
+                        "-keyout", key, "-out", out, "-subj", "/CN=" + cn,
+                        "-addext", "subjectAltName=DNS:" + cn], capture_output=True)
+        return open(out).read()
+
+    try:
+        # first domain: allowed, claims the single slot
+        sign._enforce_domain_quota(csr_for("app.example.com"))
+        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
+        # same registrable domain again (renewal / another subdomain): allowed
+        sign._enforce_domain_quota(csr_for("api.example.com"))
+        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
+        # a SECOND distinct registrable domain: refused
+        import pytest
+        with pytest.raises(sign.SignError):
+            sign._enforce_domain_quota(csr_for("other.org"))
+
+        # Unlimited license lifts the cap -> the second domain now signs
+        lic.write_text(_mint_license(priv, edition="unlimited"))
+        licensing.reset_cache()
+        assert licensing.max_domains() == 0
+        sign._enforce_domain_quota(csr_for("other.org"))   # no raise
+    finally:
+        sign._get_setting, sign._set_setting = prev_get, prev_set
+        licensing.reset_cache()
+
+
 def test_multi_trusted_domains_registration(client):
     """Admin can configure MULTIPLE trusted email domains; self-registration is
     allowed at any of them and rejected elsewhere."""

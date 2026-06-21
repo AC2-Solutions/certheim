@@ -259,10 +259,15 @@ def _entitlements():
     return None
 
 
-# Edition tiers. Community is the free, unlicensed baseline; Commercial and
-# Government are paid editions unlocked by a signed license (see licensing.py).
-# Higher tiers are supersets: government = commercial + the public-sector pack.
-EDITIONS = ("community", "commercial", "government")
+# Edition tiers. Community is the free, unlicensed baseline; Commercial,
+# Unlimited, and Government are paid editions unlocked by a signed license (see
+# licensing.py). Capability-wise the paid tiers stack: Unlimited and Government
+# both grant the full Commercial capability set; Government adds the public-
+# sector pack. The tiers differ in the signing DOMAIN CAP, not capabilities:
+# Commercial meters at one registrable domain (licensing.max_domains() == 1),
+# while Unlimited and Government are uncapped (0). The cap is enforced in
+# sign.py, not here.
+EDITIONS = ("community", "commercial", "unlimited", "government")
 
 # Capability keys each PAID tier adds on top of free Community.
 #
@@ -302,9 +307,10 @@ LICENSED_CAPABILITIES = COMMERCIAL_CAPABILITIES | GOVERNMENT_CAPABILITIES
 
 
 def edition_capabilities(edition):
-    """Licensed capability keys an edition grants (tiers stack)."""
+    """Licensed capability keys an edition grants (tiers stack). Unlimited is
+    Commercial's capability set with no domain cap; Government adds the gov pack."""
     caps = set()
-    if edition in ("commercial", "government"):
+    if edition in ("commercial", "unlimited", "government"):
         caps |= COMMERCIAL_CAPABILITIES
     if edition == "government":
         caps |= GOVERNMENT_CAPABILITIES
