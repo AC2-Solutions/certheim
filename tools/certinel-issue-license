@@ -39,6 +39,11 @@ def main():
                     help="optional EXTRA capability keys (comma-separated) on top "
                          "of the edition's bundle")
     ap.add_argument("--days", type=int, default=365, help="validity in days (default 365)")
+    ap.add_argument("--bind-host", default="",
+                    help="optional: bind the license to a deployment hostname. A "
+                         "mismatch is surfaced as a non-fatal warning (a copied "
+                         "license then names the host it escaped from), not a hard "
+                         "block - so a legitimate host move doesn't brick the app")
     ap.add_argument("--issued", type=float, default=None,
                     help="issue epoch (default: now)")
     a = ap.parse_args()
@@ -51,6 +56,8 @@ def main():
         "issued": issued,
         "expires": issued + a.days * 86400,
     }
+    if a.bind_host.strip():
+        payload["bind_host"] = a.bind_host.strip()
     payload_b64 = b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
     sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", a.key],
                          input=payload_b64.encode(), capture_output=True)

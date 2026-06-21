@@ -873,6 +873,85 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
         assert capabilities.available("profiles.public_sector") is False
 
 
+def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
+    """The hardening: in a RELEASE build the dev-only env overrides are inert.
+
+    Demonstrates the asymmetry — same environment, two outcomes:
+      * dev build (default): CSR_LICENSE_PUBKEY swaps the trust anchor (a forged
+        license signed by an attacker key verifies) and CSR_ENTITLEMENTS=* grants
+        paid caps with no real license.
+      * release build (CERTINEL_RELEASE=1): both are ignored — only the embedded
+        vendor key is trusted and only a real signed license unlocks paid caps."""
+    import subprocess
+    import build_mode
+    import capabilities
+    import licensing
+
+    # An attacker-controlled keypair, and a "license" they forged with it.
+    priv = str(tmp_path / "attacker.key")
+    pub = str(tmp_path / "attacker.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    forged = _mint_license(priv, edition="government")
+    lic_file = tmp_path / "license.txt"          # via CSR_LICENSE_FILE => no shared state
+    lic_file.write_text(forged)
+
+    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic_file))
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())  # attacker trust anchor
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")                 # grant-all backdoor
+
+    # --- DEV build (default): the overrides are honored ---
+    monkeypatch.delenv("CERTINEL_RELEASE", raising=False)
+    licensing.reset_cache()
+    assert build_mode.dev_overrides_allowed() is True
+    assert licensing.info()["valid"] is True                       # attacker key accepted
+    assert capabilities.is_entitled("lifecycle.auto_renew") is True  # grant-all on
+
+    # --- RELEASE build: identical environment, now inert ---
+    monkeypatch.setenv("CERTINEL_RELEASE", "1")
+    licensing.reset_cache()
+    assert build_mode.dev_overrides_allowed() is False
+    assert licensing.info()["valid"] is False                      # attacker key REJECTED
+    assert capabilities.is_entitled("lifecycle.auto_renew") is False  # grant-all IGNORED
+    licensing.reset_cache()
+
+
+def test_license_host_binding_warns_not_blocks(client, monkeypatch, tmp_path):
+    """An optional bind_host claim is a soft tripwire: a mismatch surfaces a
+    warning (so a copied license names the host it escaped) but never revokes
+    entitlements — a legitimate host move must not brick the app."""
+    import subprocess
+    import capabilities
+    import licensing
+
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+
+    # Mint a government license bound to a host this deployment is NOT.
+    import json as _json
+    import time as _time
+    payload = {"customer": "Bound Co", "edition": "government", "entitlements": [],
+               "issued": int(_time.time()), "expires": int(_time.time()) + 365 * 86400,
+               "bind_host": "other-host.example"}
+    pb = licensing.b64u(_json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", priv],
+                         input=pb.encode(), capture_output=True).stdout
+    lic_file = tmp_path / "license.txt"
+    lic_file.write_text(f"{pb}.{licensing.b64u(sig)}")
+    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic_file))
+    monkeypatch.setenv("CSR_LICENSE_HOST", "this-host.example")
+    licensing.reset_cache()
+
+    info = licensing.info()
+    assert info["valid"] is True                                   # still valid
+    assert capabilities.is_entitled("profiles.public_sector") is True  # NOT blocked
+    assert info.get("warnings") and "other-host.example" in info["warnings"][0]
+    licensing.reset_cache()
+
+
 def test_license_renewal_notice(client, monkeypatch, tmp_path):
     """/api/me surfaces a renewal notice as the license nears expiry (60-day
     window for an admin); a comfortably-valid or absent license gives none."""

@@ -72,6 +72,16 @@
   header { background: var(--header-bg); color: var(--header-fg); padding: 14px 20px;
            display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  /* Edition / license watermark badge (header). Muted by default (Community),
+     accent when licensed, warning when a binding tripwire fires. */
+  .edition-badge { display: inline-block; margin-left: 10px; padding: 2px 9px;
+         border-radius: 999px; font-size: 12px; font-weight: 600;
+         border: 1px solid var(--muted, #888); color: var(--header-fg);
+         opacity: .85; white-space: nowrap; }
+  .edition-badge.edition-badge-licensed { border-color: var(--ok);
+         color: var(--ok); opacity: 1; }
+  .edition-badge.edition-badge-warn { border-color: var(--warning);
+         color: var(--warning); }
   .theme-toggle { background: var(--toggle-bg); color: var(--header-fg);
                   border: 1px solid var(--toggle-border); border-radius: 4px;
                   padding: 6px 12px; font-size: 13px; cursor: pointer;

@@ -99,6 +99,10 @@
 
 <header>
   <h1>Certinel</h1>
+  <!-- Edition / license watermark. Populated from /api/me by loadMe(): shows the
+       edition and, when licensed, "Licensed to <customer>" so a leaked license
+       names its owner. "Community" when unlicensed. -->
+  <span id="edition-badge" class="edition-badge" hidden></span>
   <div class="header-actions">
     <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
     <button id="nav-admin" class="header-nav admin-only" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>

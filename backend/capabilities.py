@@ -315,10 +315,14 @@ def is_entitled(key):
     if key in LICENSED_CAPABILITIES:
         # Explicit operator override (dev / evaluation / all-access self-host):
         # CSR_ENTITLEMENTS=* or a comma list unlocks licensed caps without a
-        # license file. Unset (the default) => a valid license is required.
-        ent = _entitlements()
-        if ent is not None and ("*" in ent or key in ent):
-            return True
+        # license file. Honored ONLY in a development build - a hardened RELEASE
+        # build ignores this backdoor, so paid capabilities require a valid
+        # signed license no matter what the environment is set to.
+        import build_mode
+        if build_mode.dev_overrides_allowed():
+            ent = _entitlements()
+            if ent is not None and ("*" in ent or key in ent):
+                return True
         try:
             import licensing
             info = licensing.info()
