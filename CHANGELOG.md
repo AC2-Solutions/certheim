@@ -3,6 +3,19 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.2.2 — 2026-06-21
+
+_Released 2026-06-21. 1 change since v3.2.1._
+
+### Fixes & improvements
+
+- **guide:** wizard uses the app's real theme variables (was unreadable) (`2672d79`)
+  The connection wizard styled against CSS vars that don't exist (--card, --input) so the fallbacks
+  rendered a white modal + white inputs while text stayed --fg (light) - light-on-white, unreadable
+  on the dark theme. Re-style against the app's actual tokens (--modal-bg, --bg-input, --border-
+  input, --fg-muted, --log-bg/--log-fg, --accent/--accent-fg) so it matches both light and dark
+  themes, with focus states and clearer step separators.
+
 ## 3.2.1 — 2026-06-21
 
 _Released 2026-06-21. 1 change since v3.2.0._
