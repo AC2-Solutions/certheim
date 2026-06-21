@@ -3,6 +3,34 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.3.0 — 2026-06-21
+
+_Released 2026-06-21. 1 change since v3.2.2._
+
+### Features
+
+- **licensing:** harden edition gating against trivial bypass (`fcbb0ff`)
+  Closes the two env-var backdoors that unlocked paid editions with no forgery, and adds watermark /
+  tamper-evidence / an optional host-binding tripwire so theft is at least loud and legally clean.
+  Mechanism (build_mode.py): the insecure dev/eval overrides are honored ONLY in a development
+  build. A release build — stamped on the installed copy by deploy.sh, or marked with
+  CERTINEL_RELEASE=1 — ignores them, so the embedded vendor key is the only trust anchor and a valid
+  signed license is the only way to unlock paid capabilities. The environment can only ever tighten
+  a build (mark it release), never loosen it; loosening requires editing source, which is the
+  irreducible floor for self-hosted.
+  - build_mode.py: dev vs hardened-release distinction (new module)
+  - licensing.py: CSR_LICENSE_PUBKEY trust-anchor swap gated to dev builds; optional bind_host
+    soft tripwire surfaced in info().warnings
+  - capabilities.py: CSR_ENTITLEMENTS=* grant-all gated to dev builds
+  - app.py: startup banner — license watermark (licensed-to), loud UNLICENSED / DEV-OVERRIDE
+    warnings, mirrored to the audit stream
+  - routes_me.py + frontend: persistent edition/licensed-to header badge
+  - certinel-issue-license: --bind-host
+  - deploy.sh: stamp installed build_mode.py as a release build (CERTINEL_DEV_DEPLOY=1 keeps
+    overrides on an eval box)
+  - deploy.sh/verify.sh manifests: register build_mode.py
+  - tests: release-build inertness + host-binding warning (93 pass)
+
 ## 3.2.2 — 2026-06-21
 
 _Released 2026-06-21. 1 change since v3.2.1._
