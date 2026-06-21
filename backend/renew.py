@@ -118,7 +118,7 @@ def run_auto_renew():
 
         days_left = int((r["expires_at"] - now) / 86400)
         try:
-            result = sign.sign_csr(r["csr_pem"], policy)
+            result = sign.sign_csr(r["csr_pem"], policy, actor="auto-renew")
         except Exception as e:
             app.log_event("auto_renew", "sign_error", job_id=r["id"],
                           backend=backend, error=str(e)[:200])

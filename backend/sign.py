@@ -198,11 +198,35 @@ def _openbao_login(addr):
     return token
 
 
-def _sign_openbao(csr_pem, template):
+def _obo_token(addr, parent_token, actor):
+    """Mint a short-lived 'on-behalf-of' child token stamped with the issuing
+    user's identity, so OpenBao's audit log attributes the sign to the individual
+    rather than the shared AppRole. Returns the child token, or the parent token
+    unchanged when there's no actor or creation fails - attribution must never
+    block issuance. Requires the AppRole's policy to allow auth/token/create
+    (the default policy grants it unless token_no_default_policy is set)."""
+    if not actor:
+        return parent_token
+    actor = str(actor)[:256]
+    safe = "".join(c if (c.isalnum() or c in "_.-@") else "_" for c in actor)[:64]
+    body = {
+        "metadata": {"certinel_actor": actor},
+        "display_name": "certinel-" + (safe or "user"),
+        "ttl": "3m", "num_uses": 3, "renewable": False,
+    }
+    try:
+        data = _http(f"{addr}/v1/auth/token/create", body, token=parent_token)
+        child = (data.get("auth") or {}).get("client_token")
+        return child or parent_token
+    except Exception:                       # noqa: BLE001 - fall back to AppRole token
+        return parent_token
+
+
+def _sign_openbao(csr_pem, template, actor=None):
     addr, mount = _openbao_addr_mount()
     role = (template or {}).get("openbao_role") or \
         _cfg("openbao_default_role", "CSR_OPENBAO_ROLE", "certinel")
-    token = _openbao_login(addr)
+    token = _obo_token(addr, _openbao_login(addr), actor)
     payload = {"csr": csr_pem, "format": "pem"}
     ttl = (template or {}).get("max_ttl")
     if ttl:
@@ -655,10 +679,15 @@ def _credential_present(provider):
     return True   # manual needs no credential
 
 
-def sign_csr(csr_pem, template):
+def sign_csr(csr_pem, template, actor=None):
     """Produce a signed cert for csr_pem per the template's backend.
     Returns SignResult. Raises BackendUnavailable (manual -> use upload path)
-    or SignError (a real failure)."""
+    or SignError (a real failure).
+
+    `actor` is the identity issuing the cert (the approver's DN / username, or a
+    system label like 'auto-renew'). For the OpenBao backend it is stamped onto a
+    short-lived on-behalf-of token so OpenBao's own audit log attributes the sign
+    to the individual, not the shared AppRole. Other backends ignore it."""
     backend = ((template or {}).get("signer_backend") or "manual").strip()
     if backend == "manual":
         raise BackendUnavailable("manual signing - use the cert-upload path")
@@ -666,7 +695,7 @@ def sign_csr(csr_pem, template):
         raise SignError("no CSR to sign")
     _enforce_domain_quota(csr_pem)
     if backend == "openbao":
-        return _sign_openbao(csr_pem, template)
+        return _sign_openbao(csr_pem, template, actor)
     if backend == "cyberark":
         return _sign_cyberark(csr_pem, template)
     if backend == "windows_ca":

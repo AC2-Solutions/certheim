@@ -143,7 +143,7 @@ def sign_job(job_id):
         template = {**template, "max_ttl": chosen_ttl}
 
     try:
-        result = sign.sign_csr(row["csr_pem"], template)
+        result = sign.sign_csr(row["csr_pem"], template, actor=actor_dn)
     except sign.BackendUnavailable as e:
         return jsonify(error=str(e)), 409
     except sign.SignError as e:
