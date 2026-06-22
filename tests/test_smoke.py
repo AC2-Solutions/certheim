@@ -1984,3 +1984,37 @@ def test_mtls_auth_settings(client, monkeypatch):
             appmod.set_setting("auth_mode", prev.get("auth_mode") or "mtls")
             for k, v in prev.items():
                 appmod.set_setting(k, v if v is not None else "")
+
+
+# --- manual cert upload: Windows DER/.cer + PKCS#7 normalization ------------
+def test_normalize_cert_to_pem_der_pkcs7_pem(client, tmp_path):
+    """The manual upload path must accept what a Windows CA hands back: DER
+    (.cer, binary) and PKCS#7 (.p7b), not just PEM. _normalize_cert_to_pem does
+    the format detection server-side with openssl."""
+    import subprocess as _sp
+    norm = client._appmod._normalize_cert_to_pem
+    pem = str(tmp_path / "c.pem")
+    key = str(tmp_path / "c.key")
+    # A throwaway self-signed cert to convert between formats.
+    _sp.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-keyout", key, "-out", pem, "-days", "1", "-subj", "/CN=der-test"],
+            check=True, capture_output=True)
+    pem_text = open(pem).read()
+
+    # 1) PEM passes through.
+    assert "BEGIN CERTIFICATE" in (norm(pem_text.encode()) or "")
+
+    # 2) DER (binary .cer) -> PEM.
+    der = _sp.run(["openssl", "x509", "-in", pem, "-outform", "DER"],
+                  check=True, capture_output=True).stdout
+    out_der = norm(der)
+    assert out_der and "BEGIN CERTIFICATE" in out_der
+
+    # 3) PKCS#7 (.p7b) -> leaf PEM.
+    p7 = _sp.run(["openssl", "crl2pkcs7", "-nocrl", "-certfile", pem,
+                  "-outform", "DER"], check=True, capture_output=True).stdout
+    out_p7 = norm(p7)
+    assert out_p7 and "BEGIN CERTIFICATE" in out_p7
+
+    # 4) Garbage is rejected.
+    assert norm(b"this is not a certificate at all") is None

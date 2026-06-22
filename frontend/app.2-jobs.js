@@ -427,10 +427,15 @@ function downloadChainPem(name, pem) {
 }
 
 // ===== Upload cert =====
+// Holds a base64-encoded file when the user picks a binary cert (DER .cer /
+// PKCS#7 .p7b). Pasted PEM goes through the textarea (cert_pem) instead.
+let _uploadCertB64 = null;
+
 function openUploadCert(jobId, targetHost) {
   const t = document.getElementById("upload-job-target");
   t.textContent = targetHost;
   t.dataset.id = jobId;
+  _uploadCertB64 = null;
   document.getElementById("upload-cert-text").value = "";
   document.getElementById("upload-cert-file").value = "";
   setStatus(document.getElementById("upload-cert-status"), "");
@@ -439,24 +444,48 @@ function openUploadCert(jobId, targetHost) {
 
 document.getElementById("upload-cert-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) { _uploadCertB64 = null; return; }
+  const textArea = document.getElementById("upload-cert-text");
+  // Read as base64 so binary DER/PKCS#7 survives intact (readAsText would
+  // corrupt it). If the file is actually PEM text, show it and let the paste
+  // path handle it; if it's binary, show a placeholder instead of garbage.
   const reader = new FileReader();
-  reader.onload = () => { document.getElementById("upload-cert-text").value = reader.result; };
-  reader.readAsText(file);
+  reader.onload = () => {
+    const dataUrl = reader.result;                 // "data:...;base64,XXXX"
+    const b64 = dataUrl.substring(dataUrl.indexOf(",") + 1);
+    _uploadCertB64 = b64;
+    let looksPem = false;
+    try {
+      const decoded = atob(b64);
+      looksPem = decoded.includes("-----BEGIN CERTIFICATE-----");
+      if (looksPem) { textArea.value = decoded; _uploadCertB64 = null; }
+    } catch (_) { /* binary - keep b64 */ }
+    if (!looksPem) {
+      textArea.value = `[binary certificate file selected: ${file.name}]\n`
+                     + "It will be converted on upload (DER/.cer or PKCS#7/.p7b).";
+    }
+  };
+  reader.readAsDataURL(file);
 });
 
 document.getElementById("upload-cert-submit-btn").addEventListener("click", async () => {
   const jobId = document.getElementById("upload-job-target").dataset.id;
-  const cert_pem = document.getElementById("upload-cert-text").value;
+  const pasted = document.getElementById("upload-cert-text").value;
   const status = document.getElementById("upload-cert-status");
-  if (!cert_pem) {
+  // Prefer a selected binary file (b64); otherwise use pasted PEM text.
+  const body = {};
+  if (_uploadCertB64) {
+    body.cert_b64 = _uploadCertB64;
+  } else if (pasted && !pasted.startsWith("[binary certificate file selected")) {
+    body.cert_pem = pasted;
+  } else {
     setStatus(status, "Cert content required.", "err");
     return;
   }
   setStatus(status, "Uploading…");
   const r = await jsonReq(`/jobs/${jobId}/upload-cert`, {
     method: "POST",
-    body: JSON.stringify({ cert_pem }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     setStatus(status, (r.body && r.body.error) || "Upload failed", "err");

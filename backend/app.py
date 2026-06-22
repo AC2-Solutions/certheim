@@ -1878,6 +1878,50 @@ def _csr_pubkey(csr_pem):
     except Exception:
         return None
 
+def _normalize_cert_to_pem(raw_bytes):
+    """Accept a certificate in any common format a CA might hand back and return
+    PEM text (str), or None if it isn't a parseable cert. Windows CAs hand out
+    DER-encoded .cer files by default (binary), and sometimes PKCS#7 (.p7b)
+    bundles; users/browsers also paste PEM. We convert all three to a single PEM
+    leaf certificate so the rest of the upload pipeline (subject parse, pubkey
+    match, expiry, storage) only ever sees PEM. openssl does the conversion (no
+    new dependency); the client's only job is to deliver the bytes intact."""
+    if not raw_bytes:
+        return None
+    # 1) Already PEM? Use as-is.
+    try:
+        text = raw_bytes.decode("utf-8", errors="strict")
+    except Exception:
+        text = None
+    if text and "-----BEGIN CERTIFICATE-----" in text:
+        return text
+    # 2) DER -> PEM (a Windows .cer).
+    try:
+        proc = subprocess.run(
+            ["openssl", "x509", "-inform", "DER", "-outform", "PEM"],
+            input=raw_bytes, capture_output=True, timeout=10)
+        if proc.returncode == 0 and b"BEGIN CERTIFICATE" in proc.stdout:
+            return proc.stdout.decode("utf-8", errors="strict")
+    except Exception:
+        pass
+    # 3) PKCS#7 (.p7b), DER or PEM form -> first (leaf) cert -> PEM.
+    for inform in ("DER", "PEM"):
+        try:
+            proc = subprocess.run(
+                ["openssl", "pkcs7", "-inform", inform, "-print_certs",
+                 "-outform", "PEM"],
+                input=raw_bytes, capture_output=True, timeout=10)
+            if proc.returncode == 0 and b"BEGIN CERTIFICATE" in proc.stdout:
+                out = proc.stdout.decode("utf-8", errors="replace")
+                start = out.find("-----BEGIN CERTIFICATE-----")
+                end = out.find("-----END CERTIFICATE-----")
+                if start != -1 and end != -1:
+                    return out[start:end + len("-----END CERTIFICATE-----")] + "\n"
+        except Exception:
+            pass
+    return None
+
+
 def _cert_pubkey(cert_pem):
     try:
         proc = subprocess.run(
