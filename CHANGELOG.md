@@ -3,6 +3,21 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.14.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.13.2._
+
+### Features
+
+- **ci:** mirror attested images into the entitled Certinel registry (`1699be3`)
+  After publishing to Docker Hub, the release job now also pushes the same attested UBI9 + slim
+  images into the entitled registry on the license-server origin (192.168.201.19:5000), over the LAN
+  — bypassing Cloudflare's 100MB request-body cap (customer pulls go through the tunnel; the mirror
+  push does not). Auth via the _mirror push credential on the portal token endpoint
+  (CERTINEL_MIRROR_PUSH_SECRET); registry.insecure because the origin is plain HTTP on the LAN
+  (Cloudflare terminates TLS for pulls). Non-fatal: a mirror hiccup never undoes the Docker Hub
+  publish. Gated on CERTINEL_MIRROR_PUSH_SECRET being set.
+
 ## 3.13.2 — 2026-06-22
 
 _Released 2026-06-22. 2 changes since v3.13.1._
