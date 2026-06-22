@@ -546,6 +546,7 @@ def init_db():
     # schema_connect() applies dialect translation (AUTOINCREMENT/REAL) so the
     # SQLite-flavored CREATE/ALTER below also build correctly on Postgres.
     conn = dbx.schema_connect()
+    dbx.prepare(conn)  # backend setup (e.g. the nocase collation on Postgres)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id              TEXT PRIMARY KEY,

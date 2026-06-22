@@ -149,6 +149,22 @@ def ddl(sql):
     return out
 
 
+def prepare(conn):
+    """Backend-specific one-time setup, run at the very start of init_db().
+    On Postgres, create a case-insensitive `nocase` collation so the app's
+    SQLite-style `ORDER BY x COLLATE NOCASE` / `WHERE name = ? COLLATE NOCASE`
+    resolve unchanged. ICU ships with RHEL/Alma Postgres; if it's somehow
+    absent the CREATE is a no-op and those queries would error (caught by CI)."""
+    if not is_postgres():
+        return
+    try:
+        conn.execute(
+            "CREATE COLLATION IF NOT EXISTS nocase "
+            "(provider = icu, locale = 'und-u-ks-level2', deterministic = false)")
+    except Exception:
+        pass
+
+
 def table_columns(conn, table):
     """Set of existing column names for `table` (drives the idempotent
     ADD COLUMN migrations). Replaces `PRAGMA table_info`."""

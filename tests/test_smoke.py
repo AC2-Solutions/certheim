@@ -1109,7 +1109,9 @@ def test_db_shim_logic():
         assert dbx.ddl("CREATE TABLE z (id INTEGER PRIMARY KEY AUTOINCREMENT)") == \
             "CREATE TABLE z (id INTEGER PRIMARY KEY AUTOINCREMENT)"
     finally:
-        dbx._backend = None  # restore env-driven resolution for other tests
+        # Reset ALL resolution globals so later tests re-derive from the env
+        # (leaving _pg_dsn = "postgresql://x" would poison every later DB test).
+        dbx._backend = dbx._pg_dsn = dbx._sqlite_path = None
 
 
 def test_obo_token_stamps_actor(monkeypatch):
