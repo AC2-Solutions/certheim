@@ -809,21 +809,42 @@ const requestRows = document.getElementById("request-rows");
 // the field separator): letters, digits, . _ @ + : -
 const ENTRY_RE = /^[A-Za-z0-9._@+:-]+$/;
 
+// Make the request form reflect the admin-configured CSR subject domain instead
+// of a hardcoded "example.com": fills the help-text spans + (re)sets input
+// placeholders. Called once /api/me resolves. Falls back to example.com when no
+// domain is configured yet.
+function applyConfiguredDomain(suffix) {
+  const dom = (suffix || "").trim().replace(/^\.+/, "");
+  window.CSR_DOMAIN = dom;                       // "" until an admin configures it
+  const shown = dom || "example.com";
+  const dEl = document.getElementById("hint-domain");
+  const eEl = document.getElementById("hint-example");
+  if (dEl) dEl.textContent = "." + shown;
+  if (eEl) eEl.textContent = "myserver." + shown;
+  document.querySelectorAll(".req-cn").forEach(i => {
+    i.placeholder = "myserver  or  myserver." + shown;
+  });
+  document.querySelectorAll(".req-sans").forEach(i => {
+    i.placeholder = "alt." + shown + ", 10.1.2.3";
+  });
+}
+
 function addRequestRow(cn = "", sans = "") {
   const row = document.createElement("div");
   row.className = "request-row";
 
+  const _dom = (window.CSR_DOMAIN || "example.com");
   const cnInput = document.createElement("input");
   cnInput.type = "text";
   cnInput.className = "form-input req-cn";
-  cnInput.placeholder = "myserver  or  myserver.example.com";
+  cnInput.placeholder = "myserver  or  myserver." + _dom;
   cnInput.autocomplete = "off";
   cnInput.value = cn;
 
   const sansInput = document.createElement("input");
   sansInput.type = "text";
   sansInput.className = "form-input req-sans";
-  sansInput.placeholder = "alt.example.com, 10.1.2.3";
+  sansInput.placeholder = "alt." + _dom + ", 10.1.2.3";
   sansInput.autocomplete = "off";
   sansInput.value = sans;
 

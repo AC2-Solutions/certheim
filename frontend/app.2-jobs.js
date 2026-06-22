@@ -569,6 +569,9 @@ async function loadMe() {
   const r = await jsonReq("/me");
   if (!r.ok) return;
   currentUser = r.body;
+  if (typeof applyConfiguredDomain === "function") {
+    applyConfiguredDomain(currentUser.domain_suffix);
+  }
   if (currentUser.is_admin) {
     document.body.classList.add("is-admin");
   }

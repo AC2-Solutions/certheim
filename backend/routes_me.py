@@ -2,7 +2,8 @@
 from flask import Blueprint, g, jsonify, request
 import licensing
 from app import (  # noqa: E402
-    APP_VERSION, _is_signer, _validate_email, db, log_event, require_auth, require_csrf)
+    APP_VERSION, _is_signer, _validate_email, db, get_setting, log_event,
+    require_auth, require_csrf)
 bp = Blueprint("me", __name__)
 
 # ============================================================
@@ -37,6 +38,10 @@ def get_me():
         "licensed_to": li.get("customer") if li.get("valid") else None,
         "license_warnings": li.get("warnings") or [],
         "version": APP_VERSION,
+        # Configured CSR subject domain, so the request form's help text + input
+        # placeholders show the REAL suffix (e.g. myserver.ac2.lan) instead of a
+        # hardcoded example.com. Empty until an admin configures the subject.
+        "domain_suffix": get_setting("subject_domain_suffix") or "",
     })
 
 @bp.put("/api/me/prefs")

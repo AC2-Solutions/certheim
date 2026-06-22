@@ -2165,7 +2165,7 @@ const TUTORIAL_STEPS = [
   {
     target: "#certlist-section",
     title: "Stage your CSR requests",
-    body: "One row per certificate — add as many requests as you need and they all generate in a single batch. Short names get the domain added automatically (test → test.example.com), and IPs in the SANs field are detected and encoded correctly.",
+    body: "One row per certificate — add as many requests as you need and they all generate in a single batch. Short names get your organization's configured domain appended automatically; entries that already contain a dot are used verbatim, and IPs in the SANs field are detected and encoded correctly.",
     position: "right",
   },
   {
