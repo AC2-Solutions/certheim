@@ -3,6 +3,27 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.13.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.12.2._
+
+### Features
+
+- build release images with rootless BuildKit + SBOM/provenance attestations (`3f0e73a`)
+  Docker Scout flagged 'Missing supply chain attestation(s)'. buildah can't emit the OCI attestation
+  manifests Scout reads, so switch the release image build to rootless BuildKit (buildctl-
+  daemonless.sh, provisioned on the runner by the ansible gitlab_runner_host role).
+  Each published image now carries an SBOM (buildkit-syft-scanner) and SLSA provenance (mode=max)
+  attestation: buildctl build --opt attest:sbom=true --opt attest:provenance=mode=max Build both
+  UBI9 (default) + slim and push all four tags to docker.io/ac2solutions/certinel. /usr/local/bin is
+  prepended to PATH (not on the runner default). Auth via a job-local DOCKER_CONFIG built from the
+  instance DOCKERHUB_USERNAME/_TOKEN. Falls back to buildah (no attestations) if BuildKit isn't
+  present, and stays non-fatal so a build hiccup never undoes the cut tag. Drops the internal slim
+  mirror (Docker Hub is canonical; the repo is private so LAN pulls authenticate anyway).
+  Proven on the runner: rootless buildctl builds the real UBI9 + slim Containerfile and exports 2
+  in-toto attestation layers (SBOM+provenance) with image User=10001; outbound docker.io pull/push
+  path works.
+
 ## 3.12.2 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.12.1._
