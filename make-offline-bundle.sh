@@ -20,13 +20,29 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
-PYBIN="${PYBIN:-python3.9}"          # MUST match the offline target's python
+# Build the wheelhouse with the best Python on THIS host (>=3.9), not a
+# hardcoded 3.9 - an Alma 9 box updated to 3.12 would otherwise get a 3.9
+# wheelhouse it can't load. The generated target scripts default to the exact
+# X.Y we pick here (see PYVER below) so the target's venv matches these wheels.
+_probe_py() {
+    local p
+    for p in python3.13 python3.12 python3.11 python3.10 python3.9; do
+        command -v "$p" >/dev/null 2>&1 || continue
+        "$p" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3,9) else 1)' \
+            >/dev/null 2>&1 && { echo "$p"; return 0; }
+    done
+    command -v python3 >/dev/null 2>&1 && { echo python3; return 0; }
+    return 1
+}
+PYBIN="${PYBIN:-$(_probe_py)}" || { echo "ERROR: no suitable python3 (>=3.9) on build host" >&2; exit 1; }
 STAGE="$(mktemp -d)"
 BUNDLE="certinel-offline-${VERSION}"
 OUT="${STAGE}/${BUNDLE}"
 
 echo "=== Building offline bundle for v${VERSION} using ${PYBIN} ==="
 command -v "$PYBIN" >/dev/null || { echo "ERROR: $PYBIN not found" >&2; exit 1; }
+# Canonical pythonX.Y the wheelhouse is built for; baked into the target scripts.
+PYVER="$("$PYBIN" -c 'import sys;print("python%d.%d"%sys.version_info[:2])')"
 
 # F4: on a fapolicyd-enforcing STIG box, reading .py source as a non-root user
 # is DENIED (the %languages open-deny rule), so the cp below fails with EPERM.
@@ -629,6 +645,12 @@ cat <<MAN
 MAN
 INSTALL
 chmod +x "$OUT/install/offline-install.sh"
+
+# The two generated target scripts ship a hardcoded python3.9 default; rewrite
+# them to the exact pythonX.Y this wheelhouse was built for, so the target's
+# venv loads the bundled wheels. Env override on the target still wins.
+sed -i "s|PYBIN=\"python3.9\"|PYBIN=\"$PYVER\"|g" "$OUT/install/START_HERE"
+sed -i "s|PYBIN=\"\${PYBIN:-python3.9}\"|PYBIN=\"\${PYBIN:-$PYVER}\"|g" "$OUT/install/offline-install.sh"
 
 # uninstaller: ship it in install/ next to the installer. It's tracked in the
 # repo under tools/, so copy it in (fall back to a note if absent).

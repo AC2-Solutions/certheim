@@ -73,11 +73,15 @@ $interactive && echo "  (press Enter to accept each [default]; or pre-set any as
 # A. Identity & paths
 ask SERVICE_USER  "Service account (the app runs as this user)" "certinel"
 ask SERVICE_GROUP "Service account group" "$SERVICE_USER"
-# Pick the best Python present (3.12 preferred; RHEL/Alma 9 only ships 3.9).
+# Pick the best Python present (newest preferred; RHEL/Alma 9 only ships 3.9).
 # Hardcoding python3.12 broke installs on el9 - detect instead of assume.
+# A bare `command -v` match isn't enough: a name on PATH may be a dangling
+# symlink or below our floor, so actually RUN each candidate and require >=3.9.
 _default_py=python3
-for _p in python3.12 python3.11 python3.10 python3.9 python3; do
-    command -v "$_p" >/dev/null 2>&1 && { _default_py="$_p"; break; }
+for _p in python3.13 python3.12 python3.11 python3.10 python3.9 python3; do
+    command -v "$_p" >/dev/null 2>&1 || continue
+    "$_p" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3,9) else 1)' \
+        >/dev/null 2>&1 && { _default_py="$_p"; break; }
 done
 ask PYBIN         "Python interpreter" "$_default_py"
 
@@ -244,6 +248,16 @@ fi
 chown -R "root:${SERVICE_GROUP}" "$VENV"
 chmod 0750 /opt/certinel "$VENV" "$VENV/bin"
 chmod -R g+rX "$VENV"
+# Trust the freshly-created venv with fapolicyd, or the service cannot exec
+# gunicorn/python on STIG hosts. deploy.sh later UPDATES trust for known files;
+# the brand-new venv binaries must be ADDED here first. (The offline installer
+# already does this - keep the two install paths in lockstep.)
+if command -v fapolicyd-cli >/dev/null 2>&1; then
+    fapolicyd-cli --file add "$VENV/" 2>/dev/null \
+        || fapolicyd-cli --file update "$VENV/" 2>/dev/null || true
+    fapolicyd-cli --update 2>/dev/null || true
+    echo "  fapolicyd: trusted $VENV/"
+fi
 echo "  venv ready"
 
 # ---------------------------------------------------------------------------
