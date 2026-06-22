@@ -3,6 +3,27 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.9.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.8.0._
+
+### Features
+
+- **container:** container-mode backend (Phase 2) — no-sudo helper, ingress mTLS, entrypoint (`a6921e0`)
+  Flag-gated by CERTINEL_CONTAINER (default off, so the VM/systemd path is unchanged):
+  - the privileged helper is invoked directly (no `sudo -n`) — in a container the app + helper are
+    the same user and the container is the privilege boundary. HELPER built via
+    _helper_cmd(container_mode) so both paths are unit-tested.
+  - mTLS: in container mode TLS + client-cert verification is terminated at the ingress (which
+    passes the X-Client-* headers the app already reads), so the admin "set mtls mode" records the
+    setting and returns mtls_managed_by=ingress instead of rewriting in-pod nginx via the helper.
+  - container/entrypoint.sh: one image, role-selected — `web` (gunicorn on
+    0.0.0.0:$CERTINEL_PORT), `migrate`, and `cron <expiry-warn|auto-renew|deliver>` for k8s
+    CronJobs. Sets CERTINEL_CONTAINER=1 for everything it launches.
+  Schema is created on import (init_db), so web/migrate both build it. SQLite suite 103 passed;
+  container paths covered by test_helper_cmd_container_vs_vm and
+  test_mtls_managed_by_ingress_in_container_mode.
+
 ## 3.8.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.7.0._
