@@ -3,6 +3,28 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.11.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.10.0._
+
+### Features
+
+- **helm:** generic Helm chart for any Kubernetes cluster (Phase 4) (`d362538`)
+  deploy/helm/certinel — one `helm install` stands up Certinel on any cluster.
+  - Deployment (container-mode app + nginx sidecar serving the static frontend + an initContainer
+    staging it from the image) + Service + Ingress.
+  - TLS + CAC/client-cert terminated at the ingress (ingress-nginx auth-tls-* annotations forward
+    the verified identity as X-Client-* headers the app reads).
+  - DB: SQLite on a PVC (1 replica, Recreate) by default; `db.backend=postgres` (url or
+    existingSecret) flips to replicaCount + RollingUpdate for HA.
+  - CronJobs for the timer tasks (expiry-warn / auto-renew / deliver) via the image's `cron
+    <task>` entrypoint, co-located with the app pod (shared RWO PVC).
+  - Secret (license blob, OpenBao role_id/secret_id/CA, PG url) created only when set inline;
+    supports referencing existing secrets. ServiceAccount, PVCs, values-driven
+    resources/ingress/persistence. README + NOTES.
+  Validated: `helm lint` clean; `helm template` renders correctly for sqlite, postgres+HA, and
+  mtls/license/openbao; **server-side dry-run on a live K8s 1.30 cluster accepts all 10 objects.**
+
 ## 3.10.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.9.0._
