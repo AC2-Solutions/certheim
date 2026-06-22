@@ -184,9 +184,15 @@ release:
       # buildah (no attestations) if BuildKit isn't present on the runner.
       HUB_IMAGE="docker.io/ac2solutions/certinel"
       export PATH="/usr/local/bin:$PATH"
+      # BuildKit state lives OUTSIDE $CI_PROJECT_DIR: rootless buildkitd writes
+      # runc-overlayfs snapshots owned by remapped subuids that a plain rm (and
+      # GitLab's next-pipeline `git clean`) can't delete — if it sat in the build
+      # dir, the following pipeline's get_sources would fail. Cleaned via
+      # `buildah unshare` (enters a userns where the subuids map back).
+      BK="${TMPDIR:-/tmp}/certinel-bk-${CI_JOB_ID}"
       if [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildctl-daemonless.sh >/dev/null 2>&1; then
         ( set -e
-          BK="$CI_PROJECT_DIR/.bk"; mkdir -p "$BK/run" "$BK/home" "$BK/docker"
+          mkdir -p "$BK/run" "$BK/home" "$BK/docker"
           export HOME="$BK/home" XDG_RUNTIME_DIR="$BK/run" TMPDIR="$BK" \
                  DOCKER_CONFIG="$BK/docker" BUILDKITD_FLAGS="--oci-worker-no-process-sandbox"
           a=$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)
@@ -199,7 +205,7 @@ release:
              --output "type=image,\"name=$HUB_IMAGE:v$ver-slim,$HUB_IMAGE:slim\",push=true"
           echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: v$ver, latest, v$ver-slim, slim" ) \
           || echo "warn: attested image publish failed (release v$ver still cut; rebuild manually)"
-        rm -rf "$CI_PROJECT_DIR/.bk" 2>/dev/null || true
+        buildah unshare -- rm -rf "$BK" 2>/dev/null || rm -rf "$BK" 2>/dev/null || true
       elif [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildah >/dev/null 2>&1; then
         echo "note: BuildKit not on the runner — publishing without attestations (buildah)."
         ( set -e
