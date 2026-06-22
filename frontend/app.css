@@ -217,6 +217,18 @@
                     font-size: 13px; color: var(--fg-muted); }
   .textarea-label .hint { display: inline; margin: 0; }
 
+  /* Section sub-heading + 2-up options grid: group secondary controls so the
+     primary flow isn't a long vertical stack. Palette via existing vars. */
+  .section-subhead { font-size: 12px; text-transform: uppercase;
+                     letter-spacing: .04em; color: var(--fg-muted);
+                     margin: 4px 0 10px; font-weight: 600; }
+  .options-grid { display: grid; grid-template-columns: repeat(2, 1fr);
+                  gap: 6px 18px; align-items: start; }
+  .options-grid .opt-field { min-width: 0; }
+  /* keep the first label flush with the grid top (it has the default top margin) */
+  .options-grid .opt-field > .textarea-label:first-child { margin-top: 0; }
+  @media (max-width: 640px) { .options-grid { grid-template-columns: 1fr; } }
+
   .san-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
   .san-row .san-input { flex: 1; }
   .san-row .san-remove { background: transparent; color: var(--danger);

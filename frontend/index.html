@@ -152,8 +152,8 @@
     <div class="details-body">
 
       <p class="hint">One row per certificate request &mdash; request as many at once as you
-         need. Bare <span class="suffix-badge">hostnames automatically get <span class="dom">.example.com</span></span>
-         appended (e.g. <code>myserver</code> &rarr; <code>myserver.example.com</code>);
+         need. Bare <span class="suffix-badge">hostnames automatically get <span class="dom" id="hint-domain">.example.com</span></span>
+         appended (e.g. <code>myserver</code> &rarr; <code id="hint-example">myserver.example.com</code>);
          entries that already contain a dot are used verbatim; IPv4 addresses become
          IP SANs automatically.</p>
 
@@ -172,38 +172,49 @@
         <span id="save-status" class="status"></span>
       </div>
       <hr class="divider">
+      <h3 class="section-subhead">Issuance options</h3>
 
-      <label for="notify-email" class="textarea-label">
-        Notification email <span class="hint">(optional &mdash; applied to every job created in this batch)</span>
-      </label>
-      <input type="email" id="notify-email" class="form-input"
-             placeholder="adam.collison@example.com" autocomplete="email" />
+      <!-- Secondary controls grouped into a compact 2-up grid so they don't
+           bury the primary "enter hosts -> Generate" flow. -->
+      <div class="options-grid">
+        <div class="opt-field">
+          <label for="notify-email" class="textarea-label">
+            Notification email <span class="hint">(optional)</span>
+          </label>
+          <input type="email" id="notify-email" class="form-input"
+                 placeholder="you@example.com" autocomplete="email" />
+        </div>
 
-      <label class="textarea-label">
-        Certificate template <span class="hint">(determines the certificate's usages &mdash; create your own in the Templates tab)</span>
-      </label>
-      <select id="generate-template" class="form-input"></select>
-      <p id="generate-types-preview" class="status" style="margin:4px 0 0"></p>
+        <div class="opt-field">
+          <label for="generate-key-algo" class="textarea-label">Key algorithm</label>
+          <select id="generate-key-algo" class="form-input">
+            <option value="rsa2048" selected>RSA 2048 (default)</option>
+            <option value="rsa3072">RSA 3072</option>
+            <option value="rsa4096">RSA 4096</option>
+            <option value="ecdsa256">ECDSA P-256</option>
+            <option value="ecdsa384">ECDSA P-384</option>
+          </select>
+        </div>
 
-      <label for="generate-key-algo" class="textarea-label">
-        Key algorithm
-      </label>
-      <select id="generate-key-algo" class="form-input">
-        <option value="rsa2048" selected>RSA 2048 (default)</option>
-        <option value="rsa3072">RSA 3072</option>
-        <option value="rsa4096">RSA 4096</option>
-        <option value="ecdsa256">ECDSA P-256</option>
-        <option value="ecdsa384">ECDSA P-384</option>
-      </select>
+        <div class="opt-field">
+          <label class="textarea-label">
+            Certificate template <span class="hint">(usages &mdash; manage in Templates)</span>
+          </label>
+          <select id="generate-template" class="form-input"></select>
+          <p id="generate-types-preview" class="status" style="margin:4px 0 0"></p>
+        </div>
 
-      <label for="generate-group" class="textarea-label">
-        Assign to group <span class="hint">(optional &mdash; gives group members access to the key)</span>
-      </label>
-      <select id="generate-group" class="form-input">
-        <option value="">(none &mdash; personal job)</option>
-      </select>
+        <div class="opt-field">
+          <label for="generate-group" class="textarea-label">
+            Assign to group <span class="hint">(optional)</span>
+          </label>
+          <select id="generate-group" class="form-input">
+            <option value="">(none &mdash; personal job)</option>
+          </select>
+        </div>
+      </div>
 
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:14px">
         <button id="generate-btn" type="button">Generate CSRs</button>
         <span id="generate-status" class="status"></span>
       </div>
