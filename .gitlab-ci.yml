@@ -67,6 +67,24 @@ smoke-tests:
     - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
     - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
 
+# Same smoke suite, but against the PostgreSQL backend (db.py abstraction) so the
+# dialect shim + DDL translation stay honest. Postgres runs as a CI service; the
+# app picks it up via CSR_DB_URL. SQLite remains the default (job above).
+smoke-tests-postgres:
+  stage: test
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    POSTGRES_DB: certinel
+    POSTGRES_USER: certinel
+    POSTGRES_PASSWORD: certinel
+    CSR_DB_URL: "postgresql://certinel:certinel@postgres:5432/certinel"
+  script:
+    - $PYBIN -m venv /tmp/cienv
+    - /tmp/cienv/bin/pip install -q -r requirements.txt -r requirements-postgres.txt pytest
+    - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
+
 # NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
 # it lives in the /var/automation repo and is covered by that project's
 # pipeline. Tracking a copy in this repo would create two sources of truth.

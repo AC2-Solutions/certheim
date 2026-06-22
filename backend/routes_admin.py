@@ -1,4 +1,5 @@
 """routes_admin blueprint - extracted from app.py (paths unchanged)."""
+import db as dbx
 from flask import Blueprint, abort, g, jsonify, request, session
 import json, re, secrets, sqlite3, string, time, uuid
 from pathlib import Path
@@ -147,8 +148,9 @@ def admin_update_user():
                 (target_dn,)).fetchall()}
             for gid in group_ids - set(current):
                 conn.execute(
-                    "INSERT OR IGNORE INTO user_groups (user_dn, group_id, added_at, role) "
-                    "VALUES (?, ?, ?, 'member')", (target_dn, gid, time.time()))
+                    "INSERT INTO user_groups (user_dn, group_id, added_at, role) "
+                    "VALUES (?, ?, ?, 'member') ON CONFLICT DO NOTHING",
+                    (target_dn, gid, time.time()))
             for gid, role in current.items():
                 if gid not in group_ids and role != "owner":
                     conn.execute("DELETE FROM user_groups WHERE user_dn = ? AND group_id = ?",
@@ -238,7 +240,7 @@ def admin_create_user():
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
                     ("local:" + username, display, email, username, pwhash,
                      first, last, is_admin, now, now))
-        except sqlite3.IntegrityError:
+        except dbx.IntegrityError:
             return jsonify(error="a user with that name already exists"), 409
         log_event("admin_user_create", "ok", username=username, is_admin=is_admin)
         out = {"ok": True, "mode": "local", "username": username}
@@ -756,13 +758,12 @@ def create_template():
         if dup:
             return jsonify(error="a template with that name already exists in this scope"), 409
 
-        cur = conn.execute("""
+        tid = dbx.insert_returning_id(conn, """
             INSERT INTO cert_templates (name, description, cert_types,
                                         owner_dn, group_id, created_at, created_by_dn)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (name, description, cert_types, owner_dn, group_id,
               time.time(), g.identity["dn"]))
-        tid = cur.lastrowid
 
     log_event("template_create", "ok", template_id=tid, name=name,
               scope=("global" if scope == "global"
@@ -1412,13 +1413,13 @@ def admin_create_group():
     now = time.time()
     try:
         with db() as conn:
-            cur = conn.execute(
+            gid = dbx.insert_returning_id(
+                conn,
                 "INSERT INTO groups (name, description, email, notify_on_new, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (name, description, email_raw, enabled_notify, now),
             )
-            gid = cur.lastrowid
-    except sqlite3.IntegrityError:
+    except dbx.IntegrityError:
         return jsonify(error="group name already exists"), 409
 
     log_event("admin_group_create", "ok", group_id=gid, name=name,
@@ -1472,7 +1473,7 @@ def admin_update_group(group_id):
             )
             if cur.rowcount == 0:
                 return jsonify(error="group not found"), 404
-    except sqlite3.IntegrityError:
+    except dbx.IntegrityError:
         return jsonify(error="group name already exists"), 409
 
     log_event("admin_group_update", "ok", group_id=group_id)
@@ -1533,7 +1534,7 @@ def admin_group_add_member(group_id):
                 "INSERT INTO user_groups (user_dn, group_id, added_at) VALUES (?, ?, ?)",
                 (target_dn, group_id, time.time()),
             )
-        except sqlite3.IntegrityError:
+        except dbx.IntegrityError:
             return jsonify(error="user is already in this group"), 409
 
     log_event("admin_group_add_member", "ok",

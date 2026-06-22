@@ -25,10 +25,11 @@ import argparse
 import calendar
 import json
 import re
-import sqlite3
 import subprocess
 import sys
 import time
+
+import db as dbx
 
 DB_PATH = "/var/lib/certinel/jobs.db"
 
@@ -139,9 +140,9 @@ def main():
         print("ERROR: input must be a JSON array", file=sys.stderr)
         return 2
 
-    conn = sqlite3.connect(args.db, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 30000")
+    dbx.configure(sqlite_path=args.db)  # honor --db when on the sqlite backend
+    conn = dbx.connect()
+    conn.execute("PRAGMA busy_timeout = 30000")  # sqlite-only; no-op on postgres
 
     now = time.time()
     added = updated = renewed = skipped_ca = skipped_bad = mismatches = 0

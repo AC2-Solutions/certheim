@@ -1,0 +1,3 @@
+# Optional: only needed when CSR_DB_BACKEND=postgres (CSR_DB_URL set).
+# SQLite installs don't need this, keeping the offline wheelhouse slim.
+psycopg[binary]==3.2.3
