@@ -40,6 +40,7 @@ MANIFEST=(
   "backend/notify.py         /opt/certinel/notify.py                      root:certinel 0640 backend"
   "backend/build_mode.py     /opt/certinel/build_mode.py                  root:certinel 0640 backend"
   "backend/capabilities.py   /opt/certinel/capabilities.py                root:certinel 0640 backend"
+  "backend/db.py             /opt/certinel/db.py                          root:certinel 0640 backend"
   "backend/licensing.py      /opt/certinel/licensing.py                   root:certinel 0640 backend"
   "backend/domains.py        /opt/certinel/domains.py                     root:certinel 0640 backend"
   "backend/sign.py           /opt/certinel/sign.py                        root:certinel 0640 backend"

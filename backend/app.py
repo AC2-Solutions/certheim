@@ -31,6 +31,7 @@ from flask import Flask, request, jsonify, Response, abort, g, has_request_conte
 import notify
 import capabilities
 import sign
+import db as dbx  # pluggable DB backend (sqlite default / postgres); 'db' is the conn ctx-mgr
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
@@ -540,8 +541,12 @@ app = Flask(__name__)
 
 # ---------- DB ----------
 def init_db():
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    if dbx.backend() == "sqlite":
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    # schema_connect() applies dialect translation (AUTOINCREMENT/REAL) so the
+    # SQLite-flavored CREATE/ALTER below also build correctly on Postgres.
+    conn = dbx.schema_connect()
+    dbx.prepare(conn)  # backend setup (e.g. the nocase collation on Postgres)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id              TEXT PRIMARY KEY,
@@ -564,7 +569,7 @@ def init_db():
         )
     """)
     # Migrations for existing databases (idempotent)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    existing_cols = dbx.table_columns(conn, "jobs")
     if "requester_email" not in existing_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN requester_email TEXT")
     # Stamp set when the auto-renew pass has renewed this cert (idempotency guard).
@@ -591,7 +596,7 @@ def init_db():
         )
     """)
     # Idempotent migration for tutorial_dismissed (pre-existing users table)
-    user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    user_cols = dbx.table_columns(conn, "users")
     if "tutorial_dismissed" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN tutorial_dismissed INTEGER NOT NULL DEFAULT 0")
     # Local-auth (username/password) columns - added when password auth is an
@@ -678,7 +683,7 @@ def init_db():
     # v2 in-UI signing: per-template signing backend + policy (additive,
     # idempotent). signer_backend defaults to 'manual' so existing templates
     # keep the human/upload loop until an admin opts a template into a backend.
-    tmpl_cols = {row[1] for row in conn.execute("PRAGMA table_info(cert_templates)").fetchall()}
+    tmpl_cols = dbx.table_columns(conn, "cert_templates")
     if "signer_backend" not in tmpl_cols:
         conn.execute("ALTER TABLE cert_templates ADD COLUMN signer_backend TEXT NOT NULL DEFAULT 'manual'")
     if "openbao_role" not in tmpl_cols:
@@ -743,7 +748,7 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled)")
     # Idempotent migration: integration type controls the payload format
     # (generic JSON, or Slack/Teams/Discord chat message).
-    wh_cols = {row[1] for row in conn.execute("PRAGMA table_info(webhooks)").fetchall()}
+    wh_cols = dbx.table_columns(conn, "webhooks")
     if "type" not in wh_cols:
         conn.execute("ALTER TABLE webhooks ADD COLUMN type TEXT NOT NULL DEFAULT 'generic'")
 
@@ -758,7 +763,7 @@ def init_db():
         )
     """)
     # Idempotent migration for the email column (groups table may pre-date it)
-    group_cols = {row[1] for row in conn.execute("PRAGMA table_info(groups)").fetchall()}
+    group_cols = dbx.table_columns(conn, "groups")
     if "email" not in group_cols:
         conn.execute("ALTER TABLE groups ADD COLUMN email TEXT")
     if "notify_on_new" not in group_cols:
@@ -772,13 +777,13 @@ def init_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_groups_dn ON user_groups(user_dn)")
-    ug_cols = {row[1] for row in conn.execute("PRAGMA table_info(user_groups)").fetchall()}
+    ug_cols = dbx.table_columns(conn, "user_groups")
     if "role" not in ug_cols:
         conn.execute("ALTER TABLE user_groups ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_groups_gid ON user_groups(group_id)")
 
     # Add group_id to jobs (idempotent)
-    job_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    job_cols = dbx.table_columns(conn, "jobs")
     if "group_id" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN group_id INTEGER")
     if "cert_type" not in job_cols:
@@ -949,10 +954,10 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_authz_order ON acme_authzs(order_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acme_chal_authz ON acme_challenges(authz_id)")
     # 4b migrations: per-challenge type (http-01/dns-01); cert serial + revoked.
-    chal_cols = {row[1] for row in conn.execute("PRAGMA table_info(acme_challenges)").fetchall()}
+    chal_cols = dbx.table_columns(conn, "acme_challenges")
     if "type" not in chal_cols:
         conn.execute("ALTER TABLE acme_challenges ADD COLUMN type TEXT NOT NULL DEFAULT 'http-01'")
-    cert_cols = {row[1] for row in conn.execute("PRAGMA table_info(acme_certs)").fetchall()}
+    cert_cols = dbx.table_columns(conn, "acme_certs")
     if "serial" not in cert_cols:
         conn.execute("ALTER TABLE acme_certs ADD COLUMN serial TEXT")
     if "revoked" not in cert_cols:
@@ -1023,9 +1028,8 @@ def init_db():
 
 @contextmanager
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn = dbx.connect()
+    conn.execute("PRAGMA foreign_keys=ON")  # sqlite enforces FKs; no-op on postgres
     try:
         yield conn
         conn.commit()

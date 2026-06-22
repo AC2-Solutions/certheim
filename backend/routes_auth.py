@@ -1,4 +1,5 @@
 """routes_auth blueprint - extracted from app.py (paths unchanged)."""
+import db as dbx
 from flask import Blueprint, g, jsonify, request, session
 import sqlite3, string, time
 import capabilities
@@ -188,7 +189,7 @@ def auth_register():
                       first or None, last or None,
                       is_admin, active, status, now, now))
                 break
-            except sqlite3.IntegrityError as e:
+            except dbx.IntegrityError as e:
                 last_err = e
                 continue  # collision between derive and insert; retry
     else:

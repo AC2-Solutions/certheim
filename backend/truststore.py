@@ -20,6 +20,7 @@ import_certs.parse_cert) and hashing to hashlib - so it inherits the host's
 FIPS-validated module. The bundle is public CA material (no private keys), which
 is why the pull token may be reusable within its TTL.
 """
+import db as dbx
 import hashlib
 import os
 import secrets
@@ -361,8 +362,9 @@ def add_target(host, label=None, actor=None):
     now = time.time()
     with db() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO trust_targets (host, label, enabled, "
-            "created_at, created_by) VALUES (?,?,1,?,?)",
+            "INSERT INTO trust_targets (host, label, enabled, "
+            "created_at, created_by) VALUES (?,?,1,?,?) "
+            "ON CONFLICT (host) DO NOTHING",
             (host, (label or None), now, (actor or "")[:200]))
 
 

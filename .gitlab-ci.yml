@@ -67,6 +67,32 @@ smoke-tests:
     - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
     - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
 
+# Same smoke suite, but against the PostgreSQL backend (db.py abstraction) so the
+# dialect shim + DDL translation stay honest. The shared runner is a SHELL
+# executor (no Docker `services:`), so we bring up an ephemeral, user-local
+# Postgres with initdb/pg_ctl on a unix socket (no root, no port) for the job,
+# then tear it down. Requires `postgresql-server` on the runner host.
+smoke-tests-postgres:
+  stage: test
+  variables:
+    PGHOME: "/tmp/certinel-pg-$CI_JOB_ID"
+  script:
+    - command -v initdb >/dev/null || { echo "postgresql-server not installed on the runner"; exit 1; }
+    - rm -rf "$PGHOME"; mkdir -p "$PGHOME/sock"
+    - initdb -D "$PGHOME/data" -U certinel --auth=trust -E UTF8 >/dev/null
+    # -l detaches the daemon's stdio to a logfile; without it the backgrounded
+    # postgres holds the job's stdout pipe open and the shell runner hangs
+    # waiting for it long after the tests finish.
+    - pg_ctl -D "$PGHOME/data" -l "$PGHOME/pg.log" -o "-c listen_addresses='' -k $PGHOME/sock" -w start
+    - createdb -h "$PGHOME/sock" -U certinel certinel
+    - $PYBIN -m venv /tmp/cienv-pg
+    - /tmp/cienv-pg/bin/pip install -q -r requirements.txt -r requirements-postgres.txt pytest
+    - CSR_DB_URL="postgresql://certinel@/certinel?host=$PGHOME/sock" /tmp/cienv-pg/bin/python -m pytest tests/test_smoke.py -q
+  after_script:
+    - pg_ctl -D "/tmp/certinel-pg-$CI_JOB_ID/data" stop -m immediate -t 10 2>/dev/null || true
+    - pkill -9 -f "/tmp/certinel-pg-$CI_JOB_ID" 2>/dev/null || true
+    - rm -rf "/tmp/certinel-pg-$CI_JOB_ID"
+
 # NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
 # it lives in the /var/automation repo and is covered by that project's
 # pipeline. Tracking a copy in this repo would create two sources of truth.

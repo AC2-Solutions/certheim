@@ -13,6 +13,7 @@ no outbound path to Slack, so leave this disabled there.
 """
 import json
 import os
+import db as dbx
 import re
 import sqlite3
 import sys
@@ -49,7 +50,7 @@ def log(msg):
 
 def get_setting(key):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = dbx.connect()
         try:
             row = conn.execute(
                 "SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
@@ -68,7 +69,7 @@ def assign(job_id, group_id, slack_user):
     except (TypeError, ValueError):
         return False, "invalid group"
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = dbx.connect()
         try:
             grp = conn.execute(
                 "SELECT name FROM groups WHERE id = ?", (gid,)).fetchone()

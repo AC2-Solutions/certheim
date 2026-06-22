@@ -5,6 +5,7 @@ for webhooks (CRUD/test), Slack interactivity (config + signed callback), and
 the capabilities readout. Shared helpers (the notification/format engine,
 decorators, db, settings) stay in app.py and are imported here.
 """
+import db as dbx
 from flask import Blueprint, request, jsonify, g
 import json
 import time
@@ -126,7 +127,7 @@ def admin_create_webhook():
     enabled = bool(payload.get("enabled", True))
 
     with db() as conn:
-        cur = conn.execute("""
+        wid = dbx.insert_returning_id(conn, """
             INSERT INTO webhooks (name, url, events, headers, enabled,
                                   created_at, created_by_dn, type)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -134,7 +135,6 @@ def admin_create_webhook():
             name, url, json.dumps(events), json.dumps(headers) if headers else None,
             1 if enabled else 0, time.time(), g.identity["dn"], wtype,
         ))
-        wid = cur.lastrowid
 
     log_event("admin_webhook_create", "ok", webhook_id=wid, name=name,
               events=",".join(events))

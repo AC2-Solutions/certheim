@@ -2,6 +2,7 @@
 
 Blueprint extracted from app.py (incremental split).
 """
+import db as dbx
 from flask import Blueprint, request, jsonify, g
 import time
 
@@ -37,11 +38,10 @@ def submit_feedback():
         return jsonify(error="message too long (max 4000 chars)"), 400
 
     with db() as conn:
-        cur = conn.execute("""
+        fid = dbx.insert_returning_id(conn, """
             INSERT INTO feedback (user_dn, submitted_at, category, message, status)
             VALUES (?, ?, ?, ?, 'new')
         """, (g.identity["dn"], time.time(), category, message))
-        fid = cur.lastrowid
 
     log_event("feedback_submit", "ok", feedback_id=fid, category=category,
               length=len(message))
