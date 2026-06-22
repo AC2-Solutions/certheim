@@ -171,4 +171,22 @@ release:
         echo "warn: GitLab Release object not created (HTTP $rel_code; tag v$ver is pushed regardless):"
         head -c 300 /tmp/rel-resp.json || true; echo
       fi
+      # Build + publish the container images (UBI9 default + slim) for the cut
+      # release. Non-fatal: a build hiccup must never undo the pushed tag. Needs
+      # the container registry + buildah on the runner (rootless: gitlab-runner
+      # has subuid/subgid; a job-local REGISTRY_AUTH_FILE dodges any stale auth).
+      if [ -n "${CI_REGISTRY:-}" ] && command -v buildah >/dev/null 2>&1; then
+        ( set -e
+          export XDG_RUNTIME_DIR="$CI_PROJECT_DIR/.xdg"; mkdir -p "$XDG_RUNTIME_DIR"
+          export REGISTRY_AUTH_FILE="$CI_PROJECT_DIR/.auth.json"
+          B="buildah --root $CI_PROJECT_DIR/.bstore --runroot $CI_PROJECT_DIR/.brun --storage-driver vfs"
+          echo "$CI_REGISTRY_PASSWORD" | $B login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+          $B bud --isolation chroot -t "$CI_REGISTRY_IMAGE:v$ver" -t "$CI_REGISTRY_IMAGE:latest" -f Containerfile .
+          $B bud --isolation chroot --build-arg PYBASE=docker.io/library/python:3.12-slim \
+                 -t "$CI_REGISTRY_IMAGE:v$ver-slim" -t "$CI_REGISTRY_IMAGE:slim" -f Containerfile .
+          for t in "v$ver" latest "v$ver-slim" slim; do $B push "$CI_REGISTRY_IMAGE:$t"; done
+          echo "Published $CI_REGISTRY_IMAGE  tags: v$ver, v$ver-slim, latest, slim" ) \
+          || echo "warn: container image publish failed (release v$ver still cut; rebuild manually)"
+        buildah unshare -- bash -c "rm -rf $CI_PROJECT_DIR/.bstore $CI_PROJECT_DIR/.brun $CI_PROJECT_DIR/.xdg $CI_PROJECT_DIR/.auth.json" 2>/dev/null || true
+      fi
       echo "Released v$ver"

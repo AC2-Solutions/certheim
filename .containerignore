@@ -1,0 +1,19 @@
+# Keep the image build context small/fast. The Containerfile COPYs only
+# backend/, frontend/, helper/, container/, requirements*, and VERSION.
+.git
+**/__pycache__
+**/*.pyc
+**/*.pyo
+tests
+docs
+*.tar.gz
+*.md
+.gitlab-ci.yml
+deploy.sh
+verify.sh
+gather.sh
+make-offline-bundle.sh
+install
+systemd
+nginx
+config
