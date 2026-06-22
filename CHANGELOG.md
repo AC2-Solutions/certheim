@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.15.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.14.0._
+
+### Features
+
+- point chart/compose/setup-guide at the entitled registry (`d937229`)
+  Customer-facing image refs now resolve to the entitled Certinel registry
+  (registry.ac2certinel.com/certinel), where pull is gated by the customer's license (the final step
+  of entitled-pull). Updates:
+  - helm values: image.repository -> registry.ac2certinel.com/certinel; tag default 'latest' (the
+    appVersion default never matched the published :vX.Y.Z scheme); pullSecrets [{name: regcred}]
+    since the registry now requires the license credential.
+  - setup-guide generator: compose + helm values use the entitled registry + pullSecrets; the k8s
+    secret + a new compose 'docker login' step use the license id + pull token (from the License
+    portal) as the registry credential.
+  Validated: helm lint + template (image + regcred render), generator emits valid YAML, HTML
+  balanced, no stale customer-facing refs.
+
 ## 3.14.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.13.2._
