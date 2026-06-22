@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.12.2 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.12.1._
+
+### Fixes & improvements
+
+- run container image as non-root uid 10001 (Docker Scout hardening) (`273bf80`)
+  Docker Scout flagged 'No default non-root user found'. Add a non-root user (uid/gid 10001) to the
+  image and default to it:
+  - create the user portably (useradd on both UBI9 + Debian-slim, numeric fallback), own
+    /opt/certinel + the writable data/config paths, chown BEFORE the VOLUME line so a fresh
+    Docker/Podman named volume inherits 10001 ownership; USER 10001 before the entrypoint
+  - gunicorn binds :5002 (unprivileged); the helper runs sudo-less in container mode, owned by
+    10001
+  Chart side so non-root works on k8s with RWO PVCs:
+  - podSecurityContext.fsGroup: 10001 (kubelet chowns the PVCs)
+  - app + cronjob securityContext: runAsNonRoot, runAsUser 10001, allowPrivilegeEscalation false,
+    drop ALL caps, seccomp RuntimeDefault (the nginx sidecar keeps its stock defaults)
+
 ## 3.12.1 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.12.0._
