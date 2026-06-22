@@ -3,6 +3,24 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.17.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.16.0._
+
+### Features
+
+- **ui:** dynamic CSR domain in request help + declutter issuance options (`987235e`)
+  Two UX fixes on the main 'Create requests' screen:
+  - The hostname help text and input placeholders no longer hardcode 'example.com' - /api/me now
+    returns the configured subject domain_suffix and the form renders 'myserver.<realdomain>'
+    (falls back to example.com until an admin configures the subject). Also de-hardcodes the admin
+    tour tooltip.
+  - The four stacked, full-width issuance controls (email / key algorithm / template / group) are
+    grouped under an 'Issuance options' subhead in a compact 2-up grid, so the primary 'enter
+    hosts -> Generate' flow isn't buried in a long vertical column. Palette unchanged (existing
+    CSS vars), behavior + all element ids unchanged.
+  Validated: smoke suite 104/104; node --check clean on all app.*.js.
+
 ## 3.16.0 — 2026-06-22
 
 _Released 2026-06-22. 2 changes since v3.15.2._
