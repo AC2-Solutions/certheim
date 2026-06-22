@@ -54,6 +54,12 @@ _ENV_DEFAULTS = {
     # auto-promoting "whoever logs in first" is a risk; enable it deliberately
     # for first-time setup, then turn it off (or it simply never fires again).
     "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
+    # Container mode: when "1"/"true", the app runs as a single user inside a
+    # container (the container, not sudo, is the privilege boundary). The helper
+    # is invoked directly (no `sudo -n`), and mTLS is terminated at the ingress
+    # rather than rewritten into nginx at runtime. Default off = the VM/systemd
+    # deployment is completely unchanged.
+    "CERTINEL_CONTAINER": "0",
 }
 
 def _load_env_file():
@@ -89,8 +95,17 @@ def _env_bool(key):
         in ("1", "true", "yes", "on")
 
 BOOTSTRAP_FIRST_ADMIN = _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN")
+CONTAINER_MODE = _env_bool("CERTINEL_CONTAINER")
 
-HELPER = ["sudo", "-n", _ENV["CSR_HELPER_PATH"]]
+# In container mode the app + helper run as the same user, so the helper is
+# called directly; on a VM the unprivileged service account escalates to the
+# root-owned helper via a single scoped sudoers rule.
+def _helper_cmd(container_mode):
+    path = _ENV["CSR_HELPER_PATH"]
+    return [path] if container_mode else ["sudo", "-n", path]
+
+
+HELPER = _helper_cmd(CONTAINER_MODE)
 DB_PATH = _ENV["CSR_DB_PATH"]
 ISSUED_DIR = _ENV["CSR_ISSUED_DIR"]
 

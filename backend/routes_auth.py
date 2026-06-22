@@ -275,14 +275,22 @@ def admin_set_auth_settings():
         set_setting("mtls_mode", mmode)
         set_setting("mtls_ca_bundle_path", mpath)
         changed["mtls_mode"] = mmode
-        from app import run_helper
-        try:
-            rc, out, err = run_helper(["apply-mtls", mmode, mpath])
-        except Exception as e:  # helper/sudo absent (e.g. CI) - never 500
-            rc, out, err = 1, "", str(e)
-        changed["mtls_applied"] = (rc == 0)
-        if rc != 0:
-            changed["mtls_apply_error"] = (err or out or "").strip()[:240]
+        from app import run_helper, CONTAINER_MODE
+        if CONTAINER_MODE:
+            # In a container, TLS + client-cert verification is terminated at the
+            # ingress (which passes X-Client-* headers the app already reads).
+            # There's no in-pod nginx to rewrite, so the setting is recorded for
+            # the UI but the operator configures mTLS on the ingress.
+            changed["mtls_applied"] = True
+            changed["mtls_managed_by"] = "ingress"
+        else:
+            try:
+                rc, out, err = run_helper(["apply-mtls", mmode, mpath])
+            except Exception as e:  # helper/sudo absent (e.g. CI) - never 500
+                rc, out, err = 1, "", str(e)
+            changed["mtls_applied"] = (rc == 0)
+            if rc != 0:
+                changed["mtls_apply_error"] = (err or out or "").strip()[:240]
     if "trusted_email_domains" in payload or "trusted_email_domain" in payload:
         # Accept either a list (canonical) or a string that may itself hold
         # several domains (comma/space/semicolon separated). Validate each;
