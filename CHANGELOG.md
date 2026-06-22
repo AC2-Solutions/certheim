@@ -3,6 +3,48 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.7.0 — 2026-06-22
+
+_Released 2026-06-22. 4 changes since v3.6.0._
+
+### Features
+
+- **db:** pluggable database backend — SQLite (default) or PostgreSQL (`c9d1ea5`)
+  Introduces backend/db.py, a thin abstraction so the app's ~354 sqlite3-style call sites run
+  unchanged on PostgreSQL:
+  - '?' -> '%s' (and '%' -> '%%') placeholder shim; PRAGMA no-ops on PG
+  - hybrid Row (row["x"], row[0], dict(row)); rowcount on both
+  - ddl() translates AUTOINCREMENT/REAL per dialect; table_columns() replaces PRAGMA table_info
+    for the idempotent migrations; insert_returning_id() replaces cursor.lastrowid;
+    dbx.IntegrityError catches on either backend
+  - backend chosen by CSR_DB_URL / CSR_DB_BACKEND (default sqlite at CSR_DB_PATH)
+  Wiring: init_db()/db()/import_certs/slack_listener route through db.connect(); the 2 INSERT OR
+  IGNORE upserts -> portable ON CONFLICT DO NOTHING; 4 lastrowid -> insert_returning_id; 5 except
+  sqlite3.IntegrityError -> dbx.IntegrityError.
+  psycopg kept in a separate requirements-postgres.txt so the SQLite offline wheelhouse stays slim.
+  CI gains a smoke-tests-postgres job (postgres:16 service) running the full suite against PG.
+  SQLite smoke suite green (98/98), zero change in default behavior.
+
+### Fixes & improvements
+
+- **db:** postgres parity — nocase collation, test global reset, real-PG CI (`f892259`)
+  Validated the whole smoke suite against a real PostgreSQL 13 and fixed the two issues it surfaced
+  (both now 99/99 on PG, unchanged 99/99 on SQLite):
+  - COLLATE NOCASE (9 query sites) has no Postgres collation -> db.prepare() creates a case-
+    insensitive ICU `nocase` collation at init_db start so those ORDER BY / `= ? COLLATE NOCASE`
+    queries resolve unchanged.
+  - test_db_shim_logic leaked the dummy `_pg_dsn` (only reset _backend in finally), poisoning
+    every later DB test's connection; reset all resolution globals.
+  CI: smoke-tests-postgres now brings up an ephemeral user-local Postgres via initdb/pg_ctl on a
+  unix socket (the shared runner is a shell executor without Docker `services:`), runs the full
+  suite, and tears it down. Dropped allow_failure — it's a real gate now. (Runner needs postgresql-
+  server, installed on ac2-git-runner.)
+
+### Other changes
+
+- detach ephemeral postgres stdio (-l) so the shell runner doesn't hang (`d7022db`)
+- **db:** unit-gate the backend shim logic; mark PG service job allow_failure (`cacc92d`)
+
 ## 3.6.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.5.0._
