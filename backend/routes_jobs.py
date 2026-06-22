@@ -1,10 +1,10 @@
 """routes_jobs blueprint - extracted from app.py (paths unchanged)."""
 from flask import Blueprint, Response, abort, g, jsonify, request, session
-import csv, io, json, os, re, subprocess, time, uuid, zipfile
+import base64, csv, io, json, os, re, subprocess, time, uuid, zipfile
 import notify
 import capabilities
 from app import (  # noqa: E402
-    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, CompletionError, _add_session_keys, _attach_signed_cert, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, get_setting, log_event, require_auth, require_csrf, resolve_signing_policy, run_helper)
+    app, ISSUED_DIR, JOB_ID_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERT_BYTES, CompletionError, _add_session_keys, _attach_signed_cert, _cert_expiry, _cert_upload_warnings, _cn_from_dn, _get_or_create_session, _get_session_keys, _group_by_id, _group_email, _is_signer, _normalize_cert_to_pem, _parse_csr_subject, _parse_helper_listing, _signer_recipients, _user_group_ids, _verify_cert_matches_csr, db, fire_webhooks, get_setting, log_event, require_auth, require_csrf, resolve_signing_policy, run_helper)
 bp = Blueprint("jobs", __name__)
 
 # ============================================================
@@ -375,10 +375,32 @@ def upload_cert(job_id):
         abort(400)
     payload = request.get_json(silent=True) or {}
     cert_pem = payload.get("cert_pem", "")
+    cert_b64 = payload.get("cert_b64", "")
 
-    if not cert_pem or not isinstance(cert_pem, str) or not (50 < len(cert_pem) <= MAX_CERT_BYTES):
+    # Resolve the raw cert bytes from a base64 file upload (which may be binary
+    # DER/.cer or PKCS#7/.p7b from a Windows CA) OR a pasted PEM string, then
+    # normalize whatever we got to PEM. Size-check the *decoded* bytes so the
+    # limit means what it says (base64 is ~33% larger).
+    if cert_b64 and isinstance(cert_b64, str):
+        try:
+            raw = base64.b64decode(cert_b64, validate=False)
+        except Exception:
+            return jsonify(error="could not decode uploaded file"), 400
+        if not (50 < len(raw) <= MAX_CERT_BYTES):
+            return jsonify(error="invalid certificate file size"), 400
+    elif cert_pem and isinstance(cert_pem, str) and 50 < len(cert_pem) <= MAX_CERT_BYTES:
+        raw = cert_pem.encode("utf-8", errors="replace")
+    else:
         return jsonify(error="invalid cert_pem"), 400
 
+    cert_pem = _normalize_cert_to_pem(raw)
+    if not cert_pem:
+        log_event("upload_cert", "deny_invalid_cert", job_id=job_id)
+        return jsonify(error="not a valid certificate. Accepted: PEM (.pem/.crt), "
+                             "DER (.cer), or PKCS#7 (.p7b)."), 400
+
+    # Validate the normalized PEM is a real X.509 cert (the pasted-PEM path above
+    # only checks for the marker; DER/PKCS#7 already round-tripped through openssl).
     try:
         proc = subprocess.run(
             ["openssl", "x509", "-noout", "-subject"],
