@@ -3,6 +3,22 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.15.1 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.15.0._
+
+### Fixes & improvements
+
+- **installer:** robust Python detection + fapolicyd parity on online install (`7e80078`)
+  PYBIN auto-detect matched a name on PATH without running it, so a dangling symlink or a sub-3.9
+  interpreter could win; now probe each candidate and require >=3.9 (online-install.sh). The offline
+  bundle hardcoded python3.9 for the wheelhouse AND in the generated target scripts, so an Alma 9
+  host updated to 3.12 got 3.9 wheels it couldn't load; build with the best Python on the host and
+  bake that exact pythonX.Y into START_HERE + offline-install.sh.
+  Also add fapolicyd venv trust to online-install.sh - the offline installer already trusts
+  /opt/certinel/venv; the online path skipped it, so the service couldn't exec gunicorn/python on
+  STIG hosts after an online install.
+
 ## 3.15.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.14.0._
