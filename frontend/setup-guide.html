@@ -492,7 +492,7 @@ sudo systemctl restart certinel-api</pre></div>
 
   // Plain-text helpers for generated, downloadable files (no HTML markup).
   function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
-  var IMAGE = "registry.ac2solutions.com/ac2-solutions/certinel:latest";
+  var IMAGE = "docker.io/ac2solutions/certinel:latest";
   function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 
   function ph(v, placeholder){ return v && v.trim() ? esc(v.trim()) : '<span class="var">'+esc(placeholder)+'</span>'; }
@@ -641,7 +641,7 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("#                 -n certinel --create-namespace -f certinel-values.yaml");
     L.push("");
     L.push("image:");
-    L.push("  repository: registry.ac2solutions.com/ac2-solutions/certinel");
+    L.push("  repository: docker.io/ac2solutions/certinel");
     L.push("  tag: latest");
     if(pg){ L.push("");
       L.push("# Postgres backend → safe to run multiple replicas.");

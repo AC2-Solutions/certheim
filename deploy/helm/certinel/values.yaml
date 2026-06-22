@@ -6,11 +6,11 @@
 replicaCount: 1
 
 image:
-  repository: registry.ac2solutions.com/ac2-solutions/certinel
+  repository: docker.io/ac2solutions/certinel
   # Defaults to the chart's appVersion. Use "<ver>-slim" for the Debian-slim variant.
   tag: ""
   pullPolicy: IfNotPresent
-  pullSecrets: []          # e.g. [{ name: regcred }]
+  pullSecrets: []          # public image — anonymous pull; e.g. [{ name: regcred }] only for a private mirror
 
 # Stock nginx sidecar: serves the static frontend + proxies /csr/api to the app.
 nginx:
