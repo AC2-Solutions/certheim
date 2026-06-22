@@ -3,6 +3,28 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.8.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.7.0._
+
+### Features
+
+- **db:** SQLite<->Postgres migration tool + Admin Database page (Phase 1 finish) (`dfb88d6`)
+  Completes the pluggable-DB phase with the migrate path the operator needs:
+  - backend/db_migrate.py: copy_database() copies every table's rows between backends (schema has
+    no FKs, so a straight table-by-table copy is safe); ON CONFLICT DO NOTHING for idempotency;
+    advances Postgres IDENTITY sequences past copied ids. ensure_target_schema() builds the target
+    via app.init_db().
+  - tools/certinel-db-migrate: CLI — `certinel-db-migrate --to <pg-dsn>` migrates the current DB;
+    --from/--check/--wipe-target. Installed to /usr/local/sbin.
+  - Admin -> Database panel: shows the active backend + location, tests a target Postgres DSN, and
+    renders the exact tailored switch steps (stop -> migrate -> set CSR_DB_URL -> start). Routes
+    GET /api/admin/database + POST .../test.
+  - Manifests (deploy.sh/verify.sh) + tests: sqlite->sqlite migrate round-trip and the admin
+    status endpoint. SQLite suite 101 passed.
+  Validated sqlite->Postgres on a real PG: rows copied + an insert after migration gets a fresh id
+  (sequence reset works).
+
 ## 3.7.0 — 2026-06-22
 
 _Released 2026-06-22. 4 changes since v3.6.0._
