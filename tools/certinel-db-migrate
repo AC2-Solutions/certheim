@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""certinel-db-migrate - copy the Certinel database between backends.
+
+Move an existing SQLite deployment onto PostgreSQL (or back) without losing data.
+The schema is created on the target, then all rows are copied.
+
+  # current DB (SQLite) -> PostgreSQL:
+  sudo -u certinel certinel-db-migrate --to "postgresql://certinel:PW@dbhost:5432/certinel"
+
+  # explicit source + target:
+  certinel-db-migrate --from sqlite:/var/lib/certinel/jobs.db \
+                      --to postgresql://certinel@dbhost/certinel
+
+  # mirror exactly (DELETE target rows first), and dry-run a count:
+  certinel-db-migrate --to "postgresql://..." --wipe-target
+  certinel-db-migrate --to "postgresql://..." --check
+
+--from defaults to the deployment's CURRENT database (CSR_DB_URL / CSR_DB_PATH).
+Run with the app STOPPED (`systemctl stop certinel-api`) so nothing writes during
+the copy. After it succeeds, switch the running app by setting
+CSR_DB_URL=<target> in /etc/certinel/certinel.env and restarting certinel-api.
+"""
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend"))
+sys.path.insert(0, "/opt/certinel")  # installed location
+
+import db_migrate  # noqa: E402
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Migrate the Certinel DB between backends.")
+    ap.add_argument("--to", required=True,
+                    help="target: a postgres DSN (postgresql://...) or sqlite:/path")
+    ap.add_argument("--from", dest="source", default=None,
+                    help="source spec (default: the deployment's current DB)")
+    ap.add_argument("--wipe-target", action="store_true",
+                    help="DELETE all target rows first (exact mirror) instead of "
+                         "ON CONFLICT DO NOTHING")
+    ap.add_argument("--check", action="store_true",
+                    help="dry run: create target schema + report source row counts, "
+                         "copy nothing")
+    a = ap.parse_args()
+
+    source = a.source or db_migrate.current_source_spec()
+    target = a.to
+    if source == target:
+        sys.exit("source and target are the same database")
+
+    print(f"source : {_redact(source)}")
+    print(f"target : {_redact(target)}")
+    print("creating target schema...")
+    db_migrate.ensure_target_schema(target)
+
+    if a.check:
+        print("rows in source (dry run, nothing copied):")
+        _print_counts(source)
+        return
+
+    print("copying rows...")
+    counts = db_migrate.copy_database(source, target, wipe_target=a.wipe_target)
+    print(f"done: {sum(counts.values())} rows across {len(counts)} tables.")
+    print("Next: set CSR_DB_URL in /etc/certinel/certinel.env and "
+          "`systemctl restart certinel-api`.")
+
+
+def _print_counts(spec):
+    kind, conn, _ = db_migrate._open(spec)
+    try:
+        for t in db_migrate._tables(kind, conn):
+            n = db_migrate._rows(kind, conn, f"SELECT COUNT(*) FROM {t}")[0][0]
+            print(f"  {t}: {n}")
+    finally:
+        conn.close()
+
+
+def _redact(spec):
+    # hide a password in a postgres URL when echoing
+    import re
+    return re.sub(r"://([^:/@]+):[^@]+@", r"://\1:***@", spec)
+
+
+if __name__ == "__main__":
+    main()
