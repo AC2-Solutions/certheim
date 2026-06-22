@@ -1,0 +1,86 @@
+{{- $tasks := dict "expiry-warn" .Values.cronjobs.expiryWarn "auto-renew" .Values.cronjobs.autoRenew "deliver" .Values.cronjobs.deliver -}}
+{{- range $name, $cfg := $tasks }}
+{{- if $cfg.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "certinel.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "certinel.labels" $ | nindent 4 }}
+spec:
+  schedule: {{ $cfg.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "certinel.selectorLabels" $ | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "certinel.serviceAccountName" $ }}
+          {{- with $.Values.image.pullSecrets }}
+          imagePullSecrets: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # Co-locate with the app pod so it can share the (RWO) data volume on
+          # the SQLite backend; a no-op constraint on Postgres.
+          affinity:
+            podAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+                    labelSelector:
+                      matchLabels:
+                        {{- include "certinel.selectorLabels" $ | nindent 24 }}
+          containers:
+            - name: {{ $name }}
+              image: {{ include "certinel.image" $ }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              args: ["cron", "{{ $name }}"]
+              env:
+                {{- include "certinel.appEnv" $ | nindent 16 }}
+              volumeMounts:
+                - name: db
+                  mountPath: /var/lib/certinel
+                - name: data
+                  mountPath: /var/opt/certinel
+                {{- if eq (include "certinel.needSecretFiles" $) "true" }}
+                - name: secret-files
+                  mountPath: /etc/certinel/secret
+                  readOnly: true
+                {{- end }}
+          volumes:
+            {{- if eq (include "certinel.needSecretFiles" $) "true" }}
+            - name: secret-files
+              secret:
+                secretName: {{ include "certinel.secretName" $ }}
+                items:
+                  {{- if ne ($.Values.license | default "") "" }}
+                  - key: license
+                    path: license
+                  {{- end }}
+                  {{- if and $.Values.openbao.enabled (ne ($.Values.openbao.caCert | default "") "") }}
+                  - key: openbao-ca.pem
+                    path: openbao-ca.pem
+                  {{- end }}
+            {{- end }}
+            {{- if $.Values.persistence.enabled }}
+            - name: db
+              persistentVolumeClaim:
+                claimName: {{ include "certinel.fullname" $ }}-db
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ include "certinel.fullname" $ }}-data
+            {{- else }}
+            - name: db
+              emptyDir: {}
+            - name: data
+              emptyDir: {}
+            {{- end }}
+{{- end }}
+{{- end }}

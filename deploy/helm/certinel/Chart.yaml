@@ -1,0 +1,13 @@
+apiVersion: v2
+name: certinel
+description: Certinel — certificate lifecycle platform (CSR request → sign → issue → deliver)
+type: application
+version: 0.1.0
+# Tracks the app image tag used by default (overridable via image.tag).
+appVersion: "3.10.0"
+home: https://git.ac2solutions.com/ac2-solutions/certinel
+sources:
+  - https://git.ac2solutions.com/ac2-solutions/certinel
+keywords: [pki, certificates, csr, acme, ca, openbao]
+maintainers:
+  - name: AC2 Solutions

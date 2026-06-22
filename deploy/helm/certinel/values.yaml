@@ -1,0 +1,101 @@
+# Certinel Helm chart values. A generic, vendor-neutral deployment for any
+# Kubernetes cluster. The app runs container-mode (no sudo helper, TLS + CAC
+# terminated at the ingress). SQLite (single replica + PVC) by default; point at
+# an external PostgreSQL for HA.
+
+replicaCount: 1
+
+image:
+  repository: registry.ac2solutions.com/ac2-solutions/certinel
+  # Defaults to the chart's appVersion. Use "<ver>-slim" for the Debian-slim variant.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []          # e.g. [{ name: regcred }]
+
+# Stock nginx sidecar: serves the static frontend + proxies /csr/api to the app.
+nginx:
+  image: docker.io/library/nginx:1.27-alpine
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---- licensing -------------------------------------------------------------
+# Paste the signed license blob to unlock the paid edition. Mounted as a file
+# and pointed to by CSR_LICENSE_FILE. Leave empty for the free Community tier.
+license: ""
+
+# ---- database --------------------------------------------------------------
+db:
+  backend: sqlite          # sqlite | postgres
+  postgres:
+    # A libpq URL. Provide here, or reference an existing Secret with key CSR_DB_URL.
+    url: ""                 # postgresql://user:pass@host:5432/certinel
+    existingSecret: ""      # Secret name holding key "CSR_DB_URL"
+
+# ---- OpenBao / Vault (optional, for in-UI signing) -------------------------
+openbao:
+  enabled: false
+  addr: ""                 # https://openbao.example.com
+  pkiMount: pki_csr
+  role: certinel
+  roleId: ""
+  secretId: ""             # sensitive -> Secret
+  existingSecret: ""       # Secret with keys CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID
+  caCert: ""               # optional PEM to verify OpenBao TLS
+
+# Arbitrary extra CSR_* env (advanced).
+extraEnv: {}               # CSR_CAP_OPENBAO: "1"
+
+# ---- persistence (SQLite DB + issued certs / keys) -------------------------
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  # Separate small volume for issued certs / scratch keys.
+  dataSize: 2Gi
+
+# ---- service + ingress -----------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: certinel.example.com
+  path: /
+  tls:
+    enabled: true
+    secretName: certinel-tls   # cert-manager or a pre-created TLS secret
+  # CAC / client-cert (mTLS) terminated at the ingress; the verified identity is
+  # passed to the app as X-Client-DN / X-Client-Verify / X-Client-Serial.
+  clientCert:
+    enabled: false
+    mode: "on"                 # on | optional
+    caSecret: ""               # Secret with key ca.crt (the client-CA bundle)
+  annotations: {}
+
+# ---- periodic tasks (the systemd timers, as CronJobs) ----------------------
+cronjobs:
+  expiryWarn: { enabled: true, schedule: "30 6 * * *" }
+  autoRenew:  { enabled: true, schedule: "0 7 * * *" }
+  deliver:    { enabled: true, schedule: "*/10 * * * *" }
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext: {}
+securityContext: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

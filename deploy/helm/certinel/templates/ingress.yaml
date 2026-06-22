@@ -1,0 +1,42 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "certinel.fullname" . }}
+  labels:
+    {{- include "certinel.labels" . | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.clientCert.enabled }}
+    # CAC / client-cert auth terminated here; the verified identity is forwarded
+    # to the app as the X-Client-* headers it reads (ingress-nginx).
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: {{ .Values.ingress.clientCert.mode | quote }}
+    nginx.ingress.kubernetes.io/auth-tls-secret: "{{ .Release.Namespace }}/{{ .Values.ingress.clientCert.caSecret }}"
+    nginx.ingress.kubernetes.io/auth-tls-verify-depth: "3"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Client-DN     $ssl_client_s_dn;
+      proxy_set_header X-Client-Verify $ssl_client_verify;
+      proxy_set_header X-Client-Serial $ssl_client_serial;
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "certinel.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end -}}
