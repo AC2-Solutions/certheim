@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "certinel.fullname" . }}
+  labels:
+    {{- include "certinel.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "certinel.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: web
+      port: {{ .Values.service.port }}
+      targetPort: web

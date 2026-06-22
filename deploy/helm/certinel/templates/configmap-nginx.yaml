@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "certinel.fullname" . }}-nginx
+  labels:
+    {{- include "certinel.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    # In-pod nginx: serves the static frontend and proxies the API to the app
+    # container (gunicorn on 127.0.0.1:5002). TLS + client-cert (CAC) are
+    # terminated at the ingress, which forwards the verified identity as
+    # X-Client-* request headers; we pass them through to the app.
+    server {
+      listen 8080;
+      server_name _;
+      root /usr/share/nginx/html;
+      client_max_body_size 4m;
+
+      location = /healthz { return 200 "ok\n"; default_type text/plain; }
+      location = / { return 302 /csr/; }
+
+      location /csr/api/ {
+        proxy_pass http://127.0.0.1:5002/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Client-DN     $http_x_client_dn;
+        proxy_set_header X-Client-Verify $http_x_client_verify;
+        proxy_set_header X-Client-Serial $http_x_client_serial;
+      }
+
+      location /csr/ {
+        try_files $uri $uri/ /csr/index.html;
+      }
+    }
