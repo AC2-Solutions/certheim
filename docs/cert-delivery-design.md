@@ -128,9 +128,17 @@ keys gated like the signing backends. Community keeps manual download.
 
 ## 10. Open questions
 
-- **SSH auth model for `ssh` push:** a single dashboard SSH identity (certinel key)
-  authorized on destinations, vs per-destination creds from Vault? (Blast-radius
-  + STIG egress decision before building host-push.)
+- **SSH auth model for `ssh` push — RESOLVED: per-destination creds from Vault.**
+  The `ssh` provider (`backend/deliver.py` `_deliver_ssh`) fetches a
+  per-destination SSH credential from OpenBao at `secret/csr-delivery-ssh/<host>`
+  (username + private_key + optional port), writes it to a 0600 temp key,
+  scp's the bundle, runs an optional reload, and shreds the temp key. Chosen
+  over a single shared dashboard key for blast-radius containment and per-host
+  STIG-egress auditability; it reuses the same Vault path/pattern as the Trust
+  Store's `push_ssh`. Host keys bootstrap with `StrictHostKeyChecking=accept-new`
+  + `UserKnownHostsFile=/dev/null` because the `certinel-api` unit runs
+  `ProtectHome=true` (no persistent `~/.ssh`). A future zero-static-key option
+  (short-lived step-ca SSH certificates) is noted but not required.
 - Default `delivery_target` = the job's `target_host` (the cert's CN/SAN) — ship
   the cert for host X to host X. Confirm that's the right default.
 - For `vault`/`cyberark`: the path convention destinations agree to read from
