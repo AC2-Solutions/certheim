@@ -3,6 +3,21 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.6.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.5.0._
+
+### Features
+
+- **guide:** per-field "?" help popovers + availability note (`eaaff40`)
+  Every field in the setup guide now has a "?" button that opens a popup explaining exactly what the
+  value is and how to obtain it — including the Vault commands for role_id (bao read .../role-id)
+  and secret_id (bao write -f .../secret-id), how to find the PKI mount/role, what the FQDN must
+  satisfy, etc. Plain-English, vendor-neutral.
+  Also adds a note clarifying the guide opens standalone in any browser BEFORE install, and is
+  linked in-app (Setup Guide) once installed.
+  Self-contained popover (no deps); esprima-validated; all 12 "?" buttons map to a HELP entry.
+
 ## 3.5.0 — 2026-06-21
 
 _Released 2026-06-21. 1 change since v3.4.0._
