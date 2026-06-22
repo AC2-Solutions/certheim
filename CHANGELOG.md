@@ -3,6 +3,32 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.12.1 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.12.0._
+
+### Fixes & improvements
+
+- publish container images to Docker Hub (ac2solutions/certinel) (`6d7332b`)
+  The internal GitLab registry (registry.ac2solutions.com) is Cloudflare-proxied, and Cloudflare
+  caps request bodies at 100 MB on non-Enterprise plans. The full UBI9 image has a layer over that
+  limit, so its push silently failed with HTTP 413 on every release (the build block is non-fatal) —
+  only the Debian-slim variant ever published. The default/FIPS-gov image was never actually
+  available to pull.
+  Switch the release job's image publish to Docker Hub, the canonical public registry for Certinel
+  (anonymous customer pull, no body cap), matching the AethonLog docker.io/ac2solutions convention:
+  - build UBI9 + slim, push :vX.Y.Z / :latest / :vX.Y.Z-slim / :slim to
+    docker.io/ac2solutions/certinel, authenticating with the instance-level DOCKERHUB_USERNAME /
+    DOCKERHUB_TOKEN
+  - best-effort mirror of the slim variant to the internal GitLab registry for LAN pulls (small
+    enough to clear the CF cap); never fatal
+  - skip cleanly with a note when DOCKERHUB_TOKEN is unset
+  Repoint the customer-facing image references to Docker Hub:
+  - deploy/helm/certinel/values.yaml image.repository
+  - setup-guide compose + helm-values generators (IMAGE / genValues)
+  Validated: .gitlab-ci.yml parses, release script passes bash -n, and the setup-guide generators
+  still emit valid YAML carrying the new image path.
+
 ## 3.12.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.11.0._
