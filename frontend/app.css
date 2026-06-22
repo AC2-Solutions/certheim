@@ -88,8 +88,7 @@
                   display: inline-flex; align-items: center; gap: 6px; }
   .theme-toggle:hover { background: var(--toggle-bg-hover); }
 
-  main { max-width: 1200px; margin: 20px auto; padding: 0 20px;
-         display: grid; gap: 16px; }
+  main { max-width: none; margin: 0; padding: 0; display: block; }
 
   .card { background: var(--bg-elevated); border: 1px solid var(--border);
           border-radius: 6px; padding: 16px; color: var(--fg); min-width: 0; }
@@ -408,15 +407,31 @@
   }
 
   /* Tutorial walkthrough overlay */
-  /* Side-nav layout (admin + dashboard) */
+  /* App-shell layout: a far-left, full-height, drag-resizable sidebar (like
+     claude.ac2.lan) + a content column. Sidebar width is a CSS var the resize
+     handle updates (persisted to localStorage). */
   .panel-layout {
-    display: grid; grid-template-columns: 170px 1fr;
-    gap: 16px; align-items: start;
+    display: flex; align-items: stretch; gap: 0;
   }
   .panel-nav {
-    position: sticky; top: 70px;
+    flex: 0 0 auto;
+    width: var(--sidebar-w, 210px);
+    box-sizing: border-box;
+    position: sticky; top: 0;
+    align-self: flex-start;
+    height: 100vh; overflow-y: auto;
     display: flex; flex-direction: column; gap: 4px;
+    padding: 18px 12px;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
   }
+  /* Drag handle between the sidebar and the content. */
+  .panel-resize {
+    flex: 0 0 6px; cursor: col-resize; align-self: stretch;
+    background: transparent; position: relative;
+  }
+  .panel-resize:hover, .panel-resize.dragging { background: var(--accent); opacity: .35; }
+  body.resizing-x { cursor: col-resize; user-select: none; }
   .panel-nav button {
     text-align: left; font-size: 13px; cursor: pointer;
     padding: 8px 12px; border-radius: 6px;
@@ -437,11 +452,15 @@
   .nav-group-label { font-size: 11px; text-transform: uppercase;
                      letter-spacing: .05em; color: var(--fg-muted);
                      font-weight: 700; padding: 0 12px; margin-bottom: 3px; opacity: .75; }
-  .panel-body { min-width: 0; }
+  .panel-body { flex: 1 1 auto; min-width: 0; padding: 20px 24px; max-width: 1100px; }
   .panel-body [data-panel][hidden] { display: none !important; }
   @media (max-width: 760px) {
-    .panel-layout { grid-template-columns: 1fr; }
-    .panel-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+    .panel-layout { flex-direction: column; }
+    .panel-nav { width: auto; height: auto; position: static; overflow: visible;
+                 border-right: 0; border-bottom: 1px solid var(--border);
+                 flex-direction: row; flex-wrap: wrap; gap: 10px; }
+    .panel-resize { display: none; }
+    .panel-body { padding: 16px; max-width: none; }
     .nav-group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
     .nav-group + .nav-group { margin-top: 0; }
     .nav-group-label { width: 100%; margin: 4px 0 0; }
