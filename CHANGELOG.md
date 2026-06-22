@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.15.2 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.15.1._
+
+### Fixes & improvements
+
+- **db:** init_db mkdir uses configured sqlite path; validate Postgres e2e (`da33589`)
+  Stood up Postgres 17 and ran the full smoke suite (104/104) against the db.py abstraction - the PG
+  path was scaffolded (db.py shim, requirements-postgres.txt, the smoke-tests-postgres CI job) but
+  never actually validated end-to-end.
+  One real bug surfaced: init_db() mkdir'd the parent of the IMPORT-TIME DB_PATH global (frozen to
+  /var/lib/certinel), not the currently-configured sqlite path. The migration tool reconfigures dbx
+  to a target path before init_db(), and a Postgres deployment never sets CSR_DB_PATH, so the stale
+  default could be unwritable -> PermissionError. Now mkdir dbx.sqlite_path() (still skipped
+  entirely in Postgres mode). 104/104 on both backends, fresh DB.
+  Also: the smoke fixture now honors a pre-set CSR_DB_URL/CSR_DB_BACKEND so the same suite runs
+  unchanged on both backends (the CI db-matrix), and document the CSR_DB_* Postgres vars in
+  certinel.env.example.
+
 ## 3.15.1 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.15.0._
