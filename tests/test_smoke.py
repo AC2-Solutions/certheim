@@ -73,7 +73,13 @@ CRITICAL_ROUTES = [
 @pytest.fixture(scope="session")
 def client():
     tmp = tempfile.mkdtemp(prefix="csr-smoke-")
-    os.environ["CSR_DB_PATH"] = os.path.join(tmp, "jobs.db")
+    # Default to a throwaway SQLite DB, but honor a pre-set Postgres target so the
+    # same suite runs unchanged against both backends (CI db-matrix). If CSR_DB_URL
+    # or CSR_DB_BACKEND=postgres is already in the env, don't pin SQLite over it.
+    _pg = os.environ.get("CSR_DB_URL") or \
+        os.environ.get("CSR_DB_BACKEND", "").lower() in ("postgres", "postgresql")
+    if not _pg:
+        os.environ["CSR_DB_PATH"] = os.path.join(tmp, "jobs.db")
     os.environ["CERTINEL_ENV"] = os.path.join(tmp, "absent.env")
     os.environ["CSR_BOOTSTRAP_FIRST_ADMIN"] = "1"
     os.environ["CSR_CAP_EGRESS_INTERNET"] = "1"

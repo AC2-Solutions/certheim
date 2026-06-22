@@ -557,7 +557,11 @@ app = Flask(__name__)
 # ---------- DB ----------
 def init_db():
     if dbx.backend() == "sqlite":
-        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+        # mkdir the CURRENTLY-configured sqlite path, not the import-time DB_PATH
+        # global: the migration tool (db_migrate) reconfigures dbx to a target
+        # path before calling init_db(), and a Postgres deployment never sets
+        # CSR_DB_PATH so the stale default (/var/lib/certinel) may be unwritable.
+        Path(dbx.sqlite_path()).parent.mkdir(parents=True, exist_ok=True)
     # schema_connect() applies dialect translation (AUTOINCREMENT/REAL) so the
     # SQLite-flavored CREATE/ALTER below also build correctly on Postgres.
     conn = dbx.schema_connect()
