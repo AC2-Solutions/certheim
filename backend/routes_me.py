@@ -1,4 +1,5 @@
 """routes_me blueprint - extracted from app.py (paths unchanged)."""
+import json
 from flask import Blueprint, g, jsonify, request
 import licensing
 from app import (  # noqa: E402
@@ -42,7 +43,23 @@ def get_me():
         # placeholders show the REAL suffix (e.g. myserver.ac2.lan) instead of a
         # hardcoded example.com. Empty until an admin configures the subject.
         "domain_suffix": get_setting("subject_domain_suffix") or "",
+        # Selectable suffixes for the request form (primary + admin alternates).
+        "domain_suffixes": _selectable_domain_suffixes(),
     })
+
+
+def _selectable_domain_suffixes():
+    primary = get_setting("subject_domain_suffix") or ""
+    try:
+        alts = json.loads(get_setting("subject_domain_suffixes") or "[]")
+    except (TypeError, ValueError):
+        alts = []
+    out, seen = [], set()
+    for d in [primary] + (alts if isinstance(alts, list) else []):
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
 
 @bp.put("/api/me/prefs")
 @require_auth

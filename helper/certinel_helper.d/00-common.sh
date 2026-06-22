@@ -29,27 +29,57 @@ SUBJECT_OUS=("IT")
 # hostname-style entries, never to IPs or email addresses.
 # Leave empty to disable qualification.
 DOMAIN_SUFFIX="example.com"
+# Advanced subject tags (admin-configured): alternate selectable domain
+# suffixes, custom DN attributes (field:value), and extra SANs added to every
+# cert. Default empty.
+SUBJECT_DOMAIN_ALTS=()
+SUBJECT_XDN=()
+SUBJECT_XSANS=()
 
 # Admin-configured subject override, written by the dashboard via the
 # `write-subject` subcommand. PARSED as simple KEY=VALUE (NOT sourced - this
 # content originates from the UI, so we never eval it) and wins over the
 # defaults above, making the subject DN editable from the admin UI.
-#   C=US / ST=.. / L=.. / O=.. / DOMAIN_SUFFIX=.. (one each) and OU=.. (repeatable)
+#   C=US / ST=.. / L=.. / O=.. / DOMAIN_SUFFIX=.. (one each); OU=.. repeatable;
+#   DOMAIN_SUFFIX_ALT=.. (alt suffixes), XDN=field:value, XSAN=entry (repeatable)
 SUBJECT_CONF="$(dirname "${BASH_SOURCE[0]}")/subject.conf"
 if [[ -r "$SUBJECT_CONF" ]]; then
     SUBJECT_OUS=()
+    SUBJECT_DOMAIN_ALTS=()
+    SUBJECT_XDN=()
+    SUBJECT_XSANS=()
     while IFS='=' read -r _k _v; do
         case "$_k" in
-            C)             SUBJECT_C="$_v" ;;
-            ST)            SUBJECT_ST="$_v" ;;
-            L)             SUBJECT_L="$_v" ;;
-            O)             SUBJECT_O="$_v" ;;
-            OU)            [[ -n "$_v" ]] && SUBJECT_OUS+=("$_v") ;;
-            DOMAIN_SUFFIX) DOMAIN_SUFFIX="$_v" ;;
+            C)                SUBJECT_C="$_v" ;;
+            ST)               SUBJECT_ST="$_v" ;;
+            L)                SUBJECT_L="$_v" ;;
+            O)                SUBJECT_O="$_v" ;;
+            OU)               [[ -n "$_v" ]] && SUBJECT_OUS+=("$_v") ;;
+            DOMAIN_SUFFIX)    DOMAIN_SUFFIX="$_v" ;;
+            DOMAIN_SUFFIX_ALT) [[ -n "$_v" ]] && SUBJECT_DOMAIN_ALTS+=("$_v") ;;
+            XDN)              [[ -n "$_v" ]] && SUBJECT_XDN+=("$_v") ;;
+            XSAN)             [[ -n "$_v" ]] && SUBJECT_XSANS+=("$_v") ;;
         esac
     done < "$SUBJECT_CONF"
     unset _k _v
 fi
+
+# Per-request domain-suffix choice: the requester may pick an alternate suffix.
+# Honour it ONLY if it matches the configured primary or an admin-listed
+# alternate - never trust an arbitrary value (defense in depth; runs as root).
+# Passed as the generate-typed domain argument (sudo strips env, so not env).
+apply_domain_choice() {
+    local choice="$1" ok="" d
+    [[ -z "$choice" ]] && return 0
+    [[ "$choice" == "$DOMAIN_SUFFIX" ]] && ok=1
+    for d in "${SUBJECT_DOMAIN_ALTS[@]}"; do
+        [[ "$choice" == "$d" ]] && ok=1
+    done
+    if [[ -n "$ok" ]]; then DOMAIN_SUFFIX="$choice"
+    else audit "domain_override deny value=$choice"; fi
+}
+# Env path kept for tests / non-sudo callers (sudo strips it in production).
+[[ -n "${CERTINEL_DOMAIN_SUFFIX:-}" ]] && apply_domain_choice "$CERTINEL_DOMAIN_SUFFIX"
 
 audit() { /usr/bin/logger -p authpriv.notice -t certinel-helper -- "$@"; }
 
@@ -90,7 +120,7 @@ write_subject() {
     tr -d '\r' | head -c 8192 > "$tmp"
     # Every non-empty line must be KEY=value where KEY is one of the allowed
     # subject keys and value has no control characters or shell-dangerous bytes.
-    if grep -nvE '^$|^(C|ST|L|O|OU|DOMAIN_SUFFIX)=[A-Za-z0-9 ._,&/()@:-]*$' "$tmp" | grep -q .; then
+    if grep -nvE '^$|^(C|ST|L|O|OU|DOMAIN_SUFFIX|DOMAIN_SUFFIX_ALT)=[A-Za-z0-9 ._,&/()@:-]*$|^XDN=[A-Za-z0-9.]+:[A-Za-z0-9 ._,&/()@:-]*$|^XSAN=[A-Za-z0-9 ._@:-]+$' "$tmp" | grep -q .; then
         rm -f "$tmp"
         audit "write_subject deny invalid_content"
         echo "ERROR: invalid subject content" >&2

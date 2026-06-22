@@ -221,6 +221,18 @@ command -v certinel-backup >/dev/null && certinel-backup || echo "WARN: certinel
 
 if [[ "$changed_tags" == *frontend* ]]; then
     restorecon -Rv /var/www/csr/ || true
+    # Cache-bust: stamp a content hash onto the JS/CSS refs in the SERVED
+    # index.html, so browsers fetch fresh assets after every frontend change
+    # (the files have no version query, so an un-stamped change is invisible
+    # until a hard refresh). Source index.html keeps bare refs; only the
+    # deployed copy is stamped, recomputed each deploy.
+    if [[ -f /var/www/csr/index.html ]]; then
+        _stamp="$(cat frontend/app.*.js frontend/app.css 2>/dev/null | sha256sum | cut -c1-10)"
+        sed -i -E "s#(href=\"app\.css)(\?v=[0-9a-f]+)?\"#\1?v=${_stamp}\"#; \
+                   s#(src=\"app\.[0-9][^\"?]*\.js)(\?v=[0-9a-f]+)?\"#\1?v=${_stamp}\"#g" \
+            /var/www/csr/index.html
+        echo "  cache-bust: stamped assets ?v=${_stamp}"
+    fi
 fi
 if [[ "$changed_tags" == *backend* ]]; then
     fapolicyd-cli --file add /opt/certinel/ 2>/dev/null \

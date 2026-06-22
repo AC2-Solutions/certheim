@@ -1295,6 +1295,30 @@ def test_csr_subject_render_sanitizes():
     assert "DOMAIN_SUFFIX=ex.com" in out
 
 
+def test_csr_subject_advanced_tags():
+    """Custom DN, alternate domains, and extra SANs render to the helper's
+    KEY=VALUE format AND survive the helper's write_subject allow-list regex."""
+    import re
+    import csr_subject as s
+    cfg = {"org": "Acme", "domain_suffix": "corp.example.com",
+           "domain_suffixes": ["dmz.example.com", "bad;inject.com"],
+           "custom_dn": [{"field": "businessCategory", "value": "Private Org"},
+                         {"field": "DC", "value": "example"},
+                         {"field": "b@d field", "value": "x"}],   # field sanitized
+           "extra_sans": ["vpn.corp.example.com", "10.9.9.9", "drop;tbl"]}
+    out = s.render_conf(cfg)
+    assert "XDN=businessCategory:Private Org" in out
+    assert "XDN=DC:example" in out
+    assert "XSAN=vpn.corp.example.com" in out and "XSAN=10.9.9.9" in out
+    assert "DOMAIN_SUFFIX_ALT=dmz.example.com" in out
+    assert ";" not in out and "@" not in out.split("XSAN", 1)[0]  # injection stripped
+    # every line must pass the helper's write_subject allow-list
+    rx = re.compile(r'^$|^(C|ST|L|O|OU|DOMAIN_SUFFIX|DOMAIN_SUFFIX_ALT)='
+                    r'[A-Za-z0-9 ._,&/()@:-]*$|^XDN=[A-Za-z0-9.]+:'
+                    r'[A-Za-z0-9 ._,&/()@:-]*$|^XSAN=[A-Za-z0-9 ._@:-]+$')
+    assert all(rx.match(line) for line in out.splitlines()), out
+
+
 def test_revoke_negatives(client):
     rid = "/api/jobs/" + "a" * 32 + "/revoke"
     assert client.post(rid, headers=CSRF).status_code == 403   # no identity

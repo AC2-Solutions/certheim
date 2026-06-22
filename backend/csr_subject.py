@@ -15,6 +15,11 @@ import re
 # write_subject whitelist: [A-Za-z0-9 ._,&/()@:-]. Anything else is dropped.
 _ALLOWED = re.compile(r"[^A-Za-z0-9 ._,&/()@:\-]")
 _DOMAIN_ALLOWED = re.compile(r"[^A-Za-z0-9.\-]")
+# A custom DN attribute NAME: an OpenSSL-known short name (e.g. businessCategory,
+# serialNumber, DC) or a dotted OID. Letters/digits/dot only.
+_DN_FIELD_ALLOWED = re.compile(r"[^A-Za-z0-9.]")
+# A SAN entry value: hostnames, IPs, emails, and the optional "TYPE:" prefix.
+_SAN_ALLOWED = re.compile(r"[^A-Za-z0-9 ._@:\-]")
 MAX_LEN = 128
 
 # Org profiles seeded during initial setup. A profile sets country/org and a
@@ -90,6 +95,31 @@ def sanitize(value, domain=False):
     return v[:MAX_LEN]
 
 
+def _clean_dn_field(name):
+    """An OpenSSL DN attribute short-name or dotted OID, capped."""
+    if name is None:
+        return ""
+    return _DN_FIELD_ALLOWED.sub("", str(name).strip())[:64]
+
+
+def _clean_san(value):
+    """A single SAN entry (optionally TYPE:value), helper-safe."""
+    if value is None:
+        return ""
+    v = str(value).replace("\n", " ").replace("\r", " ").strip()
+    return _SAN_ALLOWED.sub("", v)[:MAX_LEN]
+
+
+def _dedup_domains(items):
+    out, seen = [], set()
+    for d in (items or []):
+        s = sanitize(d, domain=True)
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            out.append(s)
+    return out[:16]
+
+
 def clean_config(cfg):
     """Normalize an incoming subject config dict (from the UI) to safe values."""
     cfg = cfg or {}
@@ -99,6 +129,21 @@ def clean_config(cfg):
         if s and s.lower() not in seen:
             seen.add(s.lower())
             ous.append(s)
+    # Custom DN fields: extra RDNs (e.g. businessCategory, DC, serialNumber)
+    # added to every CSR. Each {field, value}; both must survive sanitization.
+    custom_dn = []
+    for item in (cfg.get("custom_dn") or []):
+        field = _clean_dn_field((item or {}).get("field"))
+        value = sanitize((item or {}).get("value"))
+        if field and value:
+            custom_dn.append({"field": field, "value": value})
+    # Extra SAN tags always merged into every cert's SANs.
+    extra_sans, sseen = [], set()
+    for s in (cfg.get("extra_sans") or []):
+        v = _clean_san(s)
+        if v and v.lower() not in sseen:
+            sseen.add(v.lower())
+            extra_sans.append(v)
     return {
         "country": sanitize(cfg.get("country")),
         "state": sanitize(cfg.get("state")),
@@ -106,6 +151,11 @@ def clean_config(cfg):
         "org": sanitize(cfg.get("org")),
         "ous": ous[:16],
         "domain_suffix": sanitize(cfg.get("domain_suffix"), domain=True),
+        # Alternate domain suffixes the requester can pick at submission time
+        # (the primary domain_suffix above is the default).
+        "domain_suffixes": _dedup_domains(cfg.get("domain_suffixes")),
+        "custom_dn": custom_dn[:16],
+        "extra_sans": extra_sans[:16],
     }
 
 
@@ -120,6 +170,13 @@ def render_conf(cfg):
     ]
     lines += [f"OU={ou}" for ou in c["ous"]]
     lines.append(f"DOMAIN_SUFFIX={c['domain_suffix']}")
+    # Alternate selectable domain suffixes (helper validates the requester's
+    # choice against this allow-list).
+    lines += [f"DOMAIN_SUFFIX_ALT={d}" for d in c["domain_suffixes"]]
+    # Custom DN attributes: XDN=<field>:<value> (one per extra RDN).
+    lines += [f"XDN={d['field']}:{d['value']}" for d in c["custom_dn"]]
+    # Extra SANs always added: XSAN=<entry>.
+    lines += [f"XSAN={s}" for s in c["extra_sans"]]
     return "\n".join(lines) + "\n"
 
 

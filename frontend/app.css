@@ -430,11 +430,21 @@
     color: var(--accent);
     font-weight: 600;
   }
+  /* Grouped (clustered) sidebar nav: related areas sit under a small label so
+     the long flat list reads as a few logical sections. */
+  .nav-group { display: flex; flex-direction: column; gap: 4px; }
+  .nav-group + .nav-group { margin-top: 14px; }
+  .nav-group-label { font-size: 11px; text-transform: uppercase;
+                     letter-spacing: .05em; color: var(--fg-muted);
+                     font-weight: 700; padding: 0 12px; margin-bottom: 3px; opacity: .75; }
   .panel-body { min-width: 0; }
   .panel-body [data-panel][hidden] { display: none !important; }
   @media (max-width: 760px) {
     .panel-layout { grid-template-columns: 1fr; }
-    .panel-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+    .panel-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+    .nav-group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    .nav-group + .nav-group { margin-top: 0; }
+    .nav-group-label { width: 100%; margin: 4px 0 0; }
   }
 
   .pill-warn { background: var(--warning); color: #1a1a1a; }

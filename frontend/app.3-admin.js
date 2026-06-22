@@ -2382,7 +2382,52 @@ function _csrSubjectCfg() {
     // so a bare [data-ou] selector would read every OU twice (duplicate OUs).
     ous: [...document.querySelectorAll("#csrsubject-ou-chips span[data-ou]")].map(c => c.dataset.ou),
     domain_suffix: document.getElementById("csrsubject-domain").value.trim(),
+    domain_suffixes: [...document.querySelectorAll("#csrsubject-domalt-chips span[data-v]")].map(c => c.dataset.v),
+    extra_sans: [...document.querySelectorAll("#csrsubject-xsan-chips span[data-v]")].map(c => c.dataset.v),
+    custom_dn: [...document.querySelectorAll("#csrsubject-xdn-rows .xdn-row")].map(r => ({
+      field: r.querySelector(".xdn-field").value.trim(),
+      value: r.querySelector(".xdn-value").value.trim(),
+    })).filter(d => d.field && d.value),
   };
+}
+
+// Generic chip render for the simple string-list editors (domain alternates,
+// extra SANs). delCls is the delete-link class wired in _csrSubjectWireChips.
+function _csrChipRender(wrapId, items, delCls) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  wrap.innerHTML = (items && items.length)
+    ? items.map(v => `<span class="pill pill-blue" data-v="${escapeHtml(v)}">${escapeHtml(v)} <a href="#" class="${delCls}" data-v="${escapeHtml(v)}" style="text-decoration:none;font-weight:700">&times;</a></span>`).join("")
+    : '<span class="status">none</span>';
+  wrap.querySelectorAll("." + delCls).forEach(a => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    const keep = [...wrap.querySelectorAll("span[data-v]")].map(c => c.dataset.v).filter(x => x !== a.dataset.v);
+    _csrChipRender(wrapId, keep, delCls);
+  }));
+}
+
+function _csrXdnAddRow(field, value) {
+  const wrap = document.getElementById("csrsubject-xdn-rows");
+  const row = document.createElement("div");
+  row.className = "bulk-row xdn-row";
+  row.style.marginBottom = "4px";
+  row.innerHTML =
+    `<input type="text" class="form-input xdn-field" style="max-width:200px" placeholder="attribute (e.g. DC)" value="${escapeHtml(field || "")}">`
+    + `<input type="text" class="form-input xdn-value" style="max-width:240px" placeholder="value" value="${escapeHtml(value || "")}">`
+    + `<a href="#" class="xdn-del" style="text-decoration:none;font-weight:700">&times;</a>`;
+  wrap.appendChild(row);
+  row.querySelector(".xdn-del").addEventListener("click", (e) => { e.preventDefault(); row.remove(); });
+}
+
+function _csrChipAdd(inputId, wrapId, delCls) {
+  const inp = document.getElementById(inputId);
+  const v = (inp.value || "").trim();
+  if (!v) return;
+  const cur = [...document.querySelectorAll(`#${wrapId} span[data-v]`)].map(c => c.dataset.v);
+  if (!cur.some(x => x.toLowerCase() === v.toLowerCase())) {
+    cur.push(v); _csrChipRender(wrapId, cur, delCls);
+  }
+  inp.value = "";
 }
 
 function _csrSubjectPreview() {
@@ -2419,6 +2464,10 @@ async function loadCsrSubject() {
   document.getElementById("csrsubject-o").value = cfg.org || "";
   document.getElementById("csrsubject-domain").value = cfg.domain_suffix || "";
   _csrSubjectRenderOUs(cfg.ous || []);
+  _csrChipRender("csrsubject-domalt-chips", cfg.domain_suffixes || [], "csrsubject-domalt-del");
+  _csrChipRender("csrsubject-xsan-chips", cfg.extra_sans || [], "csrsubject-xsan-del");
+  document.getElementById("csrsubject-xdn-rows").innerHTML = "";
+  (cfg.custom_dn || []).forEach(d => _csrXdnAddRow(d.field, d.value));
   document.getElementById("csrsubject-profile").innerHTML =
     '<option value="">&mdash; choose a profile &mdash;</option>' +
     _csrSubjectProfiles.map(p => `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
@@ -2464,6 +2513,19 @@ document.getElementById("csrsubject-ou-add-btn")?.addEventListener("click", _csr
 document.getElementById("csrsubject-ou-add")?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); _csrSubjectAddOU(); }
 });
+
+// Advanced-tag editors: domain alternates, custom DN rows, extra SANs.
+document.getElementById("csrsubject-domalt-add-btn")?.addEventListener("click",
+  () => _csrChipAdd("csrsubject-domalt-add", "csrsubject-domalt-chips", "csrsubject-domalt-del"));
+document.getElementById("csrsubject-domalt-add")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); _csrChipAdd("csrsubject-domalt-add", "csrsubject-domalt-chips", "csrsubject-domalt-del"); }
+});
+document.getElementById("csrsubject-xsan-add-btn")?.addEventListener("click",
+  () => _csrChipAdd("csrsubject-xsan-add", "csrsubject-xsan-chips", "csrsubject-xsan-del"));
+document.getElementById("csrsubject-xsan-add")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); _csrChipAdd("csrsubject-xsan-add", "csrsubject-xsan-chips", "csrsubject-xsan-del"); }
+});
+document.getElementById("csrsubject-xdn-add-btn")?.addEventListener("click", () => _csrXdnAddRow("", ""));
 ["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o"].forEach(id =>
   document.getElementById(id)?.addEventListener("input", _csrSubjectPreview));
 
