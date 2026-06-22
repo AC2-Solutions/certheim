@@ -171,17 +171,37 @@ release:
         echo "warn: GitLab Release object not created (HTTP $rel_code; tag v$ver is pushed regardless):"
         head -c 300 /tmp/rel-resp.json || true; echo
       fi
-      # Build + publish the container images (UBI9 default + slim) for the cut
-      # release to Docker Hub — the canonical public registry for Certinel, for
-      # anonymous customer pull. We publish to Docker Hub (not the internal GitLab
-      # registry) because the latter is Cloudflare-proxied and Cloudflare rejects
-      # the >100MB UBI9 image layer with HTTP 413 (only slim layers fit under the
-      # 100MB cap). Auth via the instance-level DOCKERHUB_USERNAME / DOCKERHUB_TOKEN.
-      # Non-fatal: a build/push hiccup must never undo the pushed tag. Rootless:
-      # gitlab-runner has subuid/subgid; a job-local REGISTRY_AUTH_FILE dodges any
-      # stale auth.
+      # Build + publish the OCI images (UBI9 default + slim) for the cut release
+      # to Docker Hub — the canonical public registry for Certinel. (We publish to
+      # Docker Hub, not the internal GitLab registry, because the latter is
+      # Cloudflare-proxied and CF rejects the >100MB UBI9 layer with HTTP 413.)
+      # Build with rootless BuildKit (buildctl-daemonless.sh, provisioned on the
+      # runner by the ansible gitlab_runner_host role) so each image carries
+      # SBOM + SLSA provenance attestations, which Docker Scout's supply-chain
+      # checks read and buildah cannot emit. /usr/local/bin is not on the runner's
+      # default PATH. Auth via the instance-level DOCKERHUB_USERNAME/_TOKEN.
+      # Non-fatal: a build hiccup must never undo the pushed tag. Falls back to
+      # buildah (no attestations) if BuildKit isn't present on the runner.
       HUB_IMAGE="docker.io/ac2solutions/certinel"
-      if [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildah >/dev/null 2>&1; then
+      export PATH="/usr/local/bin:$PATH"
+      if [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildctl-daemonless.sh >/dev/null 2>&1; then
+        ( set -e
+          BK="$CI_PROJECT_DIR/.bk"; mkdir -p "$BK/run" "$BK/home" "$BK/docker"
+          export HOME="$BK/home" XDG_RUNTIME_DIR="$BK/run" TMPDIR="$BK" \
+                 DOCKER_CONFIG="$BK/docker" BUILDKITD_FLAGS="--oci-worker-no-process-sandbox"
+          a=$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)
+          printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$a" > "$DOCKER_CONFIG/config.json"
+          bk() { buildctl-daemonless.sh build --frontend dockerfile.v0 \
+                   --local context="$CI_PROJECT_DIR" --local dockerfile="$CI_PROJECT_DIR" --opt filename=Containerfile \
+                   --opt attest:sbom=true --opt attest:provenance=mode=max "$@"; }
+          bk --output "type=image,\"name=$HUB_IMAGE:v$ver,$HUB_IMAGE:latest\",push=true"
+          bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
+             --output "type=image,\"name=$HUB_IMAGE:v$ver-slim,$HUB_IMAGE:slim\",push=true"
+          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: v$ver, latest, v$ver-slim, slim" ) \
+          || echo "warn: attested image publish failed (release v$ver still cut; rebuild manually)"
+        rm -rf "$CI_PROJECT_DIR/.bk" 2>/dev/null || true
+      elif [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildah >/dev/null 2>&1; then
+        echo "note: BuildKit not on the runner — publishing without attestations (buildah)."
         ( set -e
           export XDG_RUNTIME_DIR="$CI_PROJECT_DIR/.xdg"; mkdir -p "$XDG_RUNTIME_DIR"
           export REGISTRY_AUTH_FILE="$CI_PROJECT_DIR/.auth.json"
@@ -191,21 +211,10 @@ release:
           $B bud --isolation chroot --build-arg PYBASE=docker.io/library/python:3.12-slim \
                  -t "$HUB_IMAGE:v$ver-slim" -t "$HUB_IMAGE:slim" -f Containerfile .
           for t in "v$ver" latest "v$ver-slim" slim; do $B push "$HUB_IMAGE:$t"; done
-          echo "Published $HUB_IMAGE  tags: v$ver, v$ver-slim, latest, slim"
-          # Best-effort internal mirror of the SLIM variant to the GitLab registry
-          # (small enough to clear the Cloudflare cap) for LAN pulls without Docker
-          # Hub auth. The full UBI9 image is Docker-Hub-only by necessity. Never fatal.
-          if [ -n "${CI_REGISTRY:-}" ]; then
-            ( echo "$CI_REGISTRY_PASSWORD" | $B login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-              $B tag "$HUB_IMAGE:v$ver-slim" "$CI_REGISTRY_IMAGE:v$ver-slim"
-              $B tag "$HUB_IMAGE:slim"       "$CI_REGISTRY_IMAGE:slim"
-              $B push "$CI_REGISTRY_IMAGE:v$ver-slim"
-              $B push "$CI_REGISTRY_IMAGE:slim"
-              echo "Mirrored slim to $CI_REGISTRY_IMAGE" ) || echo "note: internal slim mirror skipped"
-          fi ) \
+          echo "Published $HUB_IMAGE  tags: v$ver, v$ver-slim, latest, slim" ) \
           || echo "warn: container image publish failed (release v$ver still cut; rebuild manually)"
         buildah unshare -- bash -c "rm -rf $CI_PROJECT_DIR/.bstore $CI_PROJECT_DIR/.brun $CI_PROJECT_DIR/.xdg $CI_PROJECT_DIR/.auth.json" 2>/dev/null || true
       else
-        echo "note: DOCKERHUB_TOKEN unset or buildah missing — skipping image publish for v$ver."
+        echo "note: DOCKERHUB_TOKEN unset or no builder — skipping image publish for v$ver."
       fi
       echo "Released v$ver"
