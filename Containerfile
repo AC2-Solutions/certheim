@@ -10,7 +10,7 @@
 #
 # Runs container-mode (CERTINEL_CONTAINER=1): no sudo helper, mTLS at the ingress.
 # Roles are selected via the entrypoint: web (default) | migrate | cron <task>.
-ARG PYBASE=registry.access.redhat.com/ubi9/python-312:latest
+ARG PYBASE=registry.access.redhat.com/ubi9/python-312-minimal:latest
 
 # ---- builder: resolve the Python dependencies into a venv -------------------
 FROM ${PYBASE} AS builder
@@ -19,7 +19,7 @@ WORKDIR /build
 COPY requirements.txt requirements-postgres.txt ./
 # psycopg is bundled so the same image serves SQLite or PostgreSQL.
 RUN python3 -m venv /opt/venv \
- && /opt/venv/bin/pip install --no-cache-dir -U pip \
+ && /opt/venv/bin/pip install --no-cache-dir -U pip setuptools \
  && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt -r requirements-postgres.txt
 
 # ---- runtime ---------------------------------------------------------------
