@@ -1146,6 +1146,38 @@ def test_admin_database_status(client):
     assert b["backend"] in ("sqlite", "postgres") and "location" in b
 
 
+def test_helper_cmd_container_vs_vm():
+    """VM mode escalates to the root helper via sudo; container mode (the
+    container is the privilege boundary) calls the helper directly."""
+    import app
+    assert app._helper_cmd(False)[:2] == ["sudo", "-n"]
+    vm = app._helper_cmd(True)
+    assert vm[0] != "sudo" and len(vm) == 1
+
+
+def test_mtls_managed_by_ingress_in_container_mode(client, monkeypatch):
+    """In container mode, switching to client-cert auth records the setting but
+    defers TLS/mTLS to the ingress - no in-pod nginx rewrite via the helper."""
+    import json
+    import app
+    monkeypatch.setenv("CSR_ENTITLEMENTS", "auth.cac")  # CAC is licensed
+    monkeypatch.setattr(app, "CONTAINER_MODE", True)
+    appmod = client._appmod
+    with appmod.app.app_context():
+        prev = {k: appmod.get_setting(k) for k in ("mtls_mode", "mtls_ca_bundle_path", "auth_mode")}
+    try:
+        r = client.put("/api/admin/auth-settings", headers=WRITE, data=json.dumps(
+            {"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"}))
+        assert r.status_code == 200
+        b = r.get_json()
+        assert b.get("mtls_applied") is True and b.get("mtls_managed_by") == "ingress"
+    finally:
+        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+        with appmod.app.app_context():
+            for k, v in prev.items():
+                appmod.set_setting(k, v if v is not None else "")
+
+
 def test_obo_token_stamps_actor(monkeypatch):
     """The OpenBao signer mints a short-lived on-behalf-of child token carrying
     the issuing user's identity, so OpenBao's own audit log attributes the sign
