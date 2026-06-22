@@ -86,8 +86,19 @@ serviceAccount:
   create: true
   name: ""
 
-podSecurityContext: {}
-securityContext: {}
+# The image runs as non-root uid 10001. fsGroup makes the kubelet chown the
+# (RWO) PVCs to that group so the app can write them. Applied pod-wide.
+podSecurityContext:
+  fsGroup: 10001
+# App-container hardening (the nginx sidecar keeps its own stock defaults).
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
 
 resources:
   requests:

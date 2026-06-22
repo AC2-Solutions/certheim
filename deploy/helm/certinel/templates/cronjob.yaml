@@ -22,6 +22,9 @@ spec:
             {{- include "certinel.selectorLabels" $ | nindent 12 }}
         spec:
           restartPolicy: OnFailure
+          {{- with $.Values.podSecurityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
           serviceAccountName: {{ include "certinel.serviceAccountName" $ }}
           {{- with $.Values.image.pullSecrets }}
           imagePullSecrets: {{- toYaml . | nindent 12 }}
@@ -41,6 +44,9 @@ spec:
             - name: {{ $name }}
               image: {{ include "certinel.image" $ }}
               imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              {{- with $.Values.securityContext }}
+              securityContext: {{- toYaml . | nindent 16 }}
+              {{- end }}
               args: ["cron", "{{ $name }}"]
               env:
                 {{- include "certinel.appEnv" $ | nindent 16 }}
