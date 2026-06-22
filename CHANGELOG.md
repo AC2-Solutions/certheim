@@ -3,6 +3,30 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.13.2 — 2026-06-22
+
+_Released 2026-06-22. 2 changes since v3.13.1._
+
+### Fixes & improvements
+
+- accept Windows DER (.cer) and PKCS#7 (.p7b) on manual cert upload (`e3f0104`)
+  Windows CAs hand back DER-encoded .cer files (binary) and sometimes PKCS#7 .p7b bundles; the
+  manual upload path only accepted PEM, and two bugs stacked:
+  - frontend read the file with FileReader.readAsText(), which mangles binary irreversibly before
+    it leaves the browser
+  - backend validated with 'openssl x509 -subject' assuming PEM, so DER/ PKCS#7 was rejected
+  Fix: the client reads the file as base64 (readAsDataURL) and sends it as a separate cert_b64 field
+  (pasted PEM still flows through cert_pem); the server adds _normalize_cert_to_pem() which converts
+  PEM/DER/PKCS#7 -> PEM via openssl before the unchanged pipeline (subject parse, pubkey match,
+  expiry, storage) runs. Decoded-byte size check; binary files show a placeholder instead of
+  garbage; b64 holder resets per dialog open. File picker now advertises .der/.p7b.
+  Smoke test covers PEM/DER/PKCS#7 round-trips + garbage rejection (104 pass); node --check +
+  pyflakes clean.
+
+### Other changes
+
+- design for entitled-pull container licensing (`96e1b1a`)
+
 ## 3.13.1 — 2026-06-22
 
 _Released 2026-06-22. 2 changes since v3.13.0._
