@@ -3,6 +3,31 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.16.0 — 2026-06-22
+
+_Released 2026-06-22. 2 changes since v3.15.2._
+
+### Features
+
+- **installer:** interactive PostgreSQL support in online-install.sh (`da23ac6`)
+  Completes the Deploy-Anywhere Postgres story on the online installer (the e2e db.py validation
+  already landed; this exposes it to operators):
+  - New 'Database backend: sqlite / postgres' prompt; for postgres, collect
+    host/port/name/user/password/sslmode and write them as CSR_DB_* to the env file
+    (CSR_DB_BACKEND=postgres selects PG; discrete parts build the libpq DSN).
+  - Install requirements-postgres.txt (psycopg) into the venv when postgres is chosen; kept out of
+    the base wheelhouse so sqlite installs stay slim.
+  - Make the app_settings seed BACKEND-AGNOSTIC: route through the app's own layer (app.init_db +
+    app.set_setting) instead of the sqlite3 CLI, so it works identically on Postgres. Sources the
+    env file so the seed targets the right DB.
+  Validated: bash -n; the verbatim seed snippet seeds + reads back correctly on sqlite, PG-via-URL,
+  and PG-via-discrete-parts (the installer's real output). Full interactive install on a fresh host
+  is the remaining integration check.
+
+### Other changes
+
+- **cert-delivery:** mark SSH auth model resolved (per-destination Vault creds) (`2f0928d`)
+
 ## 3.15.2 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.15.1._
