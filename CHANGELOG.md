@@ -3,6 +3,37 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.18.0 — 2026-06-22
+
+_Released 2026-06-22. 2 changes since v3.17.0._
+
+### Features
+
+- **csr-subject:** configurable advanced tags (custom DN, alt domains, extra SANs) (`e478487`)
+  Lets admins broaden every CSR from the CSR Subject panel, beyond C/ST/L/O/OU:
+  - Custom DN attributes (e.g. businessCategory, serialNumber, DC) added to every subject.
+  - Additional selectable domain suffixes: requesters pick one per batch on the request form (a
+    dropdown appears when >1 is configured); the helper validates the choice against the admin
+    allow-list (ignores anything else).
+  - Extra SANs always merged into every cert (hostnames / IPs / emails).
+  Plumbing: csr_subject.clean_config/render_conf emit XDN=/XSAN=/DOMAIN_SUFFIX_ALT= lines; the
+  helper (00-common parse + write_subject allow-list, 10-certtypes req_dn + SAN builders,
+  20-generate domain arg) consumes them; /api/me exposes the selectable suffixes; the generate route
+  passes the chosen suffix as the helper's domain arg (sudo-safe, not env). Admin UI gains an
+  'Advanced tags' editor; request form gains the domain dropdown.
+  Validated: smoke 105/105 (new advanced-tags test); node --check clean; and a REAL CSR generated
+  through the DEPLOYED helper on csr-dev carries OU + custom DN (businessCategory, DC) + the chosen
+  alternate domain + extra SANs.
+- **ui:** grouped sidebar nav + cache-busting (`474889e`)
+  - Cluster the flat sidebar nav into labelled groups so related areas read as a few sections
+    instead of one long list: main: Requests (Create / Jobs / Signing queue) · Certificates ·
+    Personal admin: Dashboard · Access (Users + Groups + Auth) · Issuance · Notifications · System
+    Pure presentation: buttons keep their data-panel ids; routing/active-toggle use descendant
+    selectors so nested buttons still match. Palette unchanged.
+  - deploy.sh now stamps a content-hash ?v= onto the served index.html's JS/CSS refs, so a
+    frontend change is actually fetched (assets had no version query, so prior changes were
+    invisible until a manual hard-refresh).
+
 ## 3.17.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.16.0._
