@@ -3,6 +3,31 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.12.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.11.0._
+
+### Features
+
+- setup-guide deployment generator for VM / container / k8s (`13269ad`)
+  Phase 5 of the Deploy Anywhere release. The setup guide gains a 'How do you want to run Certinel?'
+  selector (single-server VM / container / Kubernetes) plus a database-backend selector (built-in
+  SQLite / external PostgreSQL, with a DSN field).
+  The Install step now re-tailors itself to the chosen target and emits ready-to-run, fully-filled-
+  in artifacts straight from the operator's entered settings, with copy + one-click download:
+  - VM        -> the existing unattended online-install.sh command
+  - container -> a complete docker/podman compose.yaml (app + nginx front + optional bundled
+    PostgreSQL), valves wired for OpenBao + license
+  - k8s       -> a tailored Helm values.yaml + the helm upgrade --install command, mapping 1:1 to
+    the certinel chart (ingress host, clientCert for CAC, db.backend, openbao.*, license)
+  - all       -> a single dependency-free Ansible playbook (certinel-deploy.yml) pre-set to the
+    chosen method, branching vm/container/k8s with ansible.builtin only
+  VM-only shell steps (first-admin bootstrap, OpenBao env file) are now guarded per method, with
+  container/k8s equivalents shown inline.
+  Generators validated: inline JS parses (esprima); all five method/db/auth/edition scenarios emit
+  YAML that round-trips through a parser for compose, values, and playbook; values keys map to the
+  chart schema verified in Phase 4.
+
 ## 3.11.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.10.0._
