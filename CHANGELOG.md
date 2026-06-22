@@ -3,6 +3,30 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.13.1 — 2026-06-22
+
+_Released 2026-06-22. 2 changes since v3.13.0._
+
+### Fixes & improvements
+
+- **ci:** keep rootless BuildKit state out of the git workspace (`cc4c561`)
+  The release job's rootless buildkitd writes runc-overlayfs snapshots owned by remapped subuids
+  (build uid 10001 -> host subuid range). When that state sat in $CI_PROJECT_DIR/.bk, a plain rm
+  couldn't delete it and the NEXT pipeline's get_sources (git clean -ffdx) failed with Permission
+  denied. Move it to $TMPDIR/certinel-bk-$CI_JOB_ID (outside the build dir) and clean via 'buildah
+  unshare -- rm -rf' (userns maps the subuids back). Stale dirs from prior runs cleared on the
+  runner by hand.
+- slim the UBI9 image base to cut Docker Scout vulnerabilities (`e3ed93f`)
+  Docker Scout on ac2solutions/certinel:latest showed 9 fixable High CVEs, nearly all from the base
+  image rather than our code:
+  - ubi9/python-312 is the s2i builder variant and ships a full npm/node toolchain we don't use
+    (picomatch + ~570 npm packages) plus older system-python urllib3 1.26.5 / setuptools 53.0.0
+  - our venv carried setuptools 68.2.2 (2 fixable High)
+  Switch the default base to ubi9/python-312-minimal (no s2i/npm layer) and upgrade pip+setuptools
+  in the builder venv. Proven on the runner: builds, runs non-root uid=10001, /api/health ok, NO
+  node/npm present, venv setuptools 82.0.1, image 422MB -> 279MB. Gov/FIPS keeps UBI9 as default;
+  this just drops the unused toolchain. Slim variant unchanged.
+
 ## 3.13.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.12.2._
