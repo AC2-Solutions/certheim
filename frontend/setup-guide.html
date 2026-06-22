@@ -166,6 +166,23 @@
       <option value="smtp">Company mail relay (SMTP)</option>
       <option value="mailgun">Mailgun (cloud)</option>
     </select>
+
+    <label style="margin-top:18px">How do you want to run Certinel?<button type="button" class="help" data-help="method" aria-label="How to find this">?</button></label>
+    <div class="choices" id="method">
+      <button data-val="vm" aria-pressed="true"><span class="t">Single server (VM)</span><span class="d">One Linux box. Simplest — the installer does it all.</span></button>
+      <button data-val="container"><span class="t">Container</span><span class="d">Docker / Podman on one host. Good for evaluation.</span></button>
+      <button data-val="k8s"><span class="t">Kubernetes</span><span class="d">A cluster, via Helm. Scales + self-heals.</span></button>
+    </div>
+
+    <label>Where should data live?<button type="button" class="help" data-help="db" aria-label="How to find this">?</button></label>
+    <div class="choices" id="db">
+      <button data-val="sqlite" aria-pressed="true"><span class="t">Built-in (SQLite)</span><span class="d">Zero setup. One node. Great to start.</span></button>
+      <button data-val="postgres"><span class="t">PostgreSQL</span><span class="d">External DB. Needed for multi-replica / HA.</span></button>
+    </div>
+    <div class="when-postgres" hidden>
+      <label>PostgreSQL connection URL <span class="hint">(libpq DSN)</span><button type="button" class="help" data-help="dburl" aria-label="How to find this">?</button></label>
+      <input type="text" id="dburl" placeholder="postgresql://certinel:password@db.example.com:5432/certinel">
+    </div>
   </div>
 
   <p class="toc">Jump to:
@@ -190,31 +207,85 @@
   <!-- ─────────────  STEP 1  ───────────── -->
   <div class="card" id="s1">
     <h2><span class="num">1</span>Install Certinel ⌨️</h2>
-    <p class="sub">One terminal command sets up the whole application. Sign in to your server, then paste the box that matches your situation.</p>
+    <p class="sub">You chose <b data-tpl="methodName">Single server (VM)</b>, storing data in <b data-tpl="dbName">Built-in (SQLite)</b>.
+       The boxes below are written for exactly that — change <i>How do you want to run Certinel?</i> above and they re-tailor instantly.</p>
 
-    <h3 style="font-size:15px;margin:10px 0 2px">A · Normal (internet-connected) server</h3>
-    <p class="sub">Run this from inside the Certinel files folder. It asks a few simple questions and does the rest.</p>
-    <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
+    <!-- ===== VM ===== -->
+    <div class="when-vm">
+      <h3 style="font-size:15px;margin:10px 0 2px">A · Normal (internet-connected) server</h3>
+      <p class="sub">Run this from inside the Certinel files folder. It asks a few simple questions and does the rest.</p>
+      <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
 <pre>sudo bash install/online-install.sh</pre></div>
-    <p class="sub">Prefer no questions? This pre-answers everything from <i>your details</i> above:</p>
-    <div class="term"><div class="bar"><span>unattended install — your details filled in</span><button class="copy">Copy</button></div>
+      <p class="sub">Prefer no questions? This pre-answers everything from <i>your details</i> above:</p>
+      <div class="term"><div class="bar"><span>unattended install — your details filled in</span><button class="copy">Copy</button></div>
 <pre data-tpl="install">sudo FQDN=<span class="var">{{FQDN}}</span> \
      AUTH_MODE=<span class="var">{{AUTH}}</span> \
      SERVICE_USER=<span class="var">{{SVC}}</span> \
 {{OBINSTALL}}     ASSUME_DEFAULTS=yes \
      bash install/online-install.sh</pre></div>
+      <div class="note when-postgres" hidden>You picked <b>PostgreSQL</b>: append
+        <code>CSR_DB_URL=<span data-tpl="url2"></span></code> to the line above (or add it to
+        <code>/etc/certinel/certinel.env</code> and restart). Already running on SQLite? Switch over without losing data with
+        <code>sudo certinel-db-migrate --to "<i>your-postgres-url</i>"</code>.</div>
 
-    <h3 style="font-size:15px;margin:16px 0 2px">B · Sealed / offline network</h3>
-    <p class="sub">On a connected machine, build a self-contained bundle, copy it across, then run its installer.</p>
-    <div class="term"><div class="bar"><span>on a connected machine</span><button class="copy">Copy</button></div>
+      <h3 style="font-size:15px;margin:16px 0 2px">B · Sealed / offline network</h3>
+      <p class="sub">On a connected machine, build a self-contained bundle, copy it across, then run its installer.</p>
+      <div class="term"><div class="bar"><span>on a connected machine</span><button class="copy">Copy</button></div>
 <pre>./make-offline-bundle.sh        # makes certinel-offline-&lt;version&gt;.tar.gz</pre></div>
-    <div class="term"><div class="bar"><span>on the offline server</span><button class="copy">Copy</button></div>
+      <div class="term"><div class="bar"><span>on the offline server</span><button class="copy">Copy</button></div>
 <pre>tar xzf certinel-offline-*.tar.gz
 cd certinel-offline-*
 sudo bash install/online-install.sh   # the bundle carries everything it needs</pre></div>
+      <div class="tip">When it finishes, Certinel is running at
+        <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b>. Open that in a browser to continue.</div>
+    </div>
 
-    <div class="tip">When it finishes, Certinel is running at
-      <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b>. Open that in a browser to continue.</div>
+    <!-- ===== CONTAINER ===== -->
+    <div class="when-container" hidden>
+      <p class="sub">Save this Compose file next to nothing in particular, then bring it up. It runs the app, an nginx front
+         (static UI + API proxy)<span class="when-postgres" hidden>, and a PostgreSQL</span> together.</p>
+      <div class="term"><div class="bar"><span>certinel-compose.yaml</span><button class="dl" data-file="certinel-compose.yaml">Download</button><button class="copy">Copy</button></div>
+<pre data-tpl="compose"></pre></div>
+      <div class="term"><div class="bar"><span>start it (Docker — or: podman compose …)</span><button class="copy">Copy</button></div>
+<pre>docker compose -f certinel-compose.yaml up -d</pre></div>
+      <div class="tip">Open <b>http://localhost:8080/csr/</b> (or your host&rsquo;s address). This evaluation front is plain HTTP —
+        for production, put a TLS-terminating reverse proxy in front<span class="when-cac" hidden>; CAC / mTLS needs that TLS front to verify the client certificate</span>.</div>
+      <div class="note">Licensed edition? Drop your license blob in <code>./license</code> and uncomment the two marked lines in the
+        Compose file. The DB and issued certs live in the named volumes <code>db</code> / <code>data</code>, so they survive restarts.</div>
+    </div>
+
+    <!-- ===== KUBERNETES ===== -->
+    <div class="when-k8s" hidden>
+      <p class="sub">Deploy with the bundled Helm chart and these tailored values. Needs <code>kubectl</code> + <code>helm</code>
+         pointed at your cluster, with an <b>ingress-nginx</b> controller present.</p>
+      <div class="do">⌨️ <b>One-time secrets</b> (skip any you don&rsquo;t use):</div>
+      <div class="term"><div class="bar"><span>pre-create the supporting secrets</span><button class="copy">Copy</button></div>
+<pre>kubectl create namespace certinel
+# TLS for the site (or let cert-manager issue it):
+kubectl -n certinel create secret tls certinel-tls --cert=tls.crt --key=tls.key
+<span class="when-cac" hidden># CAC / client-CA bundle (mTLS):
+kubectl -n certinel create secret generic certinel-client-ca --from-file=ca.crt=client-ca.pem
+</span># private registry pull secret (if your registry needs auth):
+kubectl -n certinel create secret docker-registry regcred \
+  --docker-server=registry.ac2solutions.com --docker-username=USER --docker-password=PASS</pre></div>
+      <div class="term"><div class="bar"><span>certinel-values.yaml</span><button class="dl" data-file="certinel-values.yaml">Download</button><button class="copy">Copy</button></div>
+<pre data-tpl="k8svalues"></pre></div>
+      <div class="term"><div class="bar"><span>install / upgrade</span><button class="copy">Copy</button></div>
+<pre data-tpl="helmcmd"></pre></div>
+      <div class="tip">Once the rollout is ready it&rsquo;s live at
+        <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> (point that DNS name at your ingress).
+        <span class="when-postgres" hidden>On PostgreSQL the Deployment runs multiple replicas and rolling-updates.</span></div>
+    </div>
+
+    <!-- ===== ANSIBLE (all methods) ===== -->
+    <h3 style="font-size:15px;margin:18px 0 2px">⚙️ Prefer to automate it? Generated Ansible playbook</h3>
+    <p class="sub">One playbook, pre-set to your chosen method (<b data-tpl="methodName">Single server (VM)</b>). It uses only
+       <code>ansible.builtin</code> — no extra collections. Download it alongside the
+       <span class="when-container" hidden>Compose file</span><span class="when-k8s" hidden>values file</span><span class="when-vm">installer files</span> above and run it.</p>
+    <div class="term"><div class="bar"><span>certinel-deploy.yml</span><button class="dl" data-file="certinel-deploy.yml">Download</button><button class="copy">Copy</button></div>
+<pre data-tpl="playbook"></pre></div>
+    <div class="term"><div class="bar"><span>run it</span><button class="copy">Copy</button></div>
+<pre>ansible-playbook -i <span class="var">your-server,</span> -u <span class="var">you</span> <span class="when-vm">--become </span>certinel-deploy.yml</pre></div>
   </div>
 
   <!-- ─────────────  STEP 2  ───────────── -->
@@ -222,10 +293,20 @@ sudo bash install/online-install.sh   # the bundle carries everything it needs</
     <h2><span class="num">2</span>Create the first administrator</h2>
     <p class="sub">The very first person to sign in becomes the administrator. You turn this on for the initial setup, and it switches itself off automatically once you exist.</p>
 
-    <div class="do">⌨️ <b>Turn on first-admin mode.</b> On the server, open the settings file and set the bootstrap line to <code>1</code>:</div>
+    <div class="do when-vm">⌨️ <b>Turn on first-admin mode.</b> On the server, open the settings file and set the bootstrap line to <code>1</code>:</div>
+    <div class="when-vm">
     <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
 <pre data-tpl="bootstrap">sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env
 sudo systemctl restart certinel-api</pre></div>
+    </div>
+    <div class="do when-container" hidden>⌨️ <b>Turn on first-admin mode.</b> Add <code>CSR_BOOTSTRAP_FIRST_ADMIN: "1"</code> to the
+      <code>app</code> service&rsquo;s <code>environment:</code> in your Compose file, then <code>docker compose up -d</code> to apply.
+      Remove it (and re-up) once you&rsquo;ve registered.</div>
+    <div class="do when-k8s" hidden>⌨️ <b>Turn on first-admin mode.</b> Add it under <code>extraEnv:</code> in your values file, then re-run <code>helm upgrade</code>:
+      <div class="term" style="margin-top:6px"><div class="bar"><span>certinel-values.yaml</span><button class="copy">Copy</button></div>
+<pre>extraEnv:
+  CSR_BOOTSTRAP_FIRST_ADMIN: "1"</pre></div>
+      Remove it and upgrade again after you&rsquo;ve registered.</div>
 
     <div class="do when-local">🖥️ <b>Make your account.</b> Go to <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> → <b>Register</b> →
        enter your name, email, and a password. You&rsquo;re now the admin.</div>
@@ -291,8 +372,9 @@ sudo systemctl restart certinel-api</pre></div>
     <h2><span class="num">6</span>Turn on automatic signing (OpenBao)</h2>
     <p class="sub">This lets Certinel issue certificates itself in the web app, instead of you uploading signed files by hand.</p>
 
-    <div class="do">⌨️ <b>Add your Vault details</b> to the settings file on the server, then restart. (These live only on the
+    <div class="do when-vm">⌨️ <b>Add your Vault details</b> to the settings file on the server, then restart. (These live only on the
       server, never in the web app — that&rsquo;s deliberate.)</div>
+    <div class="when-vm">
     <div class="term"><div class="bar"><span>run on your server — your details filled in</span><button class="copy">Copy</button></div>
 <pre data-tpl="obenv">sudo tee -a /etc/certinel/certinel.env >/dev/null &lt;&lt;'EOF'
 CSR_OPENBAO_ADDR=<span class="var">{{OB_ADDR}}</span>
@@ -303,6 +385,11 @@ CSR_OPENBAO_SECRET_ID=<span class="var">{{OB_SID}}</span>
 CSR_CAP_OPENBAO=1
 EOF
 sudo systemctl restart certinel-api</pre></div>
+    </div>
+    <div class="do when-container" hidden>✅ <b>Already wired.</b> Your Compose file from Step&nbsp;1 carries these OpenBao settings as <code>app</code>
+      environment variables — nothing to add here. Just confirm them in the next step.</div>
+    <div class="do when-k8s" hidden>✅ <b>Already wired.</b> The <code>openbao:</code> block in your values file from Step&nbsp;1 puts the
+      address/mount/role in the pod and the role_id/secret_id in a Secret — nothing to add here. Confirm in the next step.</div>
 
     <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>OpenBao PKI</b>,
       confirm the address / mount / role, set it as the <b>default</b>, and click <b>Save &amp; Test</b>.</div>
@@ -400,7 +487,13 @@ sudo systemctl restart certinel-api</pre></div>
 
   // ---- state ----
   var st = { edition:"commercial", ob:"yes", fqdn:"", org:"", auth:"local", svc:"",
-             ob_addr:"", ob_mount:"", ob_role:"", ob_rid:"", ob_sid:"", email:"none" };
+             ob_addr:"", ob_mount:"", ob_role:"", ob_rid:"", ob_sid:"", email:"none",
+             method:"vm", db:"sqlite", dburl:"" };
+
+  // Plain-text helpers for generated, downloadable files (no HTML markup).
+  function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
+  var IMAGE = "registry.ac2solutions.com/ac2-solutions/certinel:latest";
+  function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 
   function ph(v, placeholder){ return v && v.trim() ? esc(v.trim()) : '<span class="var">'+esc(placeholder)+'</span>'; }
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -442,8 +535,216 @@ sudo systemctl restart certinel-api</pre></div>
       case "bootstrap":
         return "sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env\n"
              + "sudo systemctl restart certinel-api";
+      case "url2": return esc(dbUrlPlain());
+      case "methodName": return ({vm:"Single server (VM)",container:"Container",k8s:"Kubernetes"})[st.method];
+      case "dbName": return ({sqlite:"Built-in (SQLite)",postgres:"PostgreSQL"})[st.db];
+      case "compose":  return esc(genCompose());
+      case "k8svalues":return esc(genValues());
+      case "helmcmd":  return esc(genHelm());
+      case "playbook": return esc(genPlaybook());
     }
     return "";
+  }
+
+  // ---- deployment-file generators (plain text for copy + download) ----
+  function genCompose(){
+    var pg = st.db==="postgres";
+    var bundledPg = pg && !(st.dburl && st.dburl.trim());   // spin up a local PG only if no external DSN
+    var L=[];
+    L.push("# Certinel — Docker Compose (also runs with: podman compose).");
+    L.push("# Generated by the setup guide. Serves plain HTTP on :8080 for evaluation;");
+    L.push("# put a TLS-terminating reverse proxy in front for production (and CAC/mTLS).");
+    L.push("services:");
+    L.push("  # One-shot: stage the static frontend (baked into the image) for nginx.");
+    L.push("  copy-frontend:");
+    L.push("    image: "+IMAGE);
+    L.push("    command: [\"sh\",\"-c\",\"mkdir -p /static/csr && cp -r /var/www/csr/. /static/csr/\"]");
+    L.push("    volumes: [\"static:/static\"]");
+    L.push("  app:");
+    L.push("    image: "+IMAGE);
+    L.push("    command: [\"web\"]");
+    L.push("    environment:");
+    L.push("      CERTINEL_CONTAINER: \"1\"");
+    if(pg){
+      L.push("      CSR_DB_URL: \""+(bundledPg ? "postgresql://certinel:certinel@db:5432/certinel" : dbUrlPlain())+"\"");
+    } else {
+      L.push("      CSR_DB_PATH: /var/lib/certinel/jobs.db");
+    }
+    if(st.ob==="yes"){
+      L.push("      CSR_CAP_OPENBAO: \"1\"");
+      L.push("      CSR_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
+      L.push("      CSR_OPENBAO_PKI_MOUNT: \""+val(st.ob_mount,"pki_csr")+"\"");
+      L.push("      CSR_OPENBAO_ROLE: \""+val(st.ob_role,"certinel")+"\"");
+      L.push("      CSR_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
+      L.push("      CSR_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
+    }
+    L.push("    volumes:");
+    L.push("      - db:/var/lib/certinel");
+    L.push("      - data:/var/opt/certinel");
+    if(st.edition!=="community"){
+      L.push("      # Licensed edition: put your license blob in ./license, then uncomment:");
+      L.push("      # - ./license:/etc/certinel/secret/license:ro   # + add  CSR_LICENSE_FILE: /etc/certinel/secret/license  above");
+    }
+    if(bundledPg){ L.push("    depends_on: [db]"); }
+    L.push("    restart: unless-stopped");
+    L.push("  nginx:");
+    L.push("    image: docker.io/library/nginx:1.27-alpine");
+    L.push("    depends_on:");
+    L.push("      copy-frontend: { condition: service_completed_successfully }");
+    L.push("      app: { condition: service_started }");
+    L.push("    ports: [\"8080:8080\"]");
+    L.push("    volumes: [\"static:/usr/share/nginx/html\"]");
+    L.push("    configs:");
+    L.push("      - source: certinel_nginx");
+    L.push("        target: /etc/nginx/conf.d/default.conf");
+    L.push("    restart: unless-stopped");
+    if(bundledPg){
+      L.push("  db:");
+      L.push("    image: docker.io/library/postgres:17-alpine");
+      L.push("    environment:");
+      L.push("      POSTGRES_USER: certinel");
+      L.push("      POSTGRES_PASSWORD: certinel");
+      L.push("      POSTGRES_DB: certinel");
+      L.push("    volumes: [\"pg:/var/lib/postgresql/data\"]");
+      L.push("    restart: unless-stopped");
+    }
+    L.push("configs:");
+    L.push("  certinel_nginx:");
+    L.push("    content: |");
+    L.push("      server {");
+    L.push("        listen 8080;");
+    L.push("        server_name _;");
+    L.push("        root /usr/share/nginx/html;");
+    L.push("        client_max_body_size 4m;");
+    L.push("        location = /healthz { return 200 \"ok\\n\"; default_type text/plain; }");
+    L.push("        location = / { return 302 /csr/; }");
+    L.push("        location /csr/api/ {");
+    L.push("          proxy_pass http://app:5002/api/;");
+    L.push("          proxy_set_header Host $host;");
+    L.push("          proxy_set_header X-Real-IP $remote_addr;");
+    L.push("        }");
+    L.push("        location /csr/ { try_files $uri $uri/ /csr/index.html; }");
+    L.push("      }");
+    L.push("volumes:");
+    L.push("  db: {}");
+    L.push("  data: {}");
+    L.push("  static: {}");
+    if(bundledPg){ L.push("  pg: {}"); }
+    return L.join("\n")+"\n";
+  }
+
+  function genValues(){
+    var pg = st.db==="postgres";
+    var L=[];
+    L.push("# Certinel Helm values — generated by the setup guide.");
+    L.push("# Deploy with:  helm upgrade --install certinel deploy/helm/certinel \\");
+    L.push("#                 -n certinel --create-namespace -f certinel-values.yaml");
+    L.push("");
+    L.push("image:");
+    L.push("  repository: registry.ac2solutions.com/ac2-solutions/certinel");
+    L.push("  tag: latest");
+    if(pg){ L.push("");
+      L.push("# Postgres backend → safe to run multiple replicas.");
+      L.push("replicaCount: 2"); }
+    L.push("");
+    L.push("ingress:");
+    L.push("  enabled: true");
+    L.push("  className: nginx");
+    L.push("  host: "+val(st.fqdn,"certinel.example.com"));
+    L.push("  tls:");
+    L.push("    enabled: true");
+    L.push("    secretName: certinel-tls        # a cert-manager Certificate or a pre-created TLS secret");
+    if(st.auth==="mtls"){
+      L.push("  # CAC / smart-card sign-in: client-cert verified at the ingress.");
+      L.push("  clientCert:");
+      L.push("    enabled: true");
+      L.push("    mode: \"on\"                     # use \"optional\" to allow non-CAC too");
+      L.push("    caSecret: certinel-client-ca   # kubectl create secret generic certinel-client-ca --from-file=ca.crt=client-ca.pem");
+    }
+    L.push("");
+    L.push("db:");
+    L.push("  backend: "+(pg?"postgres":"sqlite"));
+    if(pg){
+      L.push("  postgres:");
+      L.push("    # The chart writes this into a Secret as CSR_DB_URL.");
+      L.push("    url: \""+dbUrlPlain()+"\"");
+    }
+    if(st.edition!=="community"){
+      L.push("");
+      L.push("# Paste your signed license blob between the quotes to unlock your edition.");
+      L.push("license: \"\"");
+    }
+    if(st.ob==="yes"){
+      L.push("");
+      L.push("openbao:");
+      L.push("  enabled: true");
+      L.push("  addr: "+val(st.ob_addr,"https://openbao.example.com"));
+      L.push("  pkiMount: "+val(st.ob_mount,"pki_csr"));
+      L.push("  role: "+val(st.ob_role,"certinel"));
+      L.push("  roleId: \""+val(st.ob_rid,"your-role-id")+"\"");
+      L.push("  secretId: \""+val(st.ob_sid,"your-secret-id")+"\"");
+      L.push("  # caCert: |        # optional PEM, if OpenBao uses a private CA");
+      L.push("  #   -----BEGIN CERTIFICATE-----");
+    }
+    return L.join("\n")+"\n";
+  }
+
+  function genHelm(){
+    return "helm upgrade --install certinel deploy/helm/certinel \\\n"
+         + "  --namespace certinel --create-namespace \\\n"
+         + "  --values certinel-values.yaml";
+  }
+
+  function genPlaybook(){
+    var L=[];
+    L.push("---");
+    L.push("# Certinel deployment — generated by the setup guide.");
+    L.push("# Pre-set for: "+({vm:"single-server VM",container:"container",k8s:"Kubernetes"})[st.method]+".");
+    L.push("# Run from the folder holding the Certinel product files:");
+    L.push("#   ansible-playbook -i <host>, -u <user> --become certinel-deploy.yml");
+    L.push("# (container/k8s run from a control host — add  -c local  and drop --become.)");
+    L.push("- name: Deploy Certinel");
+    L.push("  hosts: all");
+    L.push("  gather_facts: false");
+    L.push("  vars:");
+    L.push("    deploy_method: "+st.method+"        # vm | container | k8s");
+    L.push("    certinel_src: .                  # folder with the installer / compose / chart");
+    L.push("    container_engine: docker         # docker | podman");
+    L.push("    helm_chart: deploy/helm/certinel");
+    L.push("    namespace: certinel");
+    L.push("  tasks:");
+    L.push("    - name: \"VM · run the unattended installer\"");
+    L.push("      when: deploy_method == 'vm'");
+    L.push("      ansible.builtin.command:");
+    L.push("        cmd: bash install/online-install.sh");
+    L.push("        chdir: \"{{ certinel_src }}\"");
+    L.push("      environment:");
+    L.push("        ASSUME_DEFAULTS: \"yes\"");
+    L.push("        FQDN: \""+val(st.fqdn,"certinel.example.com")+"\"");
+    L.push("        AUTH_MODE: \""+st.auth+"\"");
+    L.push("        SERVICE_USER: \""+val(st.svc,"certinel")+"\"");
+    if(st.ob==="yes"){
+      L.push("        CONFIGURE_OPENBAO: \"yes\"");
+      L.push("        CSR_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
+      L.push("        CSR_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
+      L.push("        CSR_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
+    }
+    L.push("");
+    L.push("    - name: \"Container · bring up the compose stack\"");
+    L.push("      when: deploy_method == 'container'");
+    L.push("      ansible.builtin.command:");
+    L.push("        cmd: \"{{ container_engine }} compose -f certinel-compose.yaml up -d\"");
+    L.push("        chdir: \"{{ certinel_src }}\"   # certinel-compose.yaml from this guide");
+    L.push("");
+    L.push("    - name: \"Kubernetes · helm upgrade --install\"");
+    L.push("      when: deploy_method == 'k8s'");
+    L.push("      ansible.builtin.command:");
+    L.push("        cmd: >-");
+    L.push("          helm upgrade --install certinel {{ helm_chart }}");
+    L.push("          --namespace {{ namespace }} --create-namespace");
+    L.push("          --values certinel-values.yaml");
+    L.push("        chdir: \"{{ certinel_src }}\"   # certinel-values.yaml from this guide");
+    return L.join("\n")+"\n";
   }
 
   function render(){
@@ -460,7 +761,12 @@ sudo systemctl restart certinel-api</pre></div>
       "when-cac":        st.auth==="mtls",
       "when-email":      st.email!=="none",
       "when-email-smtp": st.email==="smtp",
-      "when-email-mailgun": st.email==="mailgun"
+      "when-email-mailgun": st.email==="mailgun",
+      "when-vm":         st.method==="vm",
+      "when-container":  st.method==="container",
+      "when-k8s":        st.method==="k8s",
+      "when-sqlite":     st.db==="sqlite",
+      "when-postgres":   st.db==="postgres"
     };
     Object.keys(show).forEach(function(cls){
       $$("."+cls).forEach(function(el){ el.hidden = !show[cls]; });
@@ -472,7 +778,7 @@ sudo systemctl restart certinel-api</pre></div>
     el.addEventListener("input", function(){ st[key]=el.value; render(); });
     el.addEventListener("change", function(){ st[key]=el.value; render(); });
   }
-  ["fqdn","org","svc","ob_addr","ob_mount","ob_role","ob_rid","ob_sid"].forEach(function(id){bind(id,id);});
+  ["fqdn","org","svc","ob_addr","ob_mount","ob_role","ob_rid","ob_sid","dburl"].forEach(function(id){bind(id,id);});
   bind("auth","auth"); bind("email","email");
 
   function group(id, key){
@@ -485,6 +791,7 @@ sudo systemctl restart certinel-api</pre></div>
     });
   }
   group("edition","edition"); group("ob","ob");
+  group("method","method"); group("db","db");
 
   // ---- copy buttons ----
   document.addEventListener("click", function(e){
@@ -495,6 +802,20 @@ sudo systemctl restart certinel-api</pre></div>
       var o=e.target.textContent; e.target.textContent="Copied ✓";
       setTimeout(function(){e.target.textContent=o;},1400);
     });
+  });
+
+  // ---- download buttons (save the generated file straight from the browser) ----
+  document.addEventListener("click", function(e){
+    if(!e.target.classList || !e.target.classList.contains("dl")) return;
+    var pre = e.target.closest(".term").querySelector("pre");
+    var name = e.target.getAttribute("data-file") || "certinel.txt";
+    var blob = new Blob([pre.innerText.replace(/\n*$/,"\n")], {type:"text/plain"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    var o=e.target.textContent; e.target.textContent="Saved ✓";
+    setTimeout(function(){e.target.textContent=o;},1400);
   });
 
   // ---- help popovers (the "?" next to every field) ----
@@ -510,7 +831,10 @@ sudo systemctl restart certinel-api</pre></div>
     ob_role: ["Signing role", "A named policy inside the PKI mount that controls what may be issued (allowed domains, lifetime, key type) — often <code>certinel</code>. Your Vault admin lists them with:<br><code>bao list pki_csr/roles</code>"],
     ob_rid: ["AppRole role_id", "The &ldquo;username&rdquo; half of the credential Certinel uses to talk to OpenBao. It is <b>not secret</b> and does not change. Your Vault admin creates an AppRole and reads it with:<br><code>bao read auth/approle/role/&lt;name&gt;/role-id</code>"],
     ob_sid: ["AppRole secret_id", "The &ldquo;password&rdquo; half — <b>keep it private.</b> Your Vault admin generates one with:<br><code>bao write -f auth/approle/role/&lt;name&gt;/secret-id</code><br>It can be set to expire, so it may need rotating. If signing suddenly stops working, a fresh secret_id is the first thing to check."],
-    email: ["Email notifications", "Optional notices (certificate issued / expiring soon). <b>None</b> — no email; everything else still works. <b>SMTP</b> — your company mail relay; you&rsquo;ll need its host and port. <b>Mailgun</b> — cloud email; you&rsquo;ll need a Mailgun domain + API key and outbound internet."]
+    email: ["Email notifications", "Optional notices (certificate issued / expiring soon). <b>None</b> — no email; everything else still works. <b>SMTP</b> — your company mail relay; you&rsquo;ll need its host and port. <b>Mailgun</b> — cloud email; you&rsquo;ll need a Mailgun domain + API key and outbound internet."],
+    method: ["How to run Certinel", "Pick where it runs and the <b>Install</b> step tailors itself. <b>Single server (VM)</b> — one Linux box; the installer sets up everything (best for most people). <b>Container</b> — Docker or Podman on one host; great for a quick evaluation. <b>Kubernetes</b> — a cluster, installed with our Helm chart; scales to multiple replicas and self-heals. All three are generated for you from the answers above — copy or download and run."],
+    db: ["Where data lives", "<b>Built-in (SQLite)</b> — a single self-contained file on the server; nothing to set up, perfect to start, but one node only. <b>PostgreSQL</b> — an external database; required if you want multiple replicas / high availability (Kubernetes), and recommended for larger teams. You can switch from SQLite to PostgreSQL later without losing data — see <code>tools/certinel-db-migrate</code>."],
+    dburl: ["PostgreSQL connection URL", "A standard libpq connection string for your database, e.g. <code>postgresql://certinel:PASSWORD@db.example.com:5432/certinel</code>. Your DBA creates an empty database + a user that owns it; Certinel builds its own tables on first start. Leave blank in the container path and the generated Compose file will spin up a throwaway PostgreSQL for you to evaluate with."]
   };
   var pop = $("#popover"), popBody = $("#popover-body");
   function showHelp(btn){
