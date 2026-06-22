@@ -246,6 +246,9 @@ sudo bash install/online-install.sh   # the bundle carries everything it needs</
          (static UI + API proxy)<span class="when-postgres" hidden>, and a PostgreSQL</span> together.</p>
       <div class="term"><div class="bar"><span>certinel-compose.yaml</span><button class="dl" data-file="certinel-compose.yaml">Download</button><button class="copy">Copy</button></div>
 <pre data-tpl="compose"></pre></div>
+      <div class="do">⌨️ <b>Sign in to the image registry with your license</b> (username = your license id, password = your pull token, from your License portal):</div>
+      <div class="term"><div class="bar"><span>one-time login</span><button class="copy">Copy</button></div>
+<pre>docker login registry.ac2certinel.com -u <span class="var">YOUR-LICENSE-ID</span> -p <span class="var">YOUR-PULL-TOKEN</span></pre></div>
       <div class="term"><div class="bar"><span>start it (Docker — or: podman compose …)</span><button class="copy">Copy</button></div>
 <pre>docker compose -f certinel-compose.yaml up -d</pre></div>
       <div class="tip">Open <b>http://localhost:8080/csr/</b> (or your host&rsquo;s address). This evaluation front is plain HTTP —
@@ -265,9 +268,11 @@ sudo bash install/online-install.sh   # the bundle carries everything it needs</
 kubectl -n certinel create secret tls certinel-tls --cert=tls.crt --key=tls.key
 <span class="when-cac" hidden># CAC / client-CA bundle (mTLS):
 kubectl -n certinel create secret generic certinel-client-ca --from-file=ca.crt=client-ca.pem
-</span># private registry pull secret (if your registry needs auth):
+</span># Pull credential — your Certinel license. Username = your license id,
+# password = the pull token, both from your License portal:
 kubectl -n certinel create secret docker-registry regcred \
-  --docker-server=registry.ac2solutions.com --docker-username=USER --docker-password=PASS</pre></div>
+  --docker-server=registry.ac2certinel.com \
+  --docker-username=<span class="var">YOUR-LICENSE-ID</span> --docker-password=<span class="var">YOUR-PULL-TOKEN</span></pre></div>
       <div class="term"><div class="bar"><span>certinel-values.yaml</span><button class="dl" data-file="certinel-values.yaml">Download</button><button class="copy">Copy</button></div>
 <pre data-tpl="k8svalues"></pre></div>
       <div class="term"><div class="bar"><span>install / upgrade</span><button class="copy">Copy</button></div>
@@ -492,7 +497,7 @@ sudo systemctl restart certinel-api</pre></div>
 
   // Plain-text helpers for generated, downloadable files (no HTML markup).
   function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
-  var IMAGE = "docker.io/ac2solutions/certinel:latest";
+  var IMAGE = "registry.ac2certinel.com/certinel:latest";
   function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 
   function ph(v, placeholder){ return v && v.trim() ? esc(v.trim()) : '<span class="var">'+esc(placeholder)+'</span>'; }
@@ -641,8 +646,9 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("#                 -n certinel --create-namespace -f certinel-values.yaml");
     L.push("");
     L.push("image:");
-    L.push("  repository: docker.io/ac2solutions/certinel");
+    L.push("  repository: registry.ac2certinel.com/certinel");
     L.push("  tag: latest");
+    L.push("  pullSecrets: [{ name: regcred }]   # your license is the pull credential (regcred below)");
     if(pg){ L.push("");
       L.push("# Postgres backend → safe to run multiple replicas.");
       L.push("replicaCount: 2"); }
