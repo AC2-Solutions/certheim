@@ -85,6 +85,21 @@ for _p in python3.13 python3.12 python3.11 python3.10 python3.9 python3; do
 done
 ask PYBIN         "Python interpreter" "$_default_py"
 
+# A2. Database backend. SQLite (default, zero-config) or PostgreSQL (shared/HA).
+ask DB_BACKEND    "Database backend: sqlite / postgres" "sqlite"
+case "${DB_BACKEND,,}" in
+  postgres|postgresql)
+    DB_BACKEND=postgres
+    ask CSR_DB_HOST     "  Postgres host" "localhost"
+    ask CSR_DB_PORT     "  Postgres port" "5432"
+    ask CSR_DB_NAME     "  Postgres database" "certinel"
+    ask CSR_DB_USER     "  Postgres user" "certinel"
+    ask CSR_DB_PASSWORD "  Postgres password" ""
+    ask CSR_DB_SSLMODE  "  Postgres sslmode (disable/require/verify-full)" "require"
+    ;;
+  *) DB_BACKEND=sqlite ;;
+esac
+
 # B. Web & TLS
 _def_fqdn="$(hostname -f 2>/dev/null || hostname)"
 ask FQDN          "Server FQDN (TLS CN + nginx server_name)" "$_def_fqdn"
@@ -243,6 +258,12 @@ if ! "$VENV/bin/pip" install -r requirements.txt; then
     warn "pinned requirements.txt failed on $PYBIN - retrying with core deps unpinned"
     "$VENV/bin/pip" install flask gunicorn
 fi
+# The Postgres backend needs psycopg (kept out of the base wheelhouse so SQLite
+# installs stay slim). requirements-postgres.txt pins it.
+if [[ "$DB_BACKEND" == "postgres" ]]; then
+    "$VENV/bin/pip" install -r requirements-postgres.txt \
+        || die "psycopg install failed - cannot use the postgres backend"
+fi
 # The service group must read/traverse the whole venv to exec gunicorn/python
 # (g+rX covers non-exec files a narrow "+x only" chmod misses - the STIG F10 fix).
 chown -R "root:${SERVICE_GROUP}" "$VENV"
@@ -298,6 +319,19 @@ set_env() {
 # deploy, below) - NOT this env var, which the app does not read. Kept only as a
 # record of the install-time choice.
 set_env CSR_AUTH_MODE "$AUTH_MODE"
+# Database backend. For postgres, CSR_DB_BACKEND=postgres makes the app select
+# PG regardless of the (ignored) CSR_DB_PATH; the discrete CSR_DB_* parts build
+# the libpq DSN. SQLite is the default and needs no extra env (CSR_DB_PATH is
+# already in the example).
+if [[ "$DB_BACKEND" == "postgres" ]]; then
+    set_env CSR_DB_BACKEND  postgres
+    set_env CSR_DB_HOST     "$CSR_DB_HOST"
+    set_env CSR_DB_PORT     "$CSR_DB_PORT"
+    set_env CSR_DB_NAME     "$CSR_DB_NAME"
+    set_env CSR_DB_USER     "$CSR_DB_USER"
+    set_env CSR_DB_PASSWORD "$CSR_DB_PASSWORD"
+    set_env CSR_DB_SSLMODE  "$CSR_DB_SSLMODE"
+fi
 # First-admin OOBE: the first user to authenticate on an empty users table is
 # made admin (self-disables once any user exists), so a fresh box has a way in -
 # the first self-registered local user, or the first CAC user in mTLS mode.
@@ -449,22 +483,35 @@ systemctl start certinel-expiry-warn.timer certinel-auto-renew.timer 2>/dev/null
 # app reads - auth_mode() = get_setting('auth_mode') or 'mtls'). Without this a
 # fresh DB defaults to mtls/CAC regardless of what was chosen. Local mode also
 # opens self-registration so the first-admin bootstrap has something to register.
-CSR_DB=/var/lib/certinel/jobs.db
-REG_SEED=""
-[[ "$AUTH_MODE" == "local" ]] && REG_SEED="INSERT INTO app_settings(key,value) VALUES('allow_registration','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"
-if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$CSR_DB" ]]; then
-    sqlite3 "$CSR_DB" \
-      "INSERT INTO app_settings(key,value) VALUES('auth_mode','${AUTH_MODE}')
-         ON CONFLICT(key) DO UPDATE SET value=excluded.value;
-       ${REG_SEED}
-       INSERT INTO app_settings(key,value) VALUES('mtls_mode','${MTLS_MODE_SEED}')
-         ON CONFLICT(key) DO UPDATE SET value=excluded.value;
-       INSERT INTO app_settings(key,value) VALUES('mtls_ca_bundle_path','${CLIENT_CA_BUNDLE}')
-         ON CONFLICT(key) DO UPDATE SET value=excluded.value;" 2>/dev/null \
-      && chown "${SERVICE_USER}:${SERVICE_GROUP}" "$CSR_DB" 2>/dev/null || true
-    # deploy.sh restarted the service BEFORE this seed - restart so it reads the
+# Backend-agnostic: route through the app's own db layer (app.set_setting +
+# init_db handle sqlite AND postgres), not the sqlite3 CLI - so this works the
+# same on a Postgres install. Reads the DB target from the env file we wrote.
+if [[ -r "$ENVF" ]]; then set -a; . "$ENVF" 2>/dev/null || true; set +a; fi
+if REPO_ROOT="$REPO_ROOT" AUTH_MODE="$AUTH_MODE" MTLS_MODE_SEED="$MTLS_MODE_SEED" \
+   CLIENT_CA_BUNDLE="$CLIENT_CA_BUNDLE" \
+   "$VENV/bin/python" - <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "backend"))
+import app
+app.init_db()  # idempotent: guarantees app_settings exists on either backend
+rows = [("auth_mode", os.environ["AUTH_MODE"]),
+        ("mtls_mode", os.environ["MTLS_MODE_SEED"]),
+        ("mtls_ca_bundle_path", os.environ["CLIENT_CA_BUNDLE"])]
+if os.environ["AUTH_MODE"] == "local":
+    rows.append(("allow_registration", "1"))
+for k, v in rows:
+    app.set_setting(k, v)
+import db as dbx
+print("  seeded %d settings into %s" % (len(rows), dbx.backend()))
+PY
+then
+    [[ "$DB_BACKEND" == "sqlite" ]] && \
+        chown "${SERVICE_USER}:${SERVICE_GROUP}" /var/lib/certinel/jobs.db 2>/dev/null || true
+    # deploy.sh started the service BEFORE this seed - restart so it reads the
     # seeded auth_mode/registration settings.
     systemctl try-restart certinel-api.service 2>/dev/null || true
+else
+    warn "app_settings seed failed - set auth_mode (and allow_registration) in the admin UI"
 fi
 
 # Post-install self-check: surface CHDIR/exec/SELinux/502/auth-gate/TLS issues
