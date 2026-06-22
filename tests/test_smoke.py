@@ -1114,6 +1114,38 @@ def test_db_shim_logic():
         dbx._backend = dbx._pg_dsn = dbx._sqlite_path = None
 
 
+def test_db_migrate_copies_rows(tmp_path):
+    """The migration tool copies all rows to a fresh target (sqlite->sqlite here;
+    sqlite->postgres is validated separately against a real PG). Schema is created
+    on the target, then rows are copied."""
+    import sqlite3
+    import time
+    import db_migrate
+    src = "sqlite:" + str(tmp_path / "src.db")
+    dst = "sqlite:" + str(tmp_path / "dst.db")
+    db_migrate.ensure_target_schema(src)
+    c = sqlite3.connect(str(tmp_path / "src.db"))
+    c.execute("INSERT INTO app_settings(key,value) VALUES('k','v')")
+    c.execute("INSERT INTO users(dn,cn,email,is_admin,is_active,created_at,last_seen_at) "
+              "VALUES('CN=m','M','m@x',0,1,?,?)", (time.time(), time.time()))
+    c.commit(); c.close()
+    db_migrate.ensure_target_schema(dst)
+    counts = db_migrate.copy_database(src, dst, log=lambda m: None)
+    assert counts.get("users") == 1
+    d = sqlite3.connect(str(tmp_path / "dst.db"))
+    assert d.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    assert d.execute("SELECT value FROM app_settings WHERE key='k'").fetchone()[0] == "v"
+    d.close()
+
+
+def test_admin_database_status(client):
+    """The admin Database page's status endpoint reports the active backend."""
+    r = client.get("/api/admin/database", headers=CAC)
+    assert r.status_code == 200
+    b = r.get_json()
+    assert b["backend"] in ("sqlite", "postgres") and "location" in b
+
+
 def test_obo_token_stamps_actor(monkeypatch):
     """The OpenBao signer mints a short-lived on-behalf-of child token carrying
     the issuing user's identity, so OpenBao's own audit log attributes the sign

@@ -1283,6 +1283,51 @@ def delete_fleet_cert(cert_id):
 # ============================================================
 # Admin: email / SMG settings
 # ============================================================
+def _redact_dsn(dsn):
+    return re.sub(r"://([^:/@]+):[^@]+@", r"://\1:***@", dsn or "")
+
+
+def _psycopg_present():
+    try:
+        import psycopg  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+@bp.get("/api/admin/database")
+@require_admin
+def admin_get_database():
+    """Current DB backend + location, for the admin Database page. The backend is
+    selected by env (CSR_DB_URL / CSR_DB_BACKEND) and switched by a migrate +
+    restart, so this is read-only status (the page renders the migrate steps)."""
+    backend = dbx.backend()
+    location = _redact_dsn(dbx.dsn()) if backend == "postgres" else dbx.sqlite_path()
+    return jsonify(backend=backend, location=location,
+                   postgres_driver=_psycopg_present())
+
+
+@bp.post("/api/admin/database/test")
+@require_admin
+@require_csrf
+def admin_test_database():
+    """Test a target PostgreSQL DSN (connect + version) before the operator runs
+    the migration. Never stores it - the switch is an env change + restart."""
+    dsn = ((request.get_json(silent=True) or {}).get("dsn") or "").strip()
+    if not dsn:
+        return jsonify(ok=False, error="dsn is required"), 400
+    if not _psycopg_present():
+        return jsonify(ok=False, error="the postgres driver (psycopg) is not "
+                       "installed; add requirements-postgres.txt to this deployment")
+    try:
+        import psycopg
+        with psycopg.connect(dsn, connect_timeout=8) as c:
+            ver = c.execute("SELECT version()").fetchone()[0]
+        return jsonify(ok=True, server=ver.split(" on ")[0])
+    except Exception as e:  # noqa: BLE001
+        return jsonify(ok=False, error=str(e)[:300])
+
+
 @bp.get("/api/admin/email-config")
 @require_admin
 def admin_get_email_config():

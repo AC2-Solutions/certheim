@@ -422,6 +422,7 @@
       <button type="button" data-panel="signingca">Signing / CA</button>
       <button type="button" data-panel="truststore">Trust store</button>
       <button type="button" data-panel="csrsubject">CSR Subject</button>
+      <button type="button" data-panel="database">Database</button>
       <button type="button" data-panel="cleanup">Job cleanup</button>
       <button type="button" data-panel="orphans">Orphaned files</button>
       <button type="button" data-panel="feedback">Feedback</button>
@@ -440,6 +441,45 @@
         <div class="stat-tile"><div class="label">Loading…</div></div>
       </div>
       <p id="admin-test-email-status" class="status"></p>
+    </section>
+
+    <section class="card admin-panel" data-panel="database">
+      <div class="card-header">
+        <h2>Database</h2>
+        <button id="admin-db-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Certinel runs on <b>SQLite</b> (single node, zero-setup) or
+        <b>PostgreSQL</b> (for high availability / Kubernetes). The backend is chosen
+        by the <code>CSR_DB_URL</code> environment variable; switching is a one-time
+        migrate&nbsp;+&nbsp;restart, laid out below.</p>
+
+      <p>Current backend: <b id="admin-db-backend">…</b></p>
+      <p>Location: <code id="admin-db-location">…</code></p>
+      <p>Postgres driver installed: <span id="admin-db-driver">…</span></p>
+
+      <div id="admin-db-migrate" hidden>
+        <h3>Move to PostgreSQL</h3>
+        <label>Target PostgreSQL connection (DSN)
+          <input type="text" id="admin-db-dsn" class="form-input"
+                 placeholder="postgresql://certinel:PASSWORD@dbhost:5432/certinel" autocomplete="off">
+        </label>
+        <div class="row">
+          <button id="admin-db-test-btn" type="button">Test connection</button>
+        </div>
+        <p id="admin-db-test-status" class="status"></p>
+
+        <div id="admin-db-steps" hidden>
+          <h3>Switch steps</h3>
+          <p class="hint">Run these on the server with the app briefly stopped, so nothing
+            writes during the copy. <b>Back up your data first.</b></p>
+          <ol>
+            <li><code>sudo systemctl stop certinel-api</code></li>
+            <li><code id="admin-db-cmd-migrate"></code></li>
+            <li>Add <code id="admin-db-cmd-env"></code> to <code>/etc/certinel/certinel.env</code></li>
+            <li><code>sudo systemctl start certinel-api</code> — it now runs on PostgreSQL.</li>
+          </ol>
+        </div>
+      </div>
     </section>
 
     <section class="card admin-panel" data-panel="users">

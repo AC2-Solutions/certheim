@@ -356,6 +356,42 @@ document.querySelector('#admin-nav button[data-panel="audit"]')
 document.querySelector('#admin-nav button[data-panel="authentication"]')
   ?.addEventListener("click", refreshAuthSettings);
 
+// --- Database: backend status + tailored migrate-to-Postgres steps ---
+async function loadDatabase() {
+  const r = await jsonReq("/admin/database");
+  if (!r.ok) return;
+  const b = r.body;
+  document.getElementById("admin-db-backend").textContent =
+    b.backend === "postgres" ? "PostgreSQL" : "SQLite";
+  document.getElementById("admin-db-location").textContent = b.location || "—";
+  document.getElementById("admin-db-driver").textContent = b.postgres_driver ? "yes" : "no";
+  // Only offer the move-to-Postgres flow when currently on SQLite.
+  document.getElementById("admin-db-migrate").hidden = b.backend !== "sqlite";
+  document.getElementById("admin-db-steps").hidden = true;
+}
+document.getElementById("admin-db-refresh")?.addEventListener("click", loadDatabase);
+document.querySelector('#admin-nav button[data-panel="database"]')
+  ?.addEventListener("click", loadDatabase);
+
+document.getElementById("admin-db-test-btn")?.addEventListener("click", async () => {
+  const dsn = document.getElementById("admin-db-dsn").value.trim();
+  const status = document.getElementById("admin-db-test-status");
+  const steps = document.getElementById("admin-db-steps");
+  steps.hidden = true;
+  if (!dsn) { setStatus(status, "Enter a PostgreSQL connection string", "err"); return; }
+  setStatus(status, "Testing…");
+  const r = await jsonReq("/admin/database/test", { method: "POST", body: JSON.stringify({ dsn }) });
+  if (!r.ok || !(r.body && r.body.ok)) {
+    setStatus(status, "Connection failed: " + ((r.body && r.body.error) || "error"), "err");
+    return;
+  }
+  setStatus(status, "Connected — " + (r.body.server || "PostgreSQL"), "ok");
+  document.getElementById("admin-db-cmd-migrate").textContent =
+    'sudo -u certinel certinel-db-migrate --to "' + dsn + '"';
+  document.getElementById("admin-db-cmd-env").textContent = "CSR_DB_URL=" + dsn;
+  steps.hidden = false;
+});
+
 document.getElementById("admin-run-expiry-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("audit-status");
   setStatus(status, "Running expiry warnings…");
