@@ -3,6 +3,27 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.10.0 — 2026-06-22
+
+_Released 2026-06-22. 1 change since v3.9.0._
+
+### Features
+
+- **image:** container image (UBI9 + slim) + CI publish on release (Phase 3) (`bf0ea17`)
+  - Containerfile: one multi-stage build, two bases via PYBASE — UBI9/Python-3.12 (default,
+    FIPS/gov) and python:3.12-slim. Bundles the venv (incl. psycopg so one image serves SQLite or
+    Postgres), app + helper + frontend + VERSION, runs container-mode (CERTINEL_CONTAINER=1, no-
+    sudo helper). entrypoint roles: web | migrate | cron <task>. Portable package step
+    (dnf/microdnf/yum/apt).
+  - .containerignore keeps the build context lean.
+  - release job now builds + pushes both variants to the GitLab registry
+    (registry.ac2solutions.com/ac2-solutions/certinel): :vX.Y.Z, :latest, :vX.Y.Z-slim, :slim —
+    via rootless buildah on the shell runner. Non-fatal so an image hiccup never undoes a cut
+    release.
+  Validated on the runner: UBI9 image builds + `web` serves /api/health (version 3.9.0) with
+  HELPER=[...] (no sudo); slim builds at ~175 MB; the gitlab-runner user builds rootless (subuid +
+  job-local REGISTRY_AUTH_FILE).
+
 ## 3.9.0 — 2026-06-22
 
 _Released 2026-06-22. 1 change since v3.8.0._
