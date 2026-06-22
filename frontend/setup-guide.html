@@ -30,6 +30,18 @@
   .sub{color:var(--muted);font-size:14px;margin:.2em 0 1em;}
   label{display:block;font-weight:600;margin:12px 0 4px;font-size:14px;}
   .hint{font-weight:400;color:var(--muted);font-size:12px;}
+  button.help{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+    margin-left:7px;border-radius:50%;border:1px solid var(--accent);background:transparent;color:var(--accent);
+    font-size:12px;font-weight:700;line-height:1;cursor:pointer;vertical-align:middle;padding:0;}
+  button.help:hover{background:var(--accent);color:var(--accent-ink);}
+  #popover{position:absolute;z-index:50;max-width:340px;background:var(--panel2);color:var(--ink);
+    border:1px solid var(--accent);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.5;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);}
+  #popover[hidden]{display:none;}
+  #popover h4{margin:0 0 6px;font-size:13px;color:var(--accent);}
+  #popover code{background:var(--code-bg);color:var(--code-ink);padding:1px 5px;border-radius:4px;
+    font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;}
+  #popover .x{position:absolute;top:6px;right:9px;cursor:pointer;color:var(--muted);font-size:15px;border:0;background:0;}
   input[type=text],select,input[type=password]{width:100%;padding:10px 12px;border-radius:9px;
     border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:15px;}
   input::placeholder{color:#6b7588}
@@ -87,13 +99,17 @@
     and paste it in. We fill in your details for you, so you can&rsquo;t get them wrong.
   </div>
 
+  <div class="note"><b>Where to find this guide:</b> open this file (<code>setup-guide.html</code>) in any browser to
+    begin — even <i>before</i> Certinel is installed. Once it&rsquo;s installed, the same guide is linked inside the app as
+    <b>Setup&nbsp;Guide</b> in the top bar. Stuck on a field? Click the little <b>?</b> next to it for help.</div>
+
   <!-- ─────────────  YOUR DETAILS  ───────────── -->
   <div class="card setup-form">
     <h2>Your details</h2>
     <p class="sub">Everything here stays in your browser — nothing is sent anywhere. Leave anything blank
        and we&rsquo;ll show a clearly-marked placeholder you can fill in later.</p>
 
-    <label>Which edition did you buy? <span class="hint">(it&rsquo;s on your license)</span></label>
+    <label>Which edition did you buy? <span class="hint">(it&rsquo;s on your license)</span><button type="button" class="help" data-help="edition" aria-label="How to find this">?</button></label>
     <div class="choices" id="edition">
       <button data-val="commercial" aria-pressed="true"><span class="t">Commercial</span><span class="d">Businesses. One managed domain.</span></button>
       <button data-val="government"><span class="t">Government</span><span class="d">DoD/agency. CAC sign-in, gov profiles.</span></button>
@@ -102,30 +118,30 @@
 
     <div class="row">
       <div>
-        <label>Your server&rsquo;s web address <span class="hint">(FQDN)</span></label>
+        <label>Your server&rsquo;s web address <span class="hint">(FQDN)</span><button type="button" class="help" data-help="fqdn" aria-label="How to find this">?</button></label>
         <input type="text" id="fqdn" placeholder="certinel.example.com">
       </div>
       <div>
-        <label>Organization name <span class="hint">(on certificates)</span></label>
+        <label>Organization name <span class="hint">(on certificates)</span><button type="button" class="help" data-help="org" aria-label="How to find this">?</button></label>
         <input type="text" id="org" placeholder="Acme Corporation">
       </div>
     </div>
 
     <div class="row">
       <div>
-        <label>How will people sign in?</label>
+        <label>How will people sign in?<button type="button" class="help" data-help="auth" aria-label="How to find this">?</button></label>
         <select id="auth">
           <option value="local">Username &amp; password (simplest)</option>
           <option value="mtls">CAC / smart card (mTLS)</option>
         </select>
       </div>
       <div>
-        <label>Service account name <span class="hint">(advanced — leave as is)</span></label>
+        <label>Service account name <span class="hint">(advanced — leave as is)</span><button type="button" class="help" data-help="svc" aria-label="How to find this">?</button></label>
         <input type="text" id="svc" placeholder="certinel">
       </div>
     </div>
 
-    <label>Do you want Certinel to sign certificates automatically using OpenBao / Vault?</label>
+    <label>Do you want Certinel to sign certificates automatically using OpenBao / Vault?<button type="button" class="help" data-help="ob" aria-label="How to find this">?</button></label>
     <div class="choices" id="ob">
       <button data-val="yes" aria-pressed="true"><span class="t">Yes</span><span class="d">Auto-issue in the web app.</span></button>
       <button data-val="no"><span class="t">Not yet</span><span class="d">I&rsquo;ll upload signed certs by hand.</span></button>
@@ -133,18 +149,18 @@
 
     <div class="when-openbao">
       <div class="row">
-        <div><label>OpenBao address</label><input type="text" id="ob_addr" placeholder="https://openbao.example.com"></div>
-        <div><label>PKI mount <span class="hint">(default pki_csr)</span></label><input type="text" id="ob_mount" placeholder="pki_csr"></div>
+        <div><label>OpenBao address<button type="button" class="help" data-help="ob_addr" aria-label="How to find this">?</button></label><input type="text" id="ob_addr" placeholder="https://openbao.example.com"></div>
+        <div><label>PKI mount <span class="hint">(default pki_csr)</span><button type="button" class="help" data-help="ob_mount" aria-label="How to find this">?</button></label><input type="text" id="ob_mount" placeholder="pki_csr"></div>
       </div>
       <div class="row">
-        <div><label>Signing role <span class="hint">(default certinel)</span></label><input type="text" id="ob_role" placeholder="certinel"></div>
-        <div><label>AppRole role_id <span class="hint">(from your Vault admin)</span></label><input type="text" id="ob_rid" placeholder="xxxxxxxx-xxxx-..."></div>
+        <div><label>Signing role <span class="hint">(default certinel)</span><button type="button" class="help" data-help="ob_role" aria-label="How to find this">?</button></label><input type="text" id="ob_role" placeholder="certinel"></div>
+        <div><label>AppRole role_id <span class="hint">(from your Vault admin)</span><button type="button" class="help" data-help="ob_rid" aria-label="How to find this">?</button></label><input type="text" id="ob_rid" placeholder="xxxxxxxx-xxxx-..."></div>
       </div>
-      <label>AppRole secret_id <span class="hint">(treat like a password)</span></label>
+      <label>AppRole secret_id <span class="hint">(treat like a password)</span><button type="button" class="help" data-help="ob_sid" aria-label="How to find this">?</button></label>
       <input type="password" id="ob_sid" placeholder="yyyyyyyy-yyyy-...">
     </div>
 
-    <label>Email notifications <span class="hint">(optional)</span></label>
+    <label>Email notifications <span class="hint">(optional)</span><button type="button" class="help" data-help="email" aria-label="How to find this">?</button></label>
     <select id="email">
       <option value="none">None — skip email</option>
       <option value="smtp">Company mail relay (SMTP)</option>
@@ -371,6 +387,11 @@ sudo systemctl restart certinel-api</pre></div>
   <footer>Certinel setup guide · this page tailors itself to your details · safe to print or save</footer>
 </div>
 
+<div id="popover" hidden role="dialog" aria-label="Field help">
+  <button class="x" type="button" aria-label="Close help">×</button>
+  <div id="popover-body"></div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -475,6 +496,43 @@ sudo systemctl restart certinel-api</pre></div>
       setTimeout(function(){e.target.textContent=o;},1400);
     });
   });
+
+  // ---- help popovers (the "?" next to every field) ----
+  var HELP = {
+    edition: ["Which edition?", "Your edition is printed in your license file (the &ldquo;edition&rdquo; field) and on your purchase confirmation. Not sure? Ask whoever bought Certinel, or your vendor. <b>Community</b> is the free tier and needs no license."],
+    fqdn: ["Server web address (FQDN)", "The full address people type to reach Certinel, e.g. <code>certinel.example.com</code>. Your network / IT admin assigns it. It must (1) point to your server in DNS and (2) match the name on the server&rsquo;s TLS certificate."],
+    org: ["Organization name", "Your organization&rsquo;s name exactly as it should appear inside issued certificates (the &ldquo;O&rdquo; field) — e.g. <code>Acme Corporation</code> or <code>U.S. Government</code>. Use your official / legal name."],
+    auth: ["How people sign in", "<b>Username &amp; password</b> — simplest; people sign in with an account. <b>CAC / smart card</b> — people authenticate with a client certificate (e.g. a DoD CAC). CAC is included in <b>Government</b>; on <b>Commercial</b> it needs a CAC add-on, and your web server must be given the card-issuer CA bundle."],
+    svc: ["Service account name", "The Linux user account Certinel runs as. Leave it as <code>certinel</code> unless your security policy requires a specific service-account name — the installer creates it for you."],
+    ob: ["Auto-sign with OpenBao?", "OpenBao (or HashiCorp Vault) is the secure system that holds your signing key and issues certificates. Choose <b>Yes</b> if you have one and want Certinel to issue certs automatically in the web app. Choose <b>Not yet</b> to start by uploading certificates signed elsewhere — you can switch this on later."],
+    ob_addr: ["OpenBao address", "The HTTPS address of your OpenBao / Vault, e.g. <code>https://openbao.example.com</code> (sometimes with a port like <code>:8200</code>). Ask your Vault administrator. Your Certinel server must be able to reach this URL and trust its TLS certificate."],
+    ob_mount: ["PKI mount", "The name of the PKI &ldquo;secrets engine&rdquo; in OpenBao that issues your certificates — often <code>pki_csr</code>. Your Vault admin set this up; they can list it with:<br><code>bao secrets list</code> (look for the type <code>pki</code>)."],
+    ob_role: ["Signing role", "A named policy inside the PKI mount that controls what may be issued (allowed domains, lifetime, key type) — often <code>certinel</code>. Your Vault admin lists them with:<br><code>bao list pki_csr/roles</code>"],
+    ob_rid: ["AppRole role_id", "The &ldquo;username&rdquo; half of the credential Certinel uses to talk to OpenBao. It is <b>not secret</b> and does not change. Your Vault admin creates an AppRole and reads it with:<br><code>bao read auth/approle/role/&lt;name&gt;/role-id</code>"],
+    ob_sid: ["AppRole secret_id", "The &ldquo;password&rdquo; half — <b>keep it private.</b> Your Vault admin generates one with:<br><code>bao write -f auth/approle/role/&lt;name&gt;/secret-id</code><br>It can be set to expire, so it may need rotating. If signing suddenly stops working, a fresh secret_id is the first thing to check."],
+    email: ["Email notifications", "Optional notices (certificate issued / expiring soon). <b>None</b> — no email; everything else still works. <b>SMTP</b> — your company mail relay; you&rsquo;ll need its host and port. <b>Mailgun</b> — cloud email; you&rsquo;ll need a Mailgun domain + API key and outbound internet."]
+  };
+  var pop = $("#popover"), popBody = $("#popover-body");
+  function showHelp(btn){
+    var h = HELP[btn.getAttribute("data-help")]; if(!h) return;
+    popBody.innerHTML = "<h4>"+h[0]+"</h4>"+h[1];
+    pop.hidden = false;
+    var r = btn.getBoundingClientRect();
+    var maxLeft = window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 12;
+    var left = Math.min(r.left + window.scrollX, Math.max(window.scrollX + 8, maxLeft));
+    pop.style.top = (r.bottom + window.scrollY + 6) + "px";
+    pop.style.left = left + "px";
+  }
+  function hideHelp(){ pop.hidden = true; pop.dataset.for = ""; }
+  document.addEventListener("click", function(e){
+    var btn = e.target.closest ? e.target.closest("button.help") : null;
+    if(btn){ e.preventDefault();
+      if(!pop.hidden && pop.dataset.for === btn.getAttribute("data-help")){ hideHelp(); return; }
+      pop.dataset.for = btn.getAttribute("data-help"); showHelp(btn); return; }
+    if(e.target.closest && e.target.closest("#popover")){ if(e.target.classList.contains("x")) hideHelp(); return; }
+    hideHelp();
+  });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape") hideHelp(); });
 
   render();
 })();
