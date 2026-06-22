@@ -45,10 +45,19 @@ COPY helper/   /opt/certinel/helper/
 COPY frontend/ /var/www/csr/
 COPY container/entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN chmod 0750 /opt/certinel/helper/certinel_helper.sh \
- && chmod 0755 /usr/local/bin/entrypoint.sh \
- && mkdir -p /var/lib/certinel /var/opt/certinel/issued /var/opt/certinel/requests \
-             /var/opt/certinel/private /etc/certinel
+# Create a non-root user (uid/gid 10001) and own the app + writable data paths.
+# useradd ships on both bases (UBI + Debian slim); fall back to numeric-only if
+# absent. The chown runs BEFORE the VOLUME declaration so a fresh named volume
+# (Docker/Podman) inherits 10001 ownership; on k8s set podSecurityContext.fsGroup.
+RUN set -e; \
+    chmod 0750 /opt/certinel/helper/certinel_helper.sh; \
+    chmod 0755 /usr/local/bin/entrypoint.sh; \
+    mkdir -p /var/lib/certinel /var/opt/certinel/issued /var/opt/certinel/requests \
+             /var/opt/certinel/private /etc/certinel; \
+    groupadd -g 10001 certinel 2>/dev/null || true; \
+    useradd -u 10001 -g 10001 -M -d /opt/certinel -s /sbin/nologin certinel 2>/dev/null \
+      || useradd -u 10001 -g 10001 -d /opt/certinel certinel 2>/dev/null || true; \
+    chown -R 10001:10001 /opt/certinel /var/lib/certinel /var/opt/certinel /etc/certinel
 
 ENV PATH=/opt/venv/bin:$PATH \
     CERTINEL_CONTAINER=1 \
@@ -62,5 +71,8 @@ EXPOSE 5002
 # The /var/lib/certinel (SQLite) and /var/opt/certinel (issued/keys) paths are
 # the persistent volumes a deployment mounts.
 VOLUME ["/var/lib/certinel", "/var/opt/certinel"]
+# Default to the non-root user (Docker Scout: "default non-root user"). gunicorn
+# binds :5002 (>1024, unprivileged); the helper runs sudo-less in container mode.
+USER 10001
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["web"]
