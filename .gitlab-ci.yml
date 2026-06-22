@@ -203,7 +203,22 @@ release:
           bk --output "type=image,\"name=$HUB_IMAGE:v$ver,$HUB_IMAGE:latest\",push=true"
           bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
              --output "type=image,\"name=$HUB_IMAGE:v$ver-slim,$HUB_IMAGE:slim\",push=true"
-          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: v$ver, latest, v$ver-slim, slim" ) \
+          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: v$ver, latest, v$ver-slim, slim"
+          # Mirror the same attested images into the entitled Certinel registry
+          # (the license-server origin, over the LAN — bypasses Cloudflare's
+          # 100MB body cap). Auth: the _mirror push credential on the portal's
+          # token endpoint. registry.insecure: the origin is plain HTTP on the
+          # LAN (TLS is terminated at the Cloudflare tunnel for customer pulls).
+          if [ -n "${CERTINEL_MIRROR_PUSH_SECRET:-}" ]; then
+            ( REG="192.168.201.19:5000"
+              ma=$(printf '_mirror:%s' "$CERTINEL_MIRROR_PUSH_SECRET" | base64 -w0)
+              python3 -c "import json;p='$DOCKER_CONFIG/config.json';d=json.load(open(p));d['auths']['$REG']={'auth':'$ma'};json.dump(d,open(p,'w'))"
+              bk --output "type=image,\"name=$REG/certinel:v$ver,$REG/certinel:latest\",push=true,registry.insecure=true"
+              bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
+                 --output "type=image,\"name=$REG/certinel:v$ver-slim,$REG/certinel:slim\",push=true,registry.insecure=true"
+              echo "Mirrored to entitled registry $REG (attested)" ) \
+              || echo "note: entitled-registry mirror skipped/failed (Docker Hub publish still succeeded)"
+          fi ) \
           || echo "warn: attested image publish failed (release v$ver still cut; rebuild manually)"
         buildah unshare -- rm -rf "$BK" 2>/dev/null || rm -rf "$BK" 2>/dev/null || true
       elif [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildah >/dev/null 2>&1; then
