@@ -205,6 +205,13 @@
           </select>
         </div>
 
+        <div class="opt-field" id="generate-domain-field" hidden>
+          <label for="generate-domain" class="textarea-label">
+            Domain suffix <span class="hint">(applied to bare hostnames)</span>
+          </label>
+          <select id="generate-domain" class="form-input"></select>
+        </div>
+
         <div class="opt-field">
           <label class="textarea-label">
             Certificate template <span class="hint">(usages &mdash; manage in Templates)</span>
@@ -1188,6 +1195,32 @@
       <label for="csrsubject-domain" class="textarea-label">Domain suffix
         <span class="hint">(short names like "web1" become "web1.&lt;suffix&gt;"; leave blank to disable)</span></label>
       <input type="text" id="csrsubject-domain" class="form-input" style="max-width:260px" placeholder="e.g. example.com">
+
+      <details class="card" style="margin-top:14px">
+        <summary><strong>Advanced tags</strong> <span class="hint">&mdash; broaden what a CSR can carry (optional)</span></summary>
+        <div class="details-body">
+          <label class="textarea-label">Additional domain suffixes
+            <span class="hint">(requesters pick one per batch on the request form; the primary above is the default)</span></label>
+          <div id="csrsubject-domalt-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+          <div class="bulk-row">
+            <input type="text" id="csrsubject-domalt-add" class="form-input" style="max-width:240px" placeholder="e.g. dmz.example.com">
+            <button id="csrsubject-domalt-add-btn" class="secondary" type="button">Add suffix</button>
+          </div>
+
+          <label class="textarea-label">Custom DN attributes
+            <span class="hint">(extra subject RDNs on every CSR &mdash; e.g. businessCategory, serialNumber, DC)</span></label>
+          <div id="csrsubject-xdn-rows"></div>
+          <button id="csrsubject-xdn-add-btn" class="link-btn" type="button" style="margin-top:4px">+ Add DN attribute</button>
+
+          <label class="textarea-label">Extra SANs
+            <span class="hint">(always added to every cert &mdash; hostnames, IPs, or emails)</span></label>
+          <div id="csrsubject-xsan-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+          <div class="bulk-row">
+            <input type="text" id="csrsubject-xsan-add" class="form-input" style="max-width:240px" placeholder="e.g. vpn.example.com or 10.0.0.5">
+            <button id="csrsubject-xsan-add-btn" class="secondary" type="button">Add SAN</button>
+          </div>
+        </div>
+      </details>
 
       <p class="hint" style="margin-top:10px">Resulting subject:
         <code id="csrsubject-preview"></code></p>

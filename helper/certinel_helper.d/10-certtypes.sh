@@ -124,6 +124,11 @@ build_sans_host() {
             [[ -n "$s" && "$s" != "$cn" ]] && result+=",$(san_entry "$s")"
         done
     fi
+    # Admin-configured extra SANs added to every cert.
+    local _x
+    for _x in "${SUBJECT_XSANS[@]}"; do
+        [[ -n "$_x" && "$_x" != "$cn" ]] && result+=",$(san_entry "$_x")"
+    done
     echo "$result"
 }
 
@@ -145,6 +150,11 @@ build_sans_smart() {
             parts+=("$(san_entry "$s")")
         done
     fi
+    # Admin-configured extra SANs added to every cert.
+    local _x
+    for _x in "${SUBJECT_XSANS[@]}"; do
+        [[ -n "$_x" ]] && parts+=("$(san_entry "$_x")")
+    done
     if [[ ${#parts[@]} -eq 0 ]]; then
         return 0
     fi
@@ -241,6 +251,15 @@ EOF
     for _ou in "${SUBJECT_OUS[@]}"; do
         echo "${_i}.OU = $_ou"
         _i=$((_i + 1))
+    done
+    # Admin-configured custom DN attributes (XDN=field:value), e.g.
+    # businessCategory, serialNumber, DC. A running numeric prefix keeps every
+    # config key unique so repeats (multiple DC) are valid openssl req syntax.
+    local _xdn _field _val
+    for _xdn in "${SUBJECT_XDN[@]}"; do
+        _field="${_xdn%%:*}"
+        _val="${_xdn#*:}"
+        [[ -n "$_field" && -n "$_val" ]] && { echo "${_i}.${_field} = $_val"; _i=$((_i + 1)); }
     done
     echo "CN = $cn"
     echo ""

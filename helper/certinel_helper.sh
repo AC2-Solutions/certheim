@@ -59,7 +59,7 @@ case "$cmd" in
         exit $rc
         ;;
     generate-typed)
-        generate_typed "${1:-}" "${2:-rsa2048}"
+        generate_typed "${1:-}" "${2:-rsa2048}" "${3:-}"
         ;;
     list-csrs)
         list_files "$CSRDIR" '*.csr'

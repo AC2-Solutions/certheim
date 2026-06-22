@@ -3,6 +3,7 @@ from flask import Blueprint, Response, abort, g, jsonify, request, session
 import csv, json, string, subprocess, time, uuid
 import notify
 import capabilities
+import csr_subject
 import sign
 from app import (  # noqa: E402
     CERTLIST_LINE_RE, HOSTNAME_RE, KEY_ALGOS_ALLOWED, KEY_NAME_RE, MAX_CERTLIST_BYTES, MAX_CSR_BYTES, _add_session_keys, _attach_signed_cert, _cn_from_dn, _coerce_template_id, _get_or_create_session, _get_session_keys, _group_by_id, _normalize_cert_types, _parse_csr_subject, _parse_helper_listing, _set_session_cookie, _signer_recipients, _user_group_ids, _validate_email, db, fire_webhooks, log_event, require_auth, require_csrf, resolve_signing_policy, run_helper)
@@ -130,7 +131,12 @@ def generate_rhel():
     sid, _ = _get_or_create_session()
     start_time = time.time() - 2
 
-    rc, out, err = run_helper(["generate-typed", cert_type, key_algo], timeout=600)
+    # Optional per-batch domain-suffix choice (one of the admin-configured
+    # selectable suffixes). Sanitized here; the helper re-validates it against
+    # the allow-list and ignores anything not configured.
+    domain_choice = csr_subject.sanitize(payload.get("domain_suffix") or "", domain=True)
+    rc, out, err = run_helper(
+        ["generate-typed", cert_type, key_algo, domain_choice], timeout=600)
     if rc != 0:
         log_event("generate_rhel", "error", rc=rc, cert_type=cert_type)
         return jsonify(returncode=rc, output=out + err, jobs=[]), 500

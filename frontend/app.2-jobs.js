@@ -572,6 +572,19 @@ async function loadMe() {
   if (typeof applyConfiguredDomain === "function") {
     applyConfiguredDomain(currentUser.domain_suffix);
   }
+  // Request-form domain-suffix picker: only shown when an admin has configured
+  // more than one selectable suffix (values are domain-charset, HTML-safe).
+  const _dsfx = currentUser.domain_suffixes || [];
+  const _dsel = document.getElementById("generate-domain");
+  const _dfield = document.getElementById("generate-domain-field");
+  if (_dsel && _dfield) {
+    if (_dsfx.length > 1) {
+      _dsel.innerHTML = _dsfx.map((d, i) => `<option value="${d}"${i === 0 ? " selected" : ""}>${d}</option>`).join("");
+      _dfield.hidden = false;
+    } else {
+      _dfield.hidden = true;
+    }
+  }
   if (currentUser.is_admin) {
     document.body.classList.add("is-admin");
   }

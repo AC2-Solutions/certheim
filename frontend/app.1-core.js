@@ -983,6 +983,12 @@ async function generateRhel() {
                  key_algo: document.getElementById("generate-key-algo").value };
   if (notifyEmail) body.requester_email = notifyEmail;
   if (groupId) body.group_id = parseInt(groupId, 10);
+  // Chosen domain suffix (only present when the admin configured alternates).
+  const domSel = document.getElementById("generate-domain");
+  const domField = document.getElementById("generate-domain-field");
+  if (domSel && domField && !domField.hidden && domSel.value) {
+    body.domain_suffix = domSel.value;
+  }
   // Carry the chosen template so the request inherits its signing policy.
   const tplSel = document.getElementById("generate-template");
   if (tplSel && tplSel.value && tplSel.value !== "__custom__") {

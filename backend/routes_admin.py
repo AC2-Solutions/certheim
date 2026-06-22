@@ -851,18 +851,27 @@ def admin_set_template_signing(template_id):
 
 
 # ----- CSR subject / organization identity (configurable, not hardcoded) -----
-def _subject_config():
+def _subject_jlist(key):
     try:
-        ous = json.loads(get_setting("subject_ous") or "[]")
+        v = json.loads(get_setting(key) or "[]")
+        return v if isinstance(v, list) else []
     except (TypeError, ValueError):
-        ous = []
+        return []
+
+
+def _subject_config():
     return {
         "country": get_setting("subject_country") or "",
         "state": get_setting("subject_state") or "",
         "locality": get_setting("subject_locality") or "",
         "org": get_setting("subject_org") or "",
-        "ous": ous if isinstance(ous, list) else [],
+        "ous": _subject_jlist("subject_ous"),
         "domain_suffix": get_setting("subject_domain_suffix") or "",
+        # Advanced tags (configurable, broaden the CSR): alternate selectable
+        # domain suffixes, custom DN attributes, extra SANs on every cert.
+        "domain_suffixes": _subject_jlist("subject_domain_suffixes"),
+        "custom_dn": _subject_jlist("subject_custom_dn"),
+        "extra_sans": _subject_jlist("subject_extra_sans"),
     }
 
 
@@ -902,6 +911,9 @@ def put_csr_subject():
     set_setting("subject_org", cfg["org"])
     set_setting("subject_ous", json.dumps(cfg["ous"]))
     set_setting("subject_domain_suffix", cfg["domain_suffix"])
+    set_setting("subject_domain_suffixes", json.dumps(cfg["domain_suffixes"]))
+    set_setting("subject_custom_dn", json.dumps(cfg["custom_dn"]))
+    set_setting("subject_extra_sans", json.dumps(cfg["extra_sans"]))
     set_setting("subject_configured", "1")
     log_event("csr_subject", "update", actor=g.identity["dn"][:128],
               org=cfg["org"][:64], ous=len(cfg["ous"]))
