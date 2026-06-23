@@ -30,6 +30,24 @@ import os
 # release artifact. A plain source checkout is a development build.
 RELEASE_BUILD = False
 
+# Product edition of THIS build. The Community build physically OMITS the premium
+# modules (ca_providers, acme_client/dns, acme_server, routes_acme, deliver,
+# routes_deliver, renew, slack_listener); this marker lets the surviving core
+# force every licensed capability OFF regardless of any license file, and lets
+# the UI render those features grayed-out as upsell. The licensed (Full) build
+# sets EDITION = "full" — no license can turn a Community BUILD into a paid one,
+# because the paid code simply isn't present. Upgrading = re-deploying with the
+# Full codebase (an additive migration), not flipping a flag.
+EDITION = "community"
+
+
+def is_community_build():
+    """True when this build ships without the premium code (the free edition).
+
+    Unlike a license check, this can't be bypassed by editing a license file or
+    an env var — the premium modules aren't in the artifact to begin with."""
+    return EDITION != "full"
+
 
 def is_release():
     """True in a hardened release build - either the baked-in stamp above, or a

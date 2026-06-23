@@ -691,6 +691,12 @@ def sign_csr(csr_pem, template, actor=None):
     backend = ((template or {}).get("signer_backend") or "manual").strip()
     if backend == "manual":
         raise BackendUnavailable("manual signing - use the cert-upload path")
+    import build_mode
+    if build_mode.is_community_build() and backend not in ("manual", "openbao"):
+        # Premium signing backends ship only in the Full build; their code is
+        # absent here, so refuse cleanly rather than touch a missing module.
+        raise BackendUnavailable(
+            backend + " signing requires a Certinel license (not in the Community edition)")
     if not csr_pem or "REQUEST" not in csr_pem:
         raise SignError("no CSR to sign")
     _enforce_domain_quota(csr_pem)
@@ -756,6 +762,9 @@ def crl_ocsp_urls():
 def test_connection(backend="openbao"):
     """Admin 'Test connection' for a provider, WITHOUT signing. Returns a small
     status dict; raises SignError."""
+    import build_mode
+    if build_mode.is_community_build() and backend not in ("manual", "openbao"):
+        raise SignError(backend + " is a licensed signing backend (not in the Community edition)")
     if backend == "cyberark":
         raise SignError("CyberArk connection test is not built in this release; "
                         "the configuration has been saved.")

@@ -319,6 +319,11 @@ def edition_capabilities(edition):
 
 def is_entitled(key):
     if key in LICENSED_CAPABILITIES:
+        # Community BUILD: the premium code is physically absent, so no license
+        # (or dev override) can grant a licensed capability. Hard floor.
+        import build_mode
+        if build_mode.is_community_build():
+            return False
         # Explicit operator override (dev / evaluation / all-access self-host):
         # CSR_ENTITLEMENTS=* or a comma list unlocks licensed caps without a
         # license file. Honored ONLY in a development build - a hardened RELEASE
@@ -346,16 +351,22 @@ def is_entitled(key):
 def status(key):
     spec = CAPABILITIES.get(key)
     if spec is None:
-        return {"key": key, "available": False, "reason": "unknown capability"}
+        return {"key": key, "available": False, "reason": "unknown capability", "upgrade": False}
+    # `upgrade` flags a licensed capability this build/license can't use, so the
+    # UI can show it grayed-out with an "upgrade to unlock" badge rather than
+    # hiding it. In a Community build every licensed cap is an upgrade prompt.
+    licensed = key in LICENSED_CAPABILITIES
     if not is_entitled(key):
-        return {"key": key, "available": False, "reason": "not licensed"}
+        return {"key": key, "available": False,
+                "reason": "upgrade" if licensed else "not licensed",
+                "upgrade": licensed}
     env = env_caps()
     missing = [c for c in spec.get("env", []) if not env.get(c)]
     if missing:
-        return {"key": key, "available": False,
+        return {"key": key, "available": False, "upgrade": False,
                 "reason": "unavailable in this environment: needs "
                           + ", ".join(missing)}
-    return {"key": key, "available": True, "reason": ""}
+    return {"key": key, "available": True, "reason": "", "upgrade": False}
 
 
 def available(key):

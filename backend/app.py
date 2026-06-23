@@ -1333,16 +1333,24 @@ capabilities.configure(get_setting=get_setting)
 import licensing  # noqa: E402
 licensing.configure(get_setting=get_setting)
 sign.configure(get_setting=get_setting, set_setting=set_setting)
-import deliver  # noqa: E402
-deliver.configure(get_setting=get_setting)
+try:                                    # premium: absent in the Community build
+    import deliver  # noqa: E402
+    deliver.configure(get_setting=get_setting)
+except ImportError:
+    deliver = None
 import keystore  # noqa: E402
 keystore.configure(get_setting=get_setting)
 import truststore  # noqa: E402
 truststore.configure(get_setting=get_setting)
 # Re-export the delivery-retry pass so the certinel-deliver timer can call
 # app.run_deliveries() without its own Flask context (same pattern as
-# run_auto_renew / run_expiry_warnings).
-run_deliveries = deliver.run_deliveries
+# run_auto_renew / run_expiry_warnings). Premium: stubbed in the Community build.
+if deliver is not None:
+    run_deliveries = deliver.run_deliveries
+else:
+    def run_deliveries(*_a, **_k):
+        log_event("delivery", "skipped_community_build")
+        return (0, 0, 0)
 
 def auth_mode():
     return get_setting("auth_mode") or "mtls"
@@ -2299,10 +2307,15 @@ from routes_admin import bp as admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 from routes_signing import bp as signing_bp  # noqa: E402
 app.register_blueprint(signing_bp)
-from routes_acme import bp as acme_bp  # noqa: E402
-app.register_blueprint(acme_bp)
-from routes_deliver import bp as deliver_bp  # noqa: E402
-app.register_blueprint(deliver_bp)
+# Premium blueprints — present only in the Full build. The Community build omits
+# the modules, so registration is best-effort; their routes simply don't exist
+# (the UI grays the corresponding features out via the capability layer).
+for _prem_mod, _prem_bp in (("routes_acme", "bp"), ("routes_deliver", "bp")):
+    try:
+        _m = __import__(_prem_mod)
+        app.register_blueprint(getattr(_m, _prem_bp))
+    except ImportError:
+        pass
 from routes_truststore import bp as truststore_bp  # noqa: E402
 app.register_blueprint(truststore_bp)
 
@@ -2311,4 +2324,11 @@ app.register_blueprint(truststore_bp)
 # (run_expiry_warnings moved into routes_admin during the blueprint split; the
 # timer still imports it from `app`, so this re-export keeps that unit working.)
 from routes_admin import run_expiry_warnings  # noqa: E402,F401
-from renew import run_auto_renew  # noqa: E402,F401
+try:                                    # premium: auto-renew is Full-build only
+    from renew import run_auto_renew  # noqa: E402,F401
+except ImportError:
+    def run_auto_renew(*_a, **_k):
+        """Stub in the Community build — automated renewal is a licensed feature.
+        The systemd timer (if present) calls this and harmlessly no-ops."""
+        log_event("renew", "skipped_community_build")
+        return (0, 0, 0)

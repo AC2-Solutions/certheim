@@ -268,7 +268,10 @@ def push_ssh(host):
     Credential comes from Vault at secret/csr-delivery-ssh/<host>
     (username, private_key, optional port) - the same convention as cert
     delivery, so admins reuse one set of creds. Returns a short result string."""
-    import deliver  # lazy: reuse Vault read + provider plumbing
+    try:                                # premium plumbing: absent in Community
+        import deliver  # lazy: reuse Vault read + provider plumbing
+    except ImportError:
+        raise TrustError("SSH trust-bundle distribution requires a Certinel license")
     host = (host or "").strip()
     if not _HOST_RE.match(host):
         raise TrustError(f"invalid host: {host!r}")

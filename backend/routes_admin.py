@@ -808,14 +808,23 @@ def admin_set_template_signing(template_id):
         except (TypeError, ValueError):
             return jsonify(error="renew_before_days must be 1-365"), 400
     # Certificate delivery (P1): per-template destination + key handling.
-    import deliver
+    # Premium: absent in the Community build, where delivery must be 'none'.
+    try:
+        import deliver
+    except ImportError:
+        deliver = None
     dbackend = (payload.get("delivery_backend") or "none").strip()
-    if dbackend not in ({"none"} | set(deliver.PROVIDERS)):
-        return jsonify(error="delivery_backend must be one of "
-                             f"{['none'] + list(deliver.PROVIDERS)}"), 400
-    key_mode = (payload.get("key_mode") or "destination").strip()
-    if key_mode not in deliver.KEY_MODES:
-        return jsonify(error=f"key_mode must be one of {list(deliver.KEY_MODES)}"), 400
+    if deliver is None:
+        if dbackend != "none":
+            return jsonify(error="automated delivery requires a Certinel license"), 403
+        key_mode = "destination"
+    else:
+        if dbackend not in ({"none"} | set(deliver.PROVIDERS)):
+            return jsonify(error="delivery_backend must be one of "
+                                 f"{['none'] + list(deliver.PROVIDERS)}"), 400
+        key_mode = (payload.get("key_mode") or "destination").strip()
+        if key_mode not in deliver.KEY_MODES:
+            return jsonify(error=f"key_mode must be one of {list(deliver.KEY_MODES)}"), 400
     dtarget = (payload.get("delivery_target") or "").strip() or None
     dreload = (payload.get("delivery_reload") or "").strip() or None
     # Key-handling Phase 3: per-template key-storage override ("" / "default" =
@@ -1257,7 +1266,10 @@ def admin_run_auto_renew():
     """Manually trigger the automated-renewal pass (also runs on the
     certinel-auto-renew timer). No-op unless the master switch is on and templates
     opt in. Imported lazily to avoid an import cycle with app."""
-    from renew import run_auto_renew
+    try:                                # premium: auto-renew is Full-build only
+        from renew import run_auto_renew
+    except ImportError:
+        return jsonify(error="automated renewal requires a Certinel license"), 403
     renewed, skipped, errors = run_auto_renew()
     log_event("auto_renew", "run", renewed=renewed, skipped=skipped, errors=errors)
     return jsonify(ok=True, renewed=renewed, skipped=skipped, errors=errors)
