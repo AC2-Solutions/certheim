@@ -3,6 +3,18 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.18.1 — 2026-06-23
+
+_Released 2026-06-23. 1 change since v3.18.0._
+
+### Fixes & improvements
+
+- **tls-renew:** renew every 6h, not daily (24h certs left no margin) (`01ffafa`)
+  certinel.ac2.lan's nginx TLS cert (a 24h step-ca cert) expired in production: the once-daily
+  renewer drifted past expiry, and `step ca renew` refuses to renew an already-expired cert, so it
+  lapsed permanently (recovery needed a fresh ACME issuance + nginx reload). Renew every 6h so a
+  short-lived cert always has hours of margin regardless of timer drift.
+
 ## 3.18.0 — 2026-06-22
 
 _Released 2026-06-22. 2 changes since v3.17.0._
