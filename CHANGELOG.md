@@ -3,6 +3,37 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.20.0 — 2026-06-23
+
+_Released 2026-06-23. 2 changes since v3.19.0._
+
+### Features
+
+- **csr-subject:** named subject profiles, selectable per request (`7dcc1cc`)
+  Admins can save multiple NAMED subject profiles (e.g. ac2.lan, aj.com) and requesters pick one per
+  batch on the request form, so the whole organizational identity (DN + domain + advanced tags)
+  switches in one click.
+  - Helper: per-profile conf files (subjects/<slug>.conf, slug validated against path traversal);
+    generate-typed takes a profile arg and load_subject_profile overrides the default subject for
+    that run; write-subject [slug] / delete-subject-profile manage them.
+  - Backend: /api/admin/csr-subject/profile (PUT save, DELETE) + GET returns subject_profiles; the
+    default profile mirrors to the main subject.conf + legacy settings; existing single subject
+    auto-synthesizes a 'Default' profile (no migration). /api/me exposes the profile list; the
+    generate route passes the chosen slug.
+  - Frontend: CSR Subject page is profile-aware (pick/new/delete + name + default, edited via the
+    Standard/Advanced tabs); request form gains a Subject-profile dropdown.
+  Validated: smoke 105/105, node --check + bash -n clean, and a REAL two-profile test through the
+  DEPLOYED helper (web1 -> web1.ac2.lan O=AC2 vs web1.aj.com O='AJ Corp' + extra SAN).
+
+### Fixes & improvements
+
+- **csr-subject:** live-refresh request form on save; preview shows domain + custom DN; Standard/Advanced tabs (`96cbd0b`)
+  - Saving the subject now re-runs loadMe() so the request form's help text + domain dropdown
+    update immediately (no page reload needed).
+  - The 'Resulting subject' preview now appends the domain to the CN (CN=<hostname>.ac2.lan) and
+    includes custom DN attributes; the domain field updates the preview live.
+  - The CSR Subject page is split into Standard / Advanced sub-tabs.
+
 ## 3.19.0 — 2026-06-23
 
 _Released 2026-06-23. 2 changes since v3.18.1._
