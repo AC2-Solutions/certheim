@@ -109,15 +109,32 @@ HELPER = _helper_cmd(CONTAINER_MODE)
 DB_PATH = _ENV["CSR_DB_PATH"]
 ISSUED_DIR = _ENV["CSR_ISSUED_DIR"]
 
-# Application version - read from the VERSION file deployed alongside app.py.
-# Single source of truth is the repo's VERSION file; bump it per release.
+# Application version. Each edition (Community/Commercial/Government) carries its
+# OWN version line in editions/<edition>.version so the three branches never
+# collide on a shared VERSION file during bottom-up propagation. We prefer that
+# per-edition file; the root VERSION (community/base line, also materialized at
+# deploy time) is the fallback for older layouts and dev checkouts.
 def _read_version():
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "VERSION")) as f:
-            return f.read().strip() or "unknown"
-    except OSError:
-        return "unknown"
+        import build_mode
+        edition = build_mode.EDITION
+        candidates.append(os.path.join(here, "editions", edition + ".version"))
+        candidates.append(os.path.join(here, os.pardir, "editions", edition + ".version"))
+    except Exception:
+        pass
+    candidates += [os.path.join(here, "VERSION"),
+                   os.path.join(here, os.pardir, "VERSION")]
+    for path in candidates:
+        try:
+            with open(path) as f:
+                v = f.read().strip()
+            if v:
+                return v
+        except OSError:
+            continue
+    return "unknown"
 
 APP_VERSION = _read_version()
 

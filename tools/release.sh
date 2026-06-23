@@ -1,27 +1,74 @@
 #!/usr/bin/env bash
-# release.sh - compute the next semantic version from Conventional Commits since
-# the last v* tag, and (if a release is warranted) update VERSION + CHANGELOG.md
-# (committed) and write a TRANSIENT RELEASE-NOTES-vX.Y.Z.md. The CALLER (the CI
-# `release` job) commits VERSION + CHANGELOG.md, tags, pushes, and uses the notes
-# file ONLY to populate the GitLab Release page - it is gitignored and never
-# committed (CHANGELOG.md is the durable in-tree history).
+# release.sh - compute the next semantic version for THIS EDITION from Conventional
+# Commits since the edition's last tag, and (if a release is warranted) update the
+# per-edition version + changelog files and write a TRANSIENT release-notes file.
+# The CALLER (the CI `release` job) commits the edition files, tags, pushes, and
+# uses the notes file ONLY to populate the GitLab Release page.
+#
+# --- Per-edition versioning -------------------------------------------------
+# Certinel ships as three stacked editions on three branches:
+#     Community (base) -> Commercial -> Government
+# Each edition has its OWN version line in its OWN tag namespace and its OWN
+# files, so a release on one edition never collides with another on propagation:
+#
+#   edition      tag namespace        version file              changelog file
+#   community    community-v X.Y.Z    editions/community.version  editions/community.changelog.md
+#   commercial   commercial-v X.Y.Z   editions/commercial.version editions/commercial.changelog.md
+#   government   government-v X.Y.Z   editions/government.version editions/government.changelog.md
+#
+# Because each edition writes only its own files, a bottom-up propagation MR
+# (Community->Commercial->Government) carries one edition's release commits up
+# WITHOUT touching the higher edition's files -> zero release-accounting
+# conflicts, no custom merge driver required. The root VERSION file is GENERATED
+# at deploy/build time from the running edition's file (see deploy.sh); it is
+# gitignored and never committed, so it can never diverge either.
+#
+# --- Major-from-base-only policy --------------------------------------------
+# The MAJOR component is a shared "platform generation": vN means the same thing
+# in every edition. To keep all editions on the same major, ONLY the Community
+# (base) edition may bump the major. A breaking change in premium/government code
+# bumps at most a MINOR in that edition; a true new generation is cut by stamping
+# a major at Community, which then sweeps upward via propagation (a major zeroes
+# minor/patch, so every edition re-aligns on vN.0.0). See RELEASING.md.
 #
 # Bump rules (https://www.conventionalcommits.org + SemVer):
-#   * a commit with `<type>!:` OR a `BREAKING CHANGE` body  -> MAJOR (x.0.0)
-#   * any `feat:` / `feat(scope):`                          -> MINOR (2.x.0)  <-- new feature
-#   * any `fix|perf|refactor|build|revert`                  -> PATCH (2.1.x)  <-- patch
-#   * nothing release-worthy (only docs/chore/ci/test/...)  -> no release
-# A manually-set VERSION higher than the last tag is honored (force a version).
+#   * `<type>!:` OR `BREAKING CHANGE` body  -> MAJOR  (community only; else MINOR)
+#   * any `feat:` / `feat(scope):`          -> MINOR
+#   * any `fix|perf|refactor|build|revert`  -> PATCH
+#   * nothing release-worthy                -> no release
 #
 # Output (stdout): the new version "X.Y.Z", or "none" if there's nothing to cut.
-# Idempotent: prints "none" (writes nothing) if the target tag already exists or
-# the target is already a section in CHANGELOG.md.
+# Idempotent: prints "none" if the target edition tag already exists or the
+# target is already a section in the edition changelog.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-last_tag="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)"
-if [ -z "$last_tag" ]; then last_tag="v0.0.0"; range="HEAD"; else range="${last_tag}..HEAD"; fi
-lv="${last_tag#v}"; IFS=. read -r LMAJ LMIN LPAT <<<"$lv"
+# --- which edition are we releasing? ---------------------------------------
+# The CI job sets RELEASE_EDITION from the branch; a local run falls back to the
+# build's own marker (backend/build_mode.py), then to community.
+ED="${RELEASE_EDITION:-}"
+if [ -z "$ED" ]; then
+  ED="$(python3 -c 'import sys; sys.path.insert(0,"backend"); import build_mode; print(build_mode.EDITION)' 2>/dev/null || echo community)"
+fi
+case "$ED" in community|commercial|government) ;; *) ED=community ;; esac
+PFX="$ED"
+VER_FILE="editions/${PFX}.version"
+CL_FILE="editions/${PFX}.changelog.md"
+mkdir -p editions
+
+# --- find this edition's last tag (with continuity from the legacy v* line) --
+# New namespace is "${PFX}-v*". On the very first per-edition release there is no
+# such tag yet, so fall back to the legacy un-prefixed "v*" tag (e.g. v3.20.0) so
+# all three editions continue cleanly from the shared point where they branched,
+# instead of resetting to 0.0.0.
+last_tag="$(git describe --tags --match "${PFX}-v[0-9]*" --abbrev=0 2>/dev/null || true)"
+if [ -n "$last_tag" ]; then
+  lv="${last_tag#${PFX}-v}"; range="${last_tag}..HEAD"
+else
+  legacy="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)"
+  if [ -n "$legacy" ]; then lv="${legacy#v}"; range="${legacy}..HEAD"; else lv="0.0.0"; range="HEAD"; fi
+fi
+IFS=. read -r LMAJ LMIN LPAT <<<"$lv"
 LMAJ="${LMAJ:-0}"; LMIN="${LMIN:-0}"; LPAT="${LPAT:-0}"
 
 subjects="$(git log --no-merges --pretty='%s' "$range" 2>/dev/null || true)"
@@ -37,6 +84,14 @@ elif printf '%s\n' "$subjects" | grep -qE '^(fix|perf|refactor|build|revert)(\([
   bump=patch
 fi
 
+# Major-from-base-only: a non-community edition can never bump the major itself.
+# A breaking change up-tier is released as a minor; the major arrives only when a
+# Community-cut generation propagates up.
+if [ "$bump" = major ] && [ "$PFX" != community ]; then
+  echo "note: '$PFX' edition clamps a breaking change to MINOR (majors are cut at Community)." >&2
+  bump=minor
+fi
+
 case "$bump" in
   major) target="$((LMAJ+1)).0.0" ;;
   minor) target="${LMAJ}.$((LMIN+1)).0" ;;
@@ -44,29 +99,29 @@ case "$bump" in
   *)     echo "none"; exit 0 ;;
 esac
 
-# Honor a manually-set higher VERSION (lets a maintainer force a target).
-cur="$(cat VERSION 2>/dev/null || echo 0.0.0)"
+# Honor a manually-set higher edition version (lets a maintainer force a target).
+cur="$(cat "$VER_FILE" 2>/dev/null || echo 0.0.0)"
 if [ "$(printf '%s\n%s\n' "$cur" "$target" | sort -V | tail -1)" = "$cur" ] && [ "$cur" != "$target" ]; then
   target="$cur"
 fi
 
-# Already released? (tag exists, or already a CHANGELOG section)
-if git rev-parse "v$target" >/dev/null 2>&1 || grep -qE "^## ${target//./\\.}( |\$)" CHANGELOG.md 2>/dev/null; then
+# Already released? (edition tag exists, or already an edition changelog section)
+if git rev-parse "${PFX}-v$target" >/dev/null 2>&1 \
+   || grep -qE "^## ${target//./\\.}( |\$)" "$CL_FILE" 2>/dev/null; then
   echo "none"; exit 0
 fi
 
 # --- build detailed release notes from commit subjects AND bodies ----------
-# The detail lives in the commit bodies (the "why"/"how" paragraphs), so include
-# them - wrapped + indented - under each entry, grouped Features / Fixes /
-# Other, with a leading Breaking-changes section. Generated by an embedded
-# Python pass (robust subject+body parsing beats sed/awk here).
-export TARGET="$target" LAST_TAG="$last_tag" RANGE="$range"
+export TARGET="$target" LAST_TAG="${last_tag:-}" RANGE="$range" EDITION_PFX="$PFX"
+export CL_FILE NOTES_FILE="RELEASE-NOTES-${PFX}-v${target}.md"
 export REL_DATE="$(date -u +%Y-%m-%d)"
 python3 - <<'PYEOF'
 import os, re, subprocess, textwrap
 
 target, last_tag = os.environ["TARGET"], os.environ["LAST_TAG"]
 rng, date = os.environ["RANGE"], os.environ["REL_DATE"]
+pfx = os.environ["EDITION_PFX"]
+cl_file, notes_file = os.environ["CL_FILE"], os.environ["NOTES_FILE"]
 
 raw = subprocess.run(
     ["git", "log", "--no-merges", "--pretty=format:%h%x1f%s%x1f%b%x1e", rng],
@@ -81,10 +136,6 @@ feats, fixes, other, breaking = [], [], [], []
 n_user = 0
 
 def clean_body(body):
-    """Split a commit body into blocks: ('p', text) paragraphs and ('li', text)
-    list items, dropping trailers + [skip ci]. Blank lines break paragraphs;
-    in-body bullets ('- '/'* '/'1. ') are preserved as list items, and their
-    wrapped continuation lines are folded back into the item."""
     blocks, para, li = [], [], None
 
     def flush_para():
@@ -106,7 +157,7 @@ def clean_body(body):
             flush_para(); flush_li()
             li = [re.sub(r'^([-*]\s+|\d+[.)]\s+)', '', s)]
         elif li is not None:
-            li.append(s)            # continuation line of the current list item
+            li.append(s)
         else:
             para.append(s)
     flush_para(); flush_li()
@@ -162,20 +213,28 @@ def sections(level):
             out.append(f"{h} {title}\n\n{render(entries, body)}\n")
     return "\n".join(out)
 
-since = f"since {last_tag}" if last_tag != "v0.0.0" else "in the initial release"
+label = {"community": "Community", "commercial": "Commercial",
+         "government": "Government"}.get(pfx, pfx.capitalize())
+since = f"since {last_tag}" if last_tag else "in the initial release"
 summary = (f"_Released {date}. {n_user} change" + ("s" if n_user != 1 else "")
            + f" {since}._")
 
-# CHANGELOG.md block (## version, ### sections), prepended before the first "## ".
+# Per-edition CHANGELOG block (## version), prepended before the first "## ".
 block = f"## {target} — {date}\n\n{summary}\n\n{sections(3)}".rstrip() + "\n"
-cl = open("CHANGELOG.md").read().splitlines(keepends=True) if os.path.exists("CHANGELOG.md") else []
+cl = open(cl_file).read().splitlines(keepends=True) if os.path.exists(cl_file) else []
+if not cl:
+    cl = [f"# Certinel {label} edition — changelog\n", "\n"]
 idx = next((i for i, l in enumerate(cl) if l.startswith("## ")), len(cl))
-open("CHANGELOG.md", "w").write("".join(cl[:idx]) + block + "\n" + "".join(cl[idx:]))
+open(cl_file, "w").write("".join(cl[:idx]) + block + "\n" + "".join(cl[idx:]))
 
 # Per-release notes file (# title, ## sections).
-notes = f"# Certinel v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
-open(f"RELEASE-NOTES-v{target}.md", "w").write(notes)
+notes = f"# Certinel {label} {pfx}-v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
+open(notes_file, "w").write(notes)
 PYEOF
 
-echo "$target" > VERSION
+echo "$target" > "$VER_FILE"
+# Community is the SOLE writer of the root VERSION file (the base line + the
+# dev/deploy fallback). Higher editions never touch it, so it can't diverge or
+# conflict on propagation; they carry only their own editions/<ed>.version.
+if [ "$PFX" = community ]; then echo "$target" > VERSION; fi
 echo "$target"

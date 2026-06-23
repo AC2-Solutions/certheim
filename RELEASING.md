@@ -2,31 +2,75 @@
 
 Versions follow **[Semantic Versioning](https://semver.org)** (`MAJOR.MINOR.PATCH`)
 and are cut **automatically by CI** from the commit history. You don't edit
-`VERSION` or write changelog entries by hand — you write good commit messages and
-merge; the release falls out.
+version files or write changelog entries by hand — you write good commit
+messages and merge; the release falls out.
+
+## Three editions, three version lines
+
+Certinel ships as three stacked editions on three branches:
+
+```
+Community (base)  ->  Commercial  ->  Government
+```
+
+Each edition has its **own** version line in its **own** tag namespace and its
+**own** files, so a release on one edition never collides with another when a
+change propagates upward:
+
+| Edition | Branch | Tag namespace | Version file | Changelog file |
+|---|---|---|---|---|
+| Community | `Community` | `community-vX.Y.Z` | `editions/community.version` | `editions/community.changelog.md` |
+| Commercial | `Commercial` | `commercial-vX.Y.Z` | `editions/commercial.version` | `editions/commercial.changelog.md` |
+| Government | `Government` | `government-vX.Y.Z` | `editions/government.version` | `editions/government.changelog.md` |
+
+Because each edition writes only its own files (and **only Community** writes the
+root `VERSION`), a bottom-up propagation MR carries one edition's release commits
+up **without touching** the higher edition's files — zero release-accounting
+conflicts, no custom merge driver required.
+
+The editions therefore **drift apart in MINOR/PATCH** by design — at any time you
+might have `community-v4.18.4`, `commercial-v4.22.1`, `government-v4.25.6`. That's
+correct: each number tells a customer exactly what's in the build they run.
+
+## The MAJOR is a shared platform generation (cut at Community only)
+
+To keep all three editions on the same major (`v4`, `v5`, …), the **MAJOR
+component is owned by the Community/base edition alone**:
+
+- **Community** honors `type!:` / `BREAKING CHANGE` → a real **MAJOR** bump.
+- **Commercial** and **Government** **clamp** a breaking change to a **MINOR** —
+  they can never bump the major themselves.
+- To start a new generation, you cut a major at Community (even if the breaking
+  work lives up-tier, anchor a `feat!:` at Community). It then **sweeps upward**
+  via propagation, and because a major zeroes minor/patch, every edition
+  re-aligns on `vN.0.0`. After that they fan out again on `vN.x.y`.
+
+So: editions re-converge on every Community-cut major, and drift apart on
+everything above it.
 
 ## How a version is chosen
 
-On every push to the default branch (`main`), the CI **`release`** job runs
-`tools/release.sh`, which inspects the [Conventional Commit](https://www.conventionalcommits.org)
-subjects since the last `v*` tag and picks the bump:
+On every push to **`Community`**, **`Commercial`**, or **`Government`**, the CI
+**`release`** job runs `tools/release.sh` for that edition. It inspects the
+[Conventional Commit](https://www.conventionalcommits.org) subjects since the
+edition's last tag (falling back to the legacy `vX.Y.Z` line for an edition's
+very first release, so all three continue from the shared point where they
+branched) and picks the bump:
 
-| Commit prefix (since last tag) | Bump | Example |
+| Commit prefix (since last edition tag) | Bump | Notes |
 |---|---|---|
-| `feat:` / `feat(scope):` | **MINOR** — `2.1.0 → 2.2.0` | a new feature |
-| `fix:` / `perf:` / `refactor:` / `build:` / `revert:` | **PATCH** — `2.1.0 → 2.1.1` | a bug fix / patch |
-| any `type!:` or a `BREAKING CHANGE:` body | **MAJOR** — `2.1.0 → 3.0.0` | incompatible change |
+| `feat:` / `feat(scope):` | **MINOR** | a new feature |
+| `fix:` / `perf:` / `refactor:` / `build:` / `revert:` | **PATCH** | a bug fix / patch |
+| any `type!:` or a `BREAKING CHANGE:` body | **MAJOR** | **Community only**; clamped to MINOR on Commercial/Government |
 | only `docs` / `chore` / `ci` / `test` / `style` | **no release** | nothing user-facing |
 
-The highest applicable bump wins (one `feat` among several `fix`es → minor).
-
-The job then regenerates **`VERSION`**, prepends a section to **`CHANGELOG.md`**,
-commits those two (`release: vX.Y.Z [skip ci]`), **tags `vX.Y.Z`**, and creates a
-**GitLab Release** object (Deploy → Releases). It also generates a transient
-`RELEASE-NOTES-vX.Y.Z.md` to use as the Release description — that file is
-**gitignored and never committed** (it bloated the repo root). The durable,
-in-tree history is **`CHANGELOG.md`**; per-version notes live on the GitLab
-Releases page.
+The job then writes the edition's `editions/<edition>.version` + changelog (and,
+for Community, mirrors the number into root `VERSION`), commits
+(`release: <edition>-vX.Y.Z [skip ci]`), **tags `<edition>-vX.Y.Z`**, creates a
+**GitLab Release** object, and builds + publishes the edition's OCI images
+(`<edition>-vX.Y.Z` + the rolling `<edition>` tag; Community also updates the
+bare `latest`/`slim`). The transient `RELEASE-NOTES-<edition>-vX.Y.Z.md` used for
+the Release description is **gitignored and never committed**.
 
 ## So: write Conventional Commits
 
@@ -35,43 +79,34 @@ Your MR's squashed/merge commit subject is what counts. Use:
 ```
 feat(signing): add Windows CA provider
 fix(groups): assign a user to multiple groups in one save
-feat(api)!: drop the deprecated /v1 endpoints   # ! = breaking -> major
+feat(api)!: drop the deprecated /v1 endpoints   # ! = breaking -> MAJOR (Community only)
 ```
-
-Scope (the `(...)`) is optional but nice — it shows up in the changelog.
 
 ## One-time setup (required for the auto-release to push)
 
-The job needs to push the release commit + tag back to the protected default
-branch, so it needs a token:
-
-1. **Project → Settings → Access Tokens** → create a token with the **`api`**
-   scope and **Maintainer** role (e.g. name it `release-bot`). Copy the value.
-   (`api`, not `write_repository`: the job both pushes the tag **and** creates
-   the GitLab Release object via the API. `write_repository` is Git-over-HTTP
-   only and can't call the API, so the release-object step would silently 403.)
-2. **Project → Settings → CI/CD → Variables** → add a **masked, protected**
-   variable named **`RELEASE_TOKEN`** with that value.
-3. **Project → Settings → Repository → Protected branches** → ensure the token's
-   identity is **Allowed to push** to `main` (add the `release-bot` token user,
-   or relax "Allowed to push" for maintainers).
-
-Until `RELEASE_TOKEN` is set, the `release` job is a **safe no-op** (it logs and
-exits 0 — nothing breaks).
-
-The `[skip ci]` in the release commit stops the push from re-triggering a
-pipeline, and the job is idempotent: if the target tag already exists (or the
-version is already a `CHANGELOG.md` section) it does nothing.
+The job needs `RELEASE_TOKEN` (an **`api`**-scope, **Maintainer** project access
+token, set as a **masked + protected** CI/CD variable) that is **Allowed to
+push** to all three protected edition branches. Until it's set, the `release`
+job is a **safe no-op**. `[skip ci]` on the release commit prevents a re-trigger,
+and the job is idempotent (a tag that already exists → does nothing).
 
 ## Forcing a specific version
 
-Bump `VERSION` by hand in your MR to a value **higher** than the last tag (e.g.
-jump to `3.0.0`). `release.sh` honors a manually-set higher `VERSION` and tags
-that instead of the computed bump.
+Bump the edition's `editions/<edition>.version` by hand in your MR to a value
+**higher** than the last edition tag; `release.sh` honors a manually-set higher
+version and tags that instead of the computed bump.
+
+## The build edition marker
+
+`backend/build_mode.py` carries `EDITION = "community" | "commercial" |
+"government"`, which differs per branch and is **not** auto-merged. If a Community
+change to `build_mode.py` ever conflicts on that line during propagation, resolve
+it by **keeping the target branch's edition value** (Commercial stays
+`"commercial"`, Government stays `"government"`). See `.gitattributes`.
 
 ## Deploying a release
 
 Tagging doesn't deploy. To roll a tag onto a box: check it out and run
-`deploy.sh` there (on the STIG box: `sudo bash deploy.sh`, per the SELinux
-exec-under-`/home` note). `deploy.sh` verifies the running app reports the
-deployed `VERSION`.
+`deploy.sh` there. `deploy.sh` resolves the build's edition, materializes
+`editions/<edition>.version` into root `VERSION`, and verifies the running app
+reports it.

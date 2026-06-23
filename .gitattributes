@@ -1,0 +1,29 @@
+# Per-edition release accounting.
+#
+# Certinel ships three stacked editions on three branches:
+#     Community (base) -> Commercial -> Government
+# Changes flow UP via bottom-up propagation MRs. To keep those MRs from choking
+# on mechanical release files, each edition writes ONLY its own files:
+#
+#   editions/community.version     editions/community.changelog.md
+#   editions/commercial.version    editions/commercial.changelog.md
+#   editions/government.version    editions/government.changelog.md
+#
+# Because a higher edition never touches a lower edition's files (and only
+# Community writes the root VERSION), a 3-way merge sees just one side change
+# them -> they merge cleanly with NO conflict, no custom driver required.
+#
+# The `union` attributes below are belt-and-suspenders for the rare case two
+# editions are merged with concurrent edits to the same accounting file: GitLab
+# (Gitaly) honors the built-in `union` strategy server-side, so a merge keeps
+# both sides' lines instead of raising a conflict.
+editions/*.version        merge=union
+editions/*.changelog.md   merge=union
+CHANGELOG.md              merge=union
+
+# NOTE on the build edition marker (backend/build_mode.py `EDITION = "..."`):
+# it intentionally differs per branch and is NOT auto-merged here. A whole-file
+# `merge=ours` would wrongly drop legitimate incoming changes to other lines, so
+# if a Community change to build_mode.py ever conflicts on the EDITION line,
+# resolve it by KEEPING THE TARGET BRANCH'S edition value (commercial stays
+# "commercial", government stays "government"). See RELEASING.md.

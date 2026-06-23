@@ -19,7 +19,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
+# The offline bundle is the Community/base build, so read the community edition
+# version (falling back to the materialized root VERSION, then "unknown").
+VERSION="$(cat editions/community.version 2>/dev/null || cat VERSION 2>/dev/null || echo unknown)"
 # Build the wheelhouse with the best Python on THIS host (>=3.9), not a
 # hardcoded 3.9 - an Alma 9 box updated to 3.12 would otherwise get a 3.9
 # wheelhouse it can't load. The generated target scripts default to the exact
