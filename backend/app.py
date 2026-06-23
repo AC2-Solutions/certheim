@@ -1353,23 +1353,7 @@ else:
         return (0, 0, 0)
 
 def auth_mode():
-    # An explicit admin choice (a row in app_settings) always wins. We read it
-    # RAW here rather than via get_setting(), whose _SETTINGS_DEFAULTS fallback
-    # would mask "unset" as "mtls".
-    with db() as conn:
-        row = conn.execute(
-            "SELECT value FROM app_settings WHERE key = 'auth_mode'").fetchone()
-    if row and row[0]:
-        return row[0]
-    # No explicit setting yet: default to CAC/mTLS only on a build+license that
-    # can actually do it (auth.cac entitled — a government build with a gov
-    # license). Otherwise password auth, so a fresh Community or Commercial box
-    # never tries to use a CAC it isn't entitled to.
-    try:
-        import capabilities
-        return "mtls" if capabilities.is_entitled("auth.cac") else "local"
-    except Exception:
-        return "local"
+    return get_setting("auth_mode") or "mtls"
 
 def current_banner():
     """Resolve the configured login banner to a render-ready dict, or None.
