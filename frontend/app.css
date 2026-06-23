@@ -86,6 +86,12 @@
                   border: 1px solid var(--toggle-border); border-radius: 4px;
                   padding: 6px 12px; font-size: 13px; cursor: pointer;
                   display: inline-flex; align-items: center; gap: 6px; }
+  /* The theme toggle now lives in the Settings modal; its header-tuned colors
+     need overriding for the modal surface. */
+  #settings-modal .theme-toggle { color: var(--fg); background: var(--bg-input);
+                  border-color: var(--border-input); margin-top: 4px; }
+  /* Admin button pinned to the far-right corner of the header. */
+  .nav-admin-corner { margin-left: 12px; }
   .theme-toggle:hover { background: var(--toggle-bg-hover); }
 
   main { max-width: none; margin: 0; padding: 0; display: block; }
