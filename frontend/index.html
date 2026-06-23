@@ -202,6 +202,13 @@
           </select>
         </div>
 
+        <div class="opt-field" id="generate-profile-field" hidden>
+          <label for="generate-profile" class="textarea-label">
+            Subject profile <span class="hint">(organization identity)</span>
+          </label>
+          <select id="generate-profile" class="form-input"></select>
+        </div>
+
         <div class="opt-field" id="generate-domain-field" hidden>
           <label for="generate-domain" class="textarea-label">
             Domain suffix <span class="hint">(applied to bare hostnames)</span>
@@ -1164,6 +1171,20 @@
          these are <strong>not</strong> hardcoded. Pick a starter profile, then
          add/remove OU tags as needed.</p>
       <p id="csrsubject-oobe" class="status" style="font-weight:600" hidden></p>
+
+      <!-- Saved subject profiles: pick / create / delete. Each is edited with
+           the Standard/Advanced tabs below and selectable on the request form. -->
+      <div class="bulk-row" style="flex-wrap:wrap; gap:8px; align-items:end; margin-bottom:8px">
+        <label class="textarea-label" style="margin:0">Subject profile
+          <select id="csrsubject-prof-sel" class="form-input" style="min-width:200px"></select></label>
+        <button id="csrsubject-prof-new" class="secondary" type="button">+ New</button>
+        <button id="csrsubject-prof-delete" class="secondary" type="button">Delete</button>
+      </div>
+      <div class="bulk-row" style="flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:8px">
+        <label class="textarea-label" style="margin:0">Name
+          <input type="text" id="csrsubject-prof-name" class="form-input" style="width:200px" placeholder="e.g. ac2.lan"></label>
+        <label class="checkbox-row" style="margin:0"><input type="checkbox" id="csrsubject-prof-default"> Default profile</label>
+      </div>
 
       <!-- Two ways to edit the subject: Standard (the common DN fields) and
            Advanced (custom DN attributes, alternate domains, extra SANs). -->

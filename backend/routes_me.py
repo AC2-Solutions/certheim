@@ -45,7 +45,23 @@ def get_me():
         "domain_suffix": get_setting("subject_domain_suffix") or "",
         # Selectable suffixes for the request form (primary + admin alternates).
         "domain_suffixes": _selectable_domain_suffixes(),
+        # Named subject profiles the requester can choose between.
+        "subject_profiles": _subject_profiles_public(),
     })
+
+
+def _subject_profiles_public():
+    try:
+        profs = json.loads(get_setting("subject_profiles") or "[]")
+    except (TypeError, ValueError):
+        profs = []
+    if not isinstance(profs, list):
+        profs = []
+    if not profs and get_setting("subject_configured") == "1":
+        profs = [{"slug": "default", "name": "Default", "is_default": True}]
+    return [{"slug": p.get("slug"), "name": p.get("name"),
+             "is_default": bool(p.get("is_default"))}
+            for p in profs if p.get("slug")]
 
 
 def _selectable_domain_suffixes():

@@ -86,6 +86,13 @@ def suggested_ous(public_sector=False):
     return CORE_SUGGESTED_OUS + (PUBLIC_SECTOR_OUS if public_sector else [])
 
 
+def slugify(name):
+    """A filesystem/URL-safe profile slug matching the helper's allow-list
+    (^[a-z0-9][a-z0-9-]{0,63}$)."""
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return (s[:64] or "profile")
+
+
 def sanitize(value, domain=False):
     """Reduce a value to the helper-safe whitelist, single line, capped."""
     if value is None:

@@ -47,7 +47,10 @@ case "$cmd" in
         read_subject
         ;;
     write-subject)
-        write_subject
+        write_subject "${1:-}"
+        ;;
+    delete-subject-profile)
+        delete_subject_profile "${1:-}"
         ;;
     generate-rhel)
         # Legacy: defers to csr-rhel.sh (web certs only). Kept for external
@@ -59,7 +62,7 @@ case "$cmd" in
         exit $rc
         ;;
     generate-typed)
-        generate_typed "${1:-}" "${2:-rsa2048}" "${3:-}"
+        generate_typed "${1:-}" "${2:-rsa2048}" "${3:-}" "${4:-}"
         ;;
     list-csrs)
         list_files "$CSRDIR" '*.csr'

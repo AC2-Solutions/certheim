@@ -7,13 +7,15 @@ generate_typed() {
     local types_input="${1:-}"
     local key_algo="${2:-rsa2048}"
     local domain_choice="${3:-}"
+    local profile="${4:-}"
     if [[ -z "$types_input" ]]; then
         echo "ERROR: cert type(s) required, e.g. 'web' or 'web,client'" >&2
         return 2
     fi
-    # Per-batch domain-suffix choice (validated against the admin allow-list;
-    # a non-listed value is ignored). Overrides DOMAIN_SUFFIX for this run, so
-    # fqdn_qualify uses it for bare hostnames.
+    # Per-batch named subject profile (subjects/<slug>.conf), overriding the
+    # default subject for this run. Then the per-batch domain-suffix choice
+    # (validated against the resulting allow-list; a non-listed value ignored).
+    load_subject_profile "$profile"
     apply_domain_choice "$domain_choice"
     if [[ ! "$key_algo" =~ ^(rsa2048|rsa3072|rsa4096|ecdsa256|ecdsa384)$ ]]; then
         echo "ERROR: invalid key_algo (rsa2048|rsa3072|rsa4096|ecdsa256|ecdsa384)" >&2

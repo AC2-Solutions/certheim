@@ -585,6 +585,20 @@ async function loadMe() {
       _dfield.hidden = true;
     }
   }
+  // Subject-profile picker: shown when an admin saved more than one profile so
+  // the requester can switch (e.g. ac2.lan vs aj.com).
+  const _profs = currentUser.subject_profiles || [];
+  const _psel = document.getElementById("generate-profile");
+  const _pfield = document.getElementById("generate-profile-field");
+  if (_psel && _pfield) {
+    if (_profs.length > 1) {
+      _psel.innerHTML = _profs.map(p =>
+        `<option value="${p.slug}"${p.is_default ? " selected" : ""}>${p.name}</option>`).join("");
+      _pfield.hidden = false;
+    } else {
+      _pfield.hidden = true;
+    }
+  }
   if (currentUser.is_admin) {
     document.body.classList.add("is-admin");
   }
