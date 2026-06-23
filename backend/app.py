@@ -1353,7 +1353,18 @@ else:
         return (0, 0, 0)
 
 def auth_mode():
-    return get_setting("auth_mode") or "mtls"
+    m = get_setting("auth_mode")
+    if m:
+        return m
+    # No explicit setting yet: default to CAC/mTLS only on a build+license that
+    # can actually do it (auth.cac entitled — a government build with a gov
+    # license). Otherwise default to password auth, so a fresh Community or
+    # Commercial box never tries to use a CAC it isn't entitled to.
+    try:
+        import capabilities
+        return "mtls" if capabilities.is_entitled("auth.cac") else "local"
+    except Exception:
+        return "local"
 
 def current_banner():
     """Resolve the configured login banner to a render-ready dict, or None.
