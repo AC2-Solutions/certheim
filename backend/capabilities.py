@@ -317,12 +317,25 @@ def edition_capabilities(edition):
     return caps
 
 
+def _cap_build_tier(key):
+    """Which build tier physically contains this capability's code.
+    2 = government pack, 1 = commercial premium, 0 = always present (free)."""
+    if key in GOVERNMENT_CAPABILITIES:
+        return 2
+    if key in COMMERCIAL_CAPABILITIES:
+        return 1
+    return 0
+
+
 def is_entitled(key):
     if key in LICENSED_CAPABILITIES:
-        # Community BUILD: the premium code is physically absent, so no license
-        # (or dev override) can grant a licensed capability. Hard floor.
+        # BUILD CEILING: the code for this tier must be physically present in
+        # this build. The Community build has no premium code; the Commercial
+        # build has no government pack; etc. No license (or dev override) can
+        # grant what isn't in the artifact. The license is still required ON TOP
+        # of this (checked below) — build = ceiling, license = key.
         import build_mode
-        if build_mode.is_community_build():
+        if not build_mode.build_includes_tier(_cap_build_tier(key)):
             return False
         # Explicit operator override (dev / evaluation / all-access self-host):
         # CSR_ENTITLEMENTS=* or a comma list unlocks licensed caps without a

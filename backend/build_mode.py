@@ -46,7 +46,28 @@ def is_community_build():
 
     Unlike a license check, this can't be bypassed by editing a license file or
     an env var — the premium modules aren't in the artifact to begin with."""
-    return EDITION != "full"
+    return EDITION == "community"
+
+
+# Build editions form a ladder: each higher build physically contains everything
+# below it plus its own tier. The branch sets EDITION; this rank is the hard
+# CEILING on what features the build can run, regardless of any license:
+#   community(0)  -> no premium code at all
+#   commercial(1) -> + the commercial premium modules
+#   government(2) -> + the government pack (CAC / mTLS, public-sector profiles)
+#   full(3)       -> developer build, everything (== government, dev overrides on)
+_EDITION_RANK = {"community": 0, "commercial": 1, "government": 2, "full": 3}
+
+
+def edition_rank():
+    return _EDITION_RANK.get(EDITION, 3)
+
+
+def build_includes_tier(tier):
+    """True when this build physically contains a capability of the given tier
+    (1 = commercial, 2 = government). The license still has to GRANT it on top —
+    the build is the ceiling, the license is the key."""
+    return edition_rank() >= tier
 
 
 def is_release():
