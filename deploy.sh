@@ -33,6 +33,15 @@ INSTALL_CONF=/etc/certinel/install.conf
 SERVICE_USER="${SERVICE_USER:-certinel}"
 SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
+# Materialize the running edition's version into root VERSION (the file the app
+# reads and this manifest deploys). Each edition keeps its own number in
+# editions/<edition>.version so the three branches never collide on a shared
+# VERSION during propagation; here we resolve it to this build's actual edition.
+DEPLOY_EDITION="$(python3 -c 'import sys; sys.path.insert(0,"backend"); import build_mode; print(build_mode.EDITION)' 2>/dev/null || echo community)"
+if [[ -f "editions/${DEPLOY_EDITION}.version" ]]; then
+    cp -f "editions/${DEPLOY_EDITION}.version" VERSION
+fi
+
 # src | dest | owner:group | mode | tag
 MANIFEST=(
   "VERSION                   /opt/certinel/VERSION                        root:certinel 0640 backend"

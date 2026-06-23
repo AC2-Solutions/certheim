@@ -107,7 +107,7 @@ smoke-tests-postgres:
 release:
   stage: release
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+    - if: '($CI_COMMIT_BRANCH == "Community" || $CI_COMMIT_BRANCH == "Commercial" || $CI_COMMIT_BRANCH == "Government") && $CI_PIPELINE_SOURCE == "push"'
   variables:
     GIT_DEPTH: "0"          # full history + tags needed for `git describe`
   script:
@@ -117,6 +117,17 @@ release:
         echo "RELEASE_TOKEN not set — skipping auto-release (set a write_repository token to enable)."
         exit 0
       fi
+      # Per-edition release: each branch (Community/Commercial/Government) cuts its
+      # OWN version line in its OWN tag namespace (community-v* / commercial-v* /
+      # government-v*). The MAJOR is owned by Community only (see tools/release.sh):
+      # a breaking change up-tier clamps to a minor. RELEASE_EDITION tells
+      # release.sh which edition it is computing for.
+      case "$CI_COMMIT_BRANCH" in
+        Community)  export RELEASE_EDITION=community ;;
+        Commercial) export RELEASE_EDITION=commercial ;;
+        Government) export RELEASE_EDITION=government ;;
+      esac
+      PFX="$RELEASE_EDITION"
       git config user.email "release-bot@certinel.local"
       git config user.name  "release-bot"
       git remote set-url origin "https://oauth2:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
@@ -127,26 +138,27 @@ release:
       # re-push. The loser typically recomputes to "none" and no-ops cleanly.
       ver=""
       for attempt in 1 2 3 4 5; do
-        git fetch --quiet --tags origin "$CI_DEFAULT_BRANCH" || true
-        git reset --hard "origin/${CI_DEFAULT_BRANCH}"
+        git fetch --quiet --tags origin "$CI_COMMIT_BRANCH" || true
+        git reset --hard "origin/${CI_COMMIT_BRANCH}"
         ver="$(bash tools/release.sh)"
         if [ "$ver" = "none" ]; then
-          echo "No release-worthy commits since the last tag — nothing to cut."
+          echo "No release-worthy commits since the last ${PFX} tag — nothing to cut."
           exit 0
         fi
-        echo "Cutting v$ver (attempt $attempt)"
-        # Commit only VERSION + CHANGELOG.md. RELEASE-NOTES-v$ver.md is still
-        # generated (used below to populate the GitLab Release page) but is
-        # gitignored and never committed - it doesn't belong in the tree.
-        git add VERSION CHANGELOG.md
-        git commit -m "release: v$ver [skip ci]"
-        git tag -a "v$ver" -m "Certinel v$ver"
-        if git push origin "HEAD:${CI_DEFAULT_BRANCH}" && git push origin "v$ver"; then
-          echo "Pushed v$ver on attempt $attempt"
+        echo "Cutting ${PFX}-v$ver (attempt $attempt)"
+        # Commit only this edition's files. release.sh also mirrors the community
+        # line into root VERSION (community is the only writer of root VERSION, so
+        # it never diverges across editions). RELEASE-NOTES-${PFX}-v$ver.md is
+        # generated for the GitLab Release page but gitignored, never committed.
+        git add "editions/${PFX}.version" "editions/${PFX}.changelog.md" VERSION
+        git commit -m "release: ${PFX}-v$ver [skip ci]"
+        git tag -a "${PFX}-v$ver" -m "Certinel ${PFX}-v$ver"
+        if git push origin "HEAD:${CI_COMMIT_BRANCH}" && git push origin "${PFX}-v$ver"; then
+          echo "Pushed ${PFX}-v$ver on attempt $attempt"
           break
         fi
         echo "Push raced (non-fast-forward); re-syncing and retrying."
-        git tag -d "v$ver" || true   # drop the local tag; recompute on the new tip
+        git tag -d "${PFX}-v$ver" || true   # drop the local tag; recompute on the new tip
         ver=""
         sleep 3
       done
@@ -160,15 +172,20 @@ release:
       # is Git-over-HTTP only and CANNOT call the API (the POST 403s). The browser
       # User-Agent dodges the Cloudflare bot rule (1010) on API writes to the
       # public host. Print the HTTP status so a failure isn't silent.
-      desc="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read()))' "RELEASE-NOTES-v$ver.md")"
+      # Edition-scoped image/release tags. RELTAG is the immutable release tag
+      # (e.g. commercial-v3.22.0); MOVING is the edition's rolling tag (commercial).
+      # Community additionally owns the bare latest/slim tags for backward-compat.
+      RELTAG="${PFX}-v$ver"
+      MOVING="${PFX}"
+      desc="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read()))' "RELEASE-NOTES-${PFX}-v$ver.md")"
       rel_code="$(curl -sS -A "Mozilla/5.0" -o /tmp/rel-resp.json -w '%{http_code}' \
         -X POST -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" -H "Content-Type: application/json" \
-        --data "{\"tag_name\":\"v$ver\",\"name\":\"v$ver\",\"description\":$desc}" \
+        --data "{\"tag_name\":\"$RELTAG\",\"name\":\"$RELTAG\",\"description\":$desc}" \
         "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" || echo 000)"
       if [ "$rel_code" = "201" ]; then
-        echo "GitLab Release v$ver created"
+        echo "GitLab Release $RELTAG created"
       else
-        echo "warn: GitLab Release object not created (HTTP $rel_code; tag v$ver is pushed regardless):"
+        echo "warn: GitLab Release object not created (HTTP $rel_code; tag $RELTAG is pushed regardless):"
         head -c 300 /tmp/rel-resp.json || true; echo
       fi
       # Build + publish the OCI images (UBI9 default + slim) for the cut release
@@ -183,6 +200,13 @@ release:
       # Non-fatal: a build hiccup must never undo the pushed tag. Falls back to
       # buildah (no attestations) if BuildKit isn't present on the runner.
       HUB_IMAGE="docker.io/ac2solutions/certinel"
+      # Compose the edition's tag set: always RELTAG + MOVING; community also
+      # publishes the bare latest/slim so existing `:latest` pulls track the base.
+      IMG_TAGS="$HUB_IMAGE:$RELTAG,$HUB_IMAGE:$MOVING"
+      SLIM_TAGS="$HUB_IMAGE:$RELTAG-slim,$HUB_IMAGE:$MOVING-slim"
+      if [ "$PFX" = community ]; then
+        IMG_TAGS="$IMG_TAGS,$HUB_IMAGE:latest"; SLIM_TAGS="$SLIM_TAGS,$HUB_IMAGE:slim"
+      fi
       export PATH="/usr/local/bin:$PATH"
       # BuildKit state lives OUTSIDE $CI_PROJECT_DIR: rootless buildkitd writes
       # runc-overlayfs snapshots owned by remapped subuids that a plain rm (and
@@ -200,10 +224,10 @@ release:
           bk() { buildctl-daemonless.sh build --frontend dockerfile.v0 \
                    --local context="$CI_PROJECT_DIR" --local dockerfile="$CI_PROJECT_DIR" --opt filename=Containerfile \
                    --opt attest:sbom=true --opt attest:provenance=mode=max "$@"; }
-          bk --output "type=image,\"name=$HUB_IMAGE:v$ver,$HUB_IMAGE:latest\",push=true"
+          bk --output "type=image,\"name=$IMG_TAGS\",push=true"
           bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
-             --output "type=image,\"name=$HUB_IMAGE:v$ver-slim,$HUB_IMAGE:slim\",push=true"
-          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: v$ver, latest, v$ver-slim, slim"
+             --output "type=image,\"name=$SLIM_TAGS\",push=true"
+          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: $IMG_TAGS,$SLIM_TAGS"
           # Mirror the same attested images into the entitled Certinel registry
           # (the license-server origin, over the LAN — bypasses Cloudflare's
           # 100MB body cap). Auth: the _mirror push credential on the portal's
@@ -213,13 +237,16 @@ release:
             ( REG="192.168.201.19:5000"
               ma=$(printf '_mirror:%s' "$CERTINEL_MIRROR_PUSH_SECRET" | base64 -w0)
               python3 -c "import json;p='$DOCKER_CONFIG/config.json';d=json.load(open(p));d['auths']['$REG']={'auth':'$ma'};json.dump(d,open(p,'w'))"
-              bk --output "type=image,\"name=$REG/certinel:v$ver,$REG/certinel:latest\",push=true,registry.insecure=true"
+              MREG_TAGS="$REG/certinel:$RELTAG,$REG/certinel:$MOVING"
+              MREG_SLIM="$REG/certinel:$RELTAG-slim,$REG/certinel:$MOVING-slim"
+              if [ "$PFX" = community ]; then MREG_TAGS="$MREG_TAGS,$REG/certinel:latest"; MREG_SLIM="$MREG_SLIM,$REG/certinel:slim"; fi
+              bk --output "type=image,\"name=$MREG_TAGS\",push=true,registry.insecure=true"
               bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
-                 --output "type=image,\"name=$REG/certinel:v$ver-slim,$REG/certinel:slim\",push=true,registry.insecure=true"
+                 --output "type=image,\"name=$MREG_SLIM\",push=true,registry.insecure=true"
               echo "Mirrored to entitled registry $REG (attested)" ) \
               || echo "note: entitled-registry mirror skipped/failed (Docker Hub publish still succeeded)"
           fi ) \
-          || echo "warn: attested image publish failed (release v$ver still cut; rebuild manually)"
+          || echo "warn: attested image publish failed (release $RELTAG still cut; rebuild manually)"
         buildah unshare -- rm -rf "$BK" 2>/dev/null || rm -rf "$BK" 2>/dev/null || true
       elif [ -n "${DOCKERHUB_TOKEN:-}" ] && command -v buildah >/dev/null 2>&1; then
         echo "note: BuildKit not on the runner — publishing without attestations (buildah)."
@@ -228,15 +255,17 @@ release:
           export REGISTRY_AUTH_FILE="$CI_PROJECT_DIR/.auth.json"
           B="buildah --root $CI_PROJECT_DIR/.bstore --runroot $CI_PROJECT_DIR/.brun --storage-driver vfs"
           echo "$DOCKERHUB_TOKEN" | $B login -u "$DOCKERHUB_USERNAME" --password-stdin docker.io
-          $B bud --isolation chroot -t "$HUB_IMAGE:v$ver" -t "$HUB_IMAGE:latest" -f Containerfile .
+          tflags=""; for t in $(echo "$IMG_TAGS" | tr ',' ' '); do tflags="$tflags -t $t"; done
+          sflags=""; for t in $(echo "$SLIM_TAGS" | tr ',' ' '); do sflags="$sflags -t $t"; done
+          $B bud --isolation chroot $tflags -f Containerfile .
           $B bud --isolation chroot --build-arg PYBASE=docker.io/library/python:3.12-slim \
-                 -t "$HUB_IMAGE:v$ver-slim" -t "$HUB_IMAGE:slim" -f Containerfile .
-          for t in "v$ver" latest "v$ver-slim" slim; do $B push "$HUB_IMAGE:$t"; done
-          echo "Published $HUB_IMAGE  tags: v$ver, v$ver-slim, latest, slim" ) \
-          || echo "warn: container image publish failed (release v$ver still cut; rebuild manually)"
+                 $sflags -f Containerfile .
+          for t in $(echo "$IMG_TAGS,$SLIM_TAGS" | tr ',' ' '); do $B push "$t"; done
+          echo "Published $HUB_IMAGE  tags: $IMG_TAGS,$SLIM_TAGS" ) \
+          || echo "warn: container image publish failed (release $RELTAG still cut; rebuild manually)"
         buildah unshare -- bash -c "rm -rf $CI_PROJECT_DIR/.bstore $CI_PROJECT_DIR/.brun $CI_PROJECT_DIR/.xdg $CI_PROJECT_DIR/.auth.json" 2>/dev/null || true
       else
-        echo "note: DOCKERHUB_TOKEN unset or no builder — skipping image publish for v$ver."
+        echo "note: DOCKERHUB_TOKEN unset or no builder — skipping image publish for $RELTAG."
       fi
       # Build + publish the offline installer tarball (Community self-hosted +
       # air-gapped — one ~4MB artifact, identical for every edition; the portal
@@ -246,7 +275,10 @@ release:
       # certinel-offline-$ver.tar.gz in the CWD. Gated on the upload secret (CI
       # var); non-fatal, like the image publish. </dev/null guards against any
       # stray read blocking the unattended job.
-      if [ -n "${CERTINEL_RELEASE_UPLOAD_SECRET:-}" ]; then
+      # The offline installer tarball is the Community/base build (one artifact,
+      # license injected per-customer at download time), so only the Community
+      # release publishes it — higher editions must not overwrite it.
+      if [ "$PFX" = community ] && [ -n "${CERTINEL_RELEASE_UPLOAD_SECRET:-}" ]; then
         ( set -e
           bash make-offline-bundle.sh </dev/null
           bundle="certinel-offline-$ver.tar.gz"
@@ -255,12 +287,14 @@ release:
             -H "Authorization: Bearer $CERTINEL_RELEASE_UPLOAD_SECRET" \
             -F "version=$ver" -F "sha256=$sha" -F "bundle=@$bundle"
           echo "Published offline bundle $bundle ($sha) to the licenses portal" ) \
-          || echo "warn: offline-bundle publish failed (release v$ver still cut)"
+          || echo "warn: offline-bundle publish failed (release $RELTAG still cut)"
         rm -f "certinel-offline-$ver.tar.gz" "certinel-offline-$ver.tar.gz.sha256" 2>/dev/null || true
+      elif [ "$PFX" = community ]; then
+        echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for $RELTAG."
       else
-        echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for v$ver."
+        echo "note: offline bundle is published from Community only — skipping for $RELTAG."
       fi
-      echo "Released v$ver"
+      echo "Released $RELTAG"
 
 # ---------------------------------------------------------------------------
 # Bottom-up edition propagation.
