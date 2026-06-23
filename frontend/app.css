@@ -92,6 +92,15 @@
                   border-color: var(--border-input); margin-top: 4px; }
   /* Admin button pinned to the far-right corner of the header. */
   .nav-admin-corner { margin-left: 12px; }
+
+  /* In-panel sub-tabs (e.g. CSR Subject: Standard / Advanced). */
+  .subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+             margin: 8px 0 16px; }
+  .subtab { background: transparent; border: 0; border-bottom: 2px solid transparent;
+            color: var(--fg-muted); padding: 8px 14px; font-size: 13px;
+            cursor: pointer; font-family: inherit; }
+  .subtab:hover { color: var(--fg); }
+  .subtab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
   .theme-toggle:hover { background: var(--toggle-bg-hover); }
 
   main { max-width: none; margin: 0; padding: 0; display: block; }

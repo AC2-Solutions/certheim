@@ -135,8 +135,11 @@ def generate_rhel():
     # selectable suffixes). Sanitized here; the helper re-validates it against
     # the allow-list and ignores anything not configured.
     domain_choice = csr_subject.sanitize(payload.get("domain_suffix") or "", domain=True)
+    # Optional named subject profile (slug); the helper loads subjects/<slug>.conf
+    # and validates the slug, ignoring anything unknown.
+    profile = csr_subject.slugify(payload.get("subject_profile") or "") if payload.get("subject_profile") else ""
     rc, out, err = run_helper(
-        ["generate-typed", cert_type, key_algo, domain_choice], timeout=600)
+        ["generate-typed", cert_type, key_algo, domain_choice, profile], timeout=600)
     if rc != 0:
         log_event("generate_rhel", "error", rc=rc, cert_type=cert_type)
         return jsonify(returncode=rc, output=out + err, jobs=[]), 500

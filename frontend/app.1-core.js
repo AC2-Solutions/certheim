@@ -1029,6 +1029,12 @@ async function generateRhel() {
   if (domSel && domField && !domField.hidden && domSel.value) {
     body.domain_suffix = domSel.value;
   }
+  // Chosen subject profile (only present when the admin saved >1).
+  const profSel = document.getElementById("generate-profile");
+  const profField = document.getElementById("generate-profile-field");
+  if (profSel && profField && !profField.hidden && profSel.value) {
+    body.subject_profile = profSel.value;
+  }
   // Carry the chosen template so the request inherits its signing policy.
   const tplSel = document.getElementById("generate-template");
   if (tplSel && tplSel.value && tplSel.value !== "__custom__") {

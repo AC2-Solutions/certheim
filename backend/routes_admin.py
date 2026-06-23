@@ -889,6 +889,8 @@ def get_csr_subject():
         profiles=csr_subject.org_profiles(public_sector=gov),
         suggested_ous=csr_subject.suggested_ous(public_sector=gov),
         preview=csr_subject.preview_dn(cfg),
+        # Named, savable subject profiles (pick one per request).
+        subject_profiles=_profiles_with_default_fallback(),
     )
 
 
@@ -919,6 +921,97 @@ def put_csr_subject():
               org=cfg["org"][:64], ous=len(cfg["ous"]))
     return jsonify(ok=True, config=cfg, configured=True,
                    preview=csr_subject.preview_dn(cfg))
+
+
+# ----- named subject profiles (save several subjects; pick one per request) ---
+def _load_subject_profiles():
+    try:
+        v = json.loads(get_setting("subject_profiles") or "[]")
+        return v if isinstance(v, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+def _profiles_with_default_fallback():
+    """The saved profiles; if none exist yet but a legacy single subject was
+    configured, synthesize a 'Default' profile from it (no DB migration)."""
+    profs = _load_subject_profiles()
+    if not profs and get_setting("subject_configured") == "1":
+        profs = [{"slug": "default", "name": "Default", "is_default": True,
+                  "config": _subject_config()}]
+    return profs
+
+
+def _apply_default_profile(profs):
+    """Mirror the default profile to the main subject.conf + legacy subject_*
+    settings, so non-profile generation and the existing GET stay consistent."""
+    default = next((p for p in profs if p.get("is_default")), profs[0] if profs else None)
+    if not default:
+        return
+    cfg = csr_subject.clean_config(default.get("config") or {})
+    run_helper(["write-subject"], stdin=csr_subject.render_conf(cfg))
+    set_setting("subject_country", cfg["country"])
+    set_setting("subject_state", cfg["state"])
+    set_setting("subject_locality", cfg["locality"])
+    set_setting("subject_org", cfg["org"])
+    set_setting("subject_ous", json.dumps(cfg["ous"]))
+    set_setting("subject_domain_suffix", cfg["domain_suffix"])
+    set_setting("subject_domain_suffixes", json.dumps(cfg["domain_suffixes"]))
+    set_setting("subject_custom_dn", json.dumps(cfg["custom_dn"]))
+    set_setting("subject_extra_sans", json.dumps(cfg["extra_sans"]))
+
+
+@bp.put("/api/admin/csr-subject/profile")
+@require_admin
+@require_csrf
+def put_csr_subject_profile():
+    """Create or update a NAMED subject profile. Writes subjects/<slug>.conf via
+    the helper; the default profile also mirrors to the main subject.conf."""
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify(error="profile name is required"), 400
+    slug = csr_subject.slugify(name)
+    cfg = csr_subject.clean_config(body.get("config") or {})
+    is_default = bool(body.get("is_default"))
+    rc, _o, err = run_helper(["write-subject", slug], stdin=csr_subject.render_conf(cfg))
+    if rc != 0:
+        log_event("csr_subject", "profile_write_fail", slug=slug, rc=rc, err=(err or "").strip()[:160])
+        return jsonify(error="the signing helper rejected the subject: "
+                             + (err or "").strip()[:200]), 502
+    profs = [p for p in _profiles_with_default_fallback() if p.get("slug") != slug]
+    if is_default:
+        for p in profs:
+            p["is_default"] = False
+    profs.append({"slug": slug, "name": name, "is_default": is_default, "config": cfg})
+    if not any(p.get("is_default") for p in profs):
+        profs[0]["is_default"] = True
+    _apply_default_profile(profs)
+    set_setting("subject_profiles", json.dumps(profs))
+    set_setting("subject_configured", "1")
+    log_event("csr_subject", "profile_save", actor=g.identity["dn"][:128],
+              slug=slug, default=is_default)
+    return jsonify(ok=True, slug=slug, profiles=profs,
+                   preview=csr_subject.preview_dn(cfg))
+
+
+@bp.delete("/api/admin/csr-subject/profile/<slug>")
+@require_admin
+@require_csrf
+def delete_csr_subject_profile(slug):
+    slug = csr_subject.slugify(slug)
+    profs = _profiles_with_default_fallback()
+    if len(profs) <= 1:
+        return jsonify(error="cannot delete the only subject profile"), 400
+    was_default = any(p.get("slug") == slug and p.get("is_default") for p in profs)
+    profs = [p for p in profs if p.get("slug") != slug]
+    run_helper(["delete-subject-profile", slug])
+    if was_default and profs:
+        profs[0]["is_default"] = True
+    _apply_default_profile(profs)
+    set_setting("subject_profiles", json.dumps(profs))
+    log_event("csr_subject", "profile_delete", actor=g.identity["dn"][:128], slug=slug)
+    return jsonify(ok=True, profiles=profs)
 
 
 # ----- License / entitlements (premium editions, offline-verifiable) -----

@@ -2437,7 +2437,11 @@ function _csrSubjectPreview() {
   if (c.locality) parts.push("L=" + c.locality);
   if (c.org) parts.push("O=" + c.org);
   c.ous.forEach(ou => parts.push("OU=" + ou));
-  parts.push("CN=<hostname>");
+  (c.custom_dn || []).forEach(d => parts.push(d.field + "=" + d.value));
+  // The domain suffix is appended to bare hostnames at generation, so show it
+  // on the CN placeholder (e.g. CN=<hostname>.ac2.lan).
+  const dom = c.domain_suffix ? "." + c.domain_suffix : "";
+  parts.push("CN=<hostname>" + dom);
   document.getElementById("csrsubject-preview").textContent = parts.join(", ");
 }
 
@@ -2453,11 +2457,11 @@ function _csrSubjectRenderOUs(ous) {
   }));
 }
 
-async function loadCsrSubject() {
-  const r = await jsonReq("/admin/csr-subject");
-  if (!r.ok) return;
-  const b = r.body, cfg = b.config || {};
-  _csrSubjectProfiles = b.profiles || [];
+let _csrSavedProfiles = [];   // named subject profiles (distinct from org starters)
+
+// Load a subject config dict into the Standard/Advanced editors.
+function _csrLoadCfg(cfg) {
+  cfg = cfg || {};
   document.getElementById("csrsubject-c").value = cfg.country || "";
   document.getElementById("csrsubject-st").value = cfg.state || "";
   document.getElementById("csrsubject-l").value = cfg.locality || "";
@@ -2468,22 +2472,46 @@ async function loadCsrSubject() {
   _csrChipRender("csrsubject-xsan-chips", cfg.extra_sans || [], "csrsubject-xsan-del");
   document.getElementById("csrsubject-xdn-rows").innerHTML = "";
   (cfg.custom_dn || []).forEach(d => _csrXdnAddRow(d.field, d.value));
+  _csrSubjectPreview();
+}
+
+// Select a saved profile: load its config + name + default flag into the editor.
+function _csrSelectProfile(slug) {
+  const p = _csrSavedProfiles.find(x => x.slug === slug);
+  if (!p) return;
+  document.getElementById("csrsubject-prof-sel").value = slug;
+  document.getElementById("csrsubject-prof-name").value = p.name || "";
+  document.getElementById("csrsubject-prof-default").checked = !!p.is_default;
+  _csrLoadCfg(p.config || {});
+}
+
+async function loadCsrSubject() {
+  const r = await jsonReq("/admin/csr-subject");
+  if (!r.ok) return;
+  const b = r.body;
+  _csrSubjectProfiles = b.profiles || [];          // org starters (DoD, etc.)
+  _csrSavedProfiles = b.subject_profiles || [];    // named subject profiles
+  const sel = document.getElementById("csrsubject-prof-sel");
+  sel.innerHTML = _csrSavedProfiles.length
+    ? _csrSavedProfiles.map(p => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}${p.is_default ? " (default)" : ""}</option>`).join("")
+    : '<option value="">(no profiles yet — create one)</option>';
+  const cur = _csrSavedProfiles.find(p => p.is_default) || _csrSavedProfiles[0];
+  if (cur) {
+    _csrSelectProfile(cur.slug);
+  } else {
+    _csrLoadCfg(b.config || {});
+    document.getElementById("csrsubject-prof-name").value = "";
+    document.getElementById("csrsubject-prof-default").checked = true;
+  }
   document.getElementById("csrsubject-profile").innerHTML =
     '<option value="">&mdash; choose a profile &mdash;</option>' +
     _csrSubjectProfiles.map(p => `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
   document.getElementById("csrsubject-ou-suggestions").innerHTML =
     (b.suggested_ous || []).map(o => `<option value="${escapeHtml(o)}">`).join("");
-  _csrSubjectPreview();
   const oobe = document.getElementById("csrsubject-oobe");
+  oobe.hidden = !!b.configured;
   if (!b.configured) {
-    // Show the setup banner on the CSR Subject tab, but never auto-navigate
-    // there: loadCsrSubject() runs on every admin entry/refresh, so a jump here
-    // would hijack whatever section the admin is actually on. The banner is the
-    // nudge; the admin opens the tab when ready.
-    oobe.textContent = "⚙ Initial setup: choose your organization profile, adjust the fields, and Save so new CSRs carry the correct subject.";
-    oobe.hidden = false;
-  } else {
-    oobe.hidden = true;
+    oobe.textContent = "⚙ Initial setup: configure your organization subject and Save so new CSRs carry the correct subject.";
   }
 }
 
@@ -2526,16 +2554,59 @@ document.getElementById("csrsubject-xsan-add")?.addEventListener("keydown", (e) 
   if (e.key === "Enter") { e.preventDefault(); _csrChipAdd("csrsubject-xsan-add", "csrsubject-xsan-chips", "csrsubject-xsan-del"); }
 });
 document.getElementById("csrsubject-xdn-add-btn")?.addEventListener("click", () => _csrXdnAddRow("", ""));
-["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o"].forEach(id =>
+
+// CSR Subject: Standard / Advanced sub-tab switch.
+document.querySelectorAll("#csrsubject-subtabs .subtab").forEach(b => {
+  b.addEventListener("click", () => {
+    const name = b.dataset.subtab;
+    document.querySelectorAll("#csrsubject-subtabs .subtab")
+      .forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll('[data-panel="csrsubject"] [data-subtabpanel]')
+      .forEach(p => { p.hidden = (p.dataset.subtabpanel !== name); });
+  });
+});
+["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o", "csrsubject-domain"].forEach(id =>
   document.getElementById(id)?.addEventListener("input", _csrSubjectPreview));
 
 document.getElementById("csrsubject-save-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("csrsubject-status");
+  const name = document.getElementById("csrsubject-prof-name").value.trim();
+  if (!name) { setStatus(status, "Enter a profile name first (e.g. ac2.lan).", "err"); return; }
   setStatus(status, "Saving…");
-  const r = await jsonReq("/admin/csr-subject", { method: "PUT", body: JSON.stringify(_csrSubjectCfg()) });
+  const r = await jsonReq("/admin/csr-subject/profile", {
+    method: "PUT",
+    body: JSON.stringify({
+      name,
+      is_default: document.getElementById("csrsubject-prof-default").checked,
+      config: _csrSubjectCfg(),
+    }),
+  });
   if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Save failed", "err"); return; }
-  setStatus(status, "Saved — new CSRs will use this subject.", "ok");
-  loadCsrSubject();
+  setStatus(status, "Saved — '" + name + "' profile updated.", "ok");
+  await loadCsrSubject();
+  // Live-refresh the request form so the new profile/domain is immediately
+  // selectable without a page reload.
+  if (typeof loadMe === "function") loadMe();
+});
+
+// Saved-profile selector / new / delete.
+document.getElementById("csrsubject-prof-sel")?.addEventListener("change", (e) => _csrSelectProfile(e.target.value));
+document.getElementById("csrsubject-prof-new")?.addEventListener("click", () => {
+  document.getElementById("csrsubject-prof-name").value = "";
+  document.getElementById("csrsubject-prof-default").checked = false;
+  _csrLoadCfg({});
+  document.getElementById("csrsubject-prof-name").focus();
+});
+document.getElementById("csrsubject-prof-delete")?.addEventListener("click", async () => {
+  const slug = document.getElementById("csrsubject-prof-sel").value;
+  if (!slug) return;
+  if (!confirm("Delete the \"" + slug + "\" subject profile?")) return;
+  const status = document.getElementById("csrsubject-status");
+  const r = await jsonReq("/admin/csr-subject/profile/" + encodeURIComponent(slug), { method: "DELETE" });
+  if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Delete failed", "err"); return; }
+  setStatus(status, "Deleted.", "ok");
+  await loadCsrSubject();
+  if (typeof loadMe === "function") loadMe();
 });
 
 // ===== Admin: Trust store =====

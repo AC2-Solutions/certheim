@@ -36,33 +36,55 @@ SUBJECT_DOMAIN_ALTS=()
 SUBJECT_XDN=()
 SUBJECT_XSANS=()
 
+audit() { /usr/bin/logger -p authpriv.notice -t certinel-helper -- "$@"; }
+
 # Admin-configured subject override, written by the dashboard via the
 # `write-subject` subcommand. PARSED as simple KEY=VALUE (NOT sourced - this
 # content originates from the UI, so we never eval it) and wins over the
-# defaults above, making the subject DN editable from the admin UI.
-#   C=US / ST=.. / L=.. / O=.. / DOMAIN_SUFFIX=.. (one each); OU=.. repeatable;
-#   DOMAIN_SUFFIX_ALT=.. (alt suffixes), XDN=field:value, XSAN=entry (repeatable)
+# defaults above. The "default" named profile is mirrored to subject.conf;
+# additional named profiles live in subjects/<slug>.conf and are selected
+# per-request (load_subject_profile).
+#   C/ST/L/O/DOMAIN_SUFFIX (one each); OU repeatable; DOMAIN_SUFFIX_ALT,
+#   XDN=field:value, XSAN=entry (repeatable)
 SUBJECT_CONF="$(dirname "${BASH_SOURCE[0]}")/subject.conf"
-if [[ -r "$SUBJECT_CONF" ]]; then
-    SUBJECT_OUS=()
-    SUBJECT_DOMAIN_ALTS=()
-    SUBJECT_XDN=()
-    SUBJECT_XSANS=()
+SUBJECTS_DIR="$(dirname "${BASH_SOURCE[0]}")/subjects"
+
+load_subject_conf() {
+    local path="$1" _k _v
+    [[ -r "$path" ]] || return 0
+    SUBJECT_OUS=(); SUBJECT_DOMAIN_ALTS=(); SUBJECT_XDN=(); SUBJECT_XSANS=()
     while IFS='=' read -r _k _v; do
         case "$_k" in
-            C)                SUBJECT_C="$_v" ;;
-            ST)               SUBJECT_ST="$_v" ;;
-            L)                SUBJECT_L="$_v" ;;
-            O)                SUBJECT_O="$_v" ;;
-            OU)               [[ -n "$_v" ]] && SUBJECT_OUS+=("$_v") ;;
-            DOMAIN_SUFFIX)    DOMAIN_SUFFIX="$_v" ;;
+            C)                 SUBJECT_C="$_v" ;;
+            ST)                SUBJECT_ST="$_v" ;;
+            L)                 SUBJECT_L="$_v" ;;
+            O)                 SUBJECT_O="$_v" ;;
+            OU)                [[ -n "$_v" ]] && SUBJECT_OUS+=("$_v") ;;
+            DOMAIN_SUFFIX)     DOMAIN_SUFFIX="$_v" ;;
             DOMAIN_SUFFIX_ALT) [[ -n "$_v" ]] && SUBJECT_DOMAIN_ALTS+=("$_v") ;;
-            XDN)              [[ -n "$_v" ]] && SUBJECT_XDN+=("$_v") ;;
-            XSAN)             [[ -n "$_v" ]] && SUBJECT_XSANS+=("$_v") ;;
+            XDN)               [[ -n "$_v" ]] && SUBJECT_XDN+=("$_v") ;;
+            XSAN)              [[ -n "$_v" ]] && SUBJECT_XSANS+=("$_v") ;;
         esac
-    done < "$SUBJECT_CONF"
-    unset _k _v
-fi
+    done < "$path"
+}
+
+# Load a NAMED subject profile, overriding the default. The slug is validated to
+# a safe charset (no path traversal); a missing/invalid profile is a no-op so
+# generation falls back to the default subject.
+load_subject_profile() {
+    local slug="$1"
+    [[ -z "$slug" ]] && return 0
+    if [[ ! "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then
+        audit "subject_profile deny slug=$slug"; return 0
+    fi
+    if [[ -r "$SUBJECTS_DIR/$slug.conf" ]]; then
+        load_subject_conf "$SUBJECTS_DIR/$slug.conf"
+    else
+        audit "subject_profile missing slug=$slug"
+    fi
+}
+
+load_subject_conf "$SUBJECT_CONF"
 
 # Per-request domain-suffix choice: the requester may pick an alternate suffix.
 # Honour it ONLY if it matches the configured primary or an admin-listed
@@ -80,8 +102,6 @@ apply_domain_choice() {
 }
 # Env path kept for tests / non-sudo callers (sudo strips it in production).
 [[ -n "${CERTINEL_DOMAIN_SUFFIX:-}" ]] && apply_domain_choice "$CERTINEL_DOMAIN_SUFFIX"
-
-audit() { /usr/bin/logger -p authpriv.notice -t certinel-helper -- "$@"; }
 
 read_certlist() {
     local path="$1"
@@ -111,12 +131,22 @@ read_subject() {
 }
 
 write_subject() {
-    # Install the admin-configured subject override (KEY=VALUE lines, parsed -
-    # never sourced - by this file). Reject anything that isn't an allowed key
-    # with a safe single-line value (no control chars); the dashboard already
-    # sanitizes, this is defense in depth. Caps total size.
+    # Install an admin-configured subject override (KEY=VALUE lines, parsed -
+    # never sourced - by this file). $1 = optional profile slug: with a slug,
+    # writes subjects/<slug>.conf (a named profile); without, writes the default
+    # subject.conf. Rejects anything that isn't an allowed key with a safe
+    # single-line value (defense in depth; the dashboard already sanitizes).
+    local slug="${1:-}" dest="$SUBJECT_CONF"
+    if [[ -n "$slug" ]]; then
+        if [[ ! "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then
+            audit "write_subject deny slug=$slug"
+            echo "ERROR: invalid profile name" >&2; exit 2
+        fi
+        install -d -m 0755 -o root -g root "$SUBJECTS_DIR"
+        dest="$SUBJECTS_DIR/$slug.conf"
+    fi
     local tmp
-    tmp="$(mktemp "$(dirname "$SUBJECT_CONF")/.subject.XXXXXX")"
+    tmp="$(mktemp "$(dirname "$dest")/.subject.XXXXXX")"
     tr -d '\r' | head -c 8192 > "$tmp"
     # Every non-empty line must be KEY=value where KEY is one of the allowed
     # subject keys and value has no control characters or shell-dangerous bytes.
@@ -126,9 +156,18 @@ write_subject() {
         echo "ERROR: invalid subject content" >&2
         exit 2
     fi
-    install -m 0644 -o root -g root "$tmp" "$SUBJECT_CONF"
+    install -m 0644 -o root -g root "$tmp" "$dest"
     rm -f "$tmp"
-    audit "write_subject ok bytes=$(stat -c%s "$SUBJECT_CONF")"
+    audit "write_subject ok dest=$dest bytes=$(stat -c%s "$dest")"
+}
+
+delete_subject_profile() {
+    local slug="$1"
+    [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || {
+        audit "delete_subject_profile deny slug=$slug"
+        echo "ERROR: invalid profile name" >&2; exit 2; }
+    rm -f "$SUBJECTS_DIR/$slug.conf"
+    audit "delete_subject_profile ok slug=$slug"
 }
 
 list_files() {
