@@ -1,9 +1,14 @@
 [Unit]
-Description=Daily renewal of the Certinel nginx TLS certificate
+Description=Renew the Certinel nginx TLS certificate (every 6h)
 
 [Timer]
-OnCalendar=daily
-RandomizedDelaySec=1h
+# step-ca certs can be short-lived (e.g. 24h). A once-daily renewer leaves no
+# margin: if a run drifts past expiry it fails permanently, because `step ca
+# renew` refuses to renew an ALREADY-EXPIRED cert (recovery then needs a fresh
+# ACME/JWK issuance). Run every 6h so renewal always happens with hours of life
+# to spare, regardless of the cert's lifetime.
+OnCalendar=*-*-* 00/6:00:00
+RandomizedDelaySec=300
 Persistent=true
 
 [Install]
