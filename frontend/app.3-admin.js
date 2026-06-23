@@ -2437,7 +2437,11 @@ function _csrSubjectPreview() {
   if (c.locality) parts.push("L=" + c.locality);
   if (c.org) parts.push("O=" + c.org);
   c.ous.forEach(ou => parts.push("OU=" + ou));
-  parts.push("CN=<hostname>");
+  (c.custom_dn || []).forEach(d => parts.push(d.field + "=" + d.value));
+  // The domain suffix is appended to bare hostnames at generation, so show it
+  // on the CN placeholder (e.g. CN=<hostname>.ac2.lan).
+  const dom = c.domain_suffix ? "." + c.domain_suffix : "";
+  parts.push("CN=<hostname>" + dom);
   document.getElementById("csrsubject-preview").textContent = parts.join(", ");
 }
 
@@ -2526,7 +2530,18 @@ document.getElementById("csrsubject-xsan-add")?.addEventListener("keydown", (e) 
   if (e.key === "Enter") { e.preventDefault(); _csrChipAdd("csrsubject-xsan-add", "csrsubject-xsan-chips", "csrsubject-xsan-del"); }
 });
 document.getElementById("csrsubject-xdn-add-btn")?.addEventListener("click", () => _csrXdnAddRow("", ""));
-["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o"].forEach(id =>
+
+// CSR Subject: Standard / Advanced sub-tab switch.
+document.querySelectorAll("#csrsubject-subtabs .subtab").forEach(b => {
+  b.addEventListener("click", () => {
+    const name = b.dataset.subtab;
+    document.querySelectorAll("#csrsubject-subtabs .subtab")
+      .forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll('[data-panel="csrsubject"] [data-subtabpanel]')
+      .forEach(p => { p.hidden = (p.dataset.subtabpanel !== name); });
+  });
+});
+["csrsubject-c", "csrsubject-st", "csrsubject-l", "csrsubject-o", "csrsubject-domain"].forEach(id =>
   document.getElementById(id)?.addEventListener("input", _csrSubjectPreview));
 
 document.getElementById("csrsubject-save-btn")?.addEventListener("click", async () => {
@@ -2536,6 +2551,9 @@ document.getElementById("csrsubject-save-btn")?.addEventListener("click", async 
   if (!r.ok) { setStatus(status, (r.body && r.body.error) || "Save failed", "err"); return; }
   setStatus(status, "Saved — new CSRs will use this subject.", "ok");
   loadCsrSubject();
+  // Live-refresh the request form (help text + domain dropdown) so a domain
+  // change shows immediately without a page reload.
+  if (typeof loadMe === "function") loadMe();
 });
 
 // ===== Admin: Trust store =====

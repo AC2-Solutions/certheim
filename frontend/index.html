@@ -1165,60 +1165,66 @@
          add/remove OU tags as needed.</p>
       <p id="csrsubject-oobe" class="status" style="font-weight:600" hidden></p>
 
-      <label for="csrsubject-profile" class="textarea-label">Start from a profile</label>
-      <div class="bulk-row">
-        <select id="csrsubject-profile" class="form-input" style="max-width:340px"></select>
-        <button id="csrsubject-apply-profile" class="secondary" type="button">Apply profile</button>
+      <!-- Two ways to edit the subject: Standard (the common DN fields) and
+           Advanced (custom DN attributes, alternate domains, extra SANs). -->
+      <div class="subtabs" id="csrsubject-subtabs">
+        <button type="button" class="subtab active" data-subtab="std">Standard</button>
+        <button type="button" class="subtab" data-subtab="adv">Advanced</button>
       </div>
 
-      <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:8px">
-        <label>Country (C)
-          <input type="text" id="csrsubject-c" class="form-input" style="width:90px" maxlength="8" placeholder="US"></label>
-        <label>State (ST)
-          <input type="text" id="csrsubject-st" class="form-input" style="width:160px"></label>
-        <label>Locality (L)
-          <input type="text" id="csrsubject-l" class="form-input" style="width:160px"></label>
-      </div>
-      <label for="csrsubject-o" class="textarea-label">Organization (O)</label>
-      <input type="text" id="csrsubject-o" class="form-input" style="max-width:420px" placeholder="e.g. U.S. Government or Acme, Inc.">
-
-      <label class="textarea-label">Organizational Units (OU tags)</label>
-      <div id="csrsubject-ou-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-      <div class="bulk-row">
-        <input type="text" id="csrsubject-ou-add" class="form-input" style="max-width:220px" placeholder="add an OU (e.g. Engineering)" list="csrsubject-ou-suggestions">
-        <datalist id="csrsubject-ou-suggestions"></datalist>
-        <button id="csrsubject-ou-add-btn" class="secondary" type="button">Add OU</button>
-      </div>
-
-      <label for="csrsubject-domain" class="textarea-label">Domain suffix
-        <span class="hint">(short names like "web1" become "web1.&lt;suffix&gt;"; leave blank to disable)</span></label>
-      <input type="text" id="csrsubject-domain" class="form-input" style="max-width:260px" placeholder="e.g. example.com">
-
-      <details class="card" style="margin-top:14px">
-        <summary><strong>Advanced tags</strong> <span class="hint">&mdash; broaden what a CSR can carry (optional)</span></summary>
-        <div class="details-body">
-          <label class="textarea-label">Additional domain suffixes
-            <span class="hint">(requesters pick one per batch on the request form; the primary above is the default)</span></label>
-          <div id="csrsubject-domalt-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-          <div class="bulk-row">
-            <input type="text" id="csrsubject-domalt-add" class="form-input" style="max-width:240px" placeholder="e.g. dmz.example.com">
-            <button id="csrsubject-domalt-add-btn" class="secondary" type="button">Add suffix</button>
-          </div>
-
-          <label class="textarea-label">Custom DN attributes
-            <span class="hint">(extra subject RDNs on every CSR &mdash; e.g. businessCategory, serialNumber, DC)</span></label>
-          <div id="csrsubject-xdn-rows"></div>
-          <button id="csrsubject-xdn-add-btn" class="link-btn" type="button" style="margin-top:4px">+ Add DN attribute</button>
-
-          <label class="textarea-label">Extra SANs
-            <span class="hint">(always added to every cert &mdash; hostnames, IPs, or emails)</span></label>
-          <div id="csrsubject-xsan-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-          <div class="bulk-row">
-            <input type="text" id="csrsubject-xsan-add" class="form-input" style="max-width:240px" placeholder="e.g. vpn.example.com or 10.0.0.5">
-            <button id="csrsubject-xsan-add-btn" class="secondary" type="button">Add SAN</button>
-          </div>
+      <div data-subtabpanel="std">
+        <label for="csrsubject-profile" class="textarea-label">Start from a profile</label>
+        <div class="bulk-row">
+          <select id="csrsubject-profile" class="form-input" style="max-width:340px"></select>
+          <button id="csrsubject-apply-profile" class="secondary" type="button">Apply profile</button>
         </div>
-      </details>
+
+        <div class="bulk-row" style="flex-wrap:wrap; gap:10px; margin-top:8px">
+          <label>Country (C)
+            <input type="text" id="csrsubject-c" class="form-input" style="width:90px" maxlength="8" placeholder="US"></label>
+          <label>State (ST)
+            <input type="text" id="csrsubject-st" class="form-input" style="width:160px"></label>
+          <label>Locality (L)
+            <input type="text" id="csrsubject-l" class="form-input" style="width:160px"></label>
+        </div>
+        <label for="csrsubject-o" class="textarea-label">Organization (O)</label>
+        <input type="text" id="csrsubject-o" class="form-input" style="max-width:420px" placeholder="e.g. U.S. Government or Acme, Inc.">
+
+        <label class="textarea-label">Organizational Units (OU tags)</label>
+        <div id="csrsubject-ou-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+        <div class="bulk-row">
+          <input type="text" id="csrsubject-ou-add" class="form-input" style="max-width:220px" placeholder="add an OU (e.g. Engineering)" list="csrsubject-ou-suggestions">
+          <datalist id="csrsubject-ou-suggestions"></datalist>
+          <button id="csrsubject-ou-add-btn" class="secondary" type="button">Add OU</button>
+        </div>
+
+        <label for="csrsubject-domain" class="textarea-label">Domain suffix
+          <span class="hint">(short names like "web1" become "web1.&lt;suffix&gt;"; leave blank to disable)</span></label>
+        <input type="text" id="csrsubject-domain" class="form-input" style="max-width:260px" placeholder="e.g. example.com">
+      </div>
+
+      <div data-subtabpanel="adv" hidden>
+        <label class="textarea-label">Additional domain suffixes
+          <span class="hint">(requesters pick one per batch on the request form; the primary is the default)</span></label>
+        <div id="csrsubject-domalt-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+        <div class="bulk-row">
+          <input type="text" id="csrsubject-domalt-add" class="form-input" style="max-width:240px" placeholder="e.g. dmz.example.com">
+          <button id="csrsubject-domalt-add-btn" class="secondary" type="button">Add suffix</button>
+        </div>
+
+        <label class="textarea-label">Custom DN attributes
+          <span class="hint">(extra subject RDNs on every CSR &mdash; e.g. businessCategory, serialNumber, DC)</span></label>
+        <div id="csrsubject-xdn-rows"></div>
+        <button id="csrsubject-xdn-add-btn" class="link-btn" type="button" style="margin-top:4px">+ Add DN attribute</button>
+
+        <label class="textarea-label">Extra SANs
+          <span class="hint">(always added to every cert &mdash; hostnames, IPs, or emails)</span></label>
+        <div id="csrsubject-xsan-chips" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+        <div class="bulk-row">
+          <input type="text" id="csrsubject-xsan-add" class="form-input" style="max-width:240px" placeholder="e.g. vpn.example.com or 10.0.0.5">
+          <button id="csrsubject-xsan-add-btn" class="secondary" type="button">Add SAN</button>
+        </div>
+      </div>
 
       <p class="hint" style="margin-top:10px">Resulting subject:
         <code id="csrsubject-preview"></code></p>
