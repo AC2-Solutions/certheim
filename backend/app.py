@@ -2267,9 +2267,10 @@ def _startup_license_banner():
             for w in info.get("warnings") or []:
                 emit(logging.WARNING, f"LICENSE WARNING: {w}")
         else:
+            import build_mode
             emit(logging.WARNING,
-                 f"running UNLICENSED (Community) - premium features disabled "
-                 f"[{info.get('reason')}]")
+                 f"running UNLICENSED ({build_mode.EDITION.capitalize()} build) - "
+                 f"premium features require a license [{info.get('reason')}]")
         # A release build must never honor the env backdoors; a dev build that
         # has them set is fine but should say so out loud.
         if not rel:
