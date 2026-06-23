@@ -94,6 +94,7 @@ def client():
 
 
 # --- registration / wiring -------------------------------------------------
+@pytest.mark.tier(1)
 def test_all_critical_routes_registered(client):
     rules = {(m, r.rule) for r in client._appmod.app.url_map.iter_rules()
              for m in r.methods}
@@ -458,6 +459,7 @@ def test_sign_options_missing_job_404(client):
     assert r.status_code == 404
 
 
+@pytest.mark.tier(1)
 def test_delivery_module(client):
     """deliver.py: no-op for 'none', cert-only bundle for key_mode=destination,
     and the openbao provider is capability-gated (premium)."""
@@ -480,6 +482,7 @@ def test_delivery_module(client):
             pass
 
 
+@pytest.mark.tier(1)
 def test_template_delivery_config(client):
     """Per-template delivery + key_mode round-trip through the signing endpoint,
     with validation of the enum fields."""
@@ -512,6 +515,7 @@ def test_template_delivery_config(client):
                data=json.dumps({"signer_backend": "manual", "delivery_backend": "none"}))
 
 
+@pytest.mark.tier(1)
 def test_delivery_pull_lifecycle(client):
     """pull provider stores a single-use bundle; the public /deliver/pull/<token>
     endpoint serves it once and 404s on reuse / unknown tokens (no oracle)."""
@@ -534,6 +538,7 @@ def test_delivery_pull_lifecycle(client):
     assert client.get("/api/deliver/pull/" + "z" * 43).status_code == 404
 
 
+@pytest.mark.tier(1)
 def test_delivery_pull_formats(client):
     """?format=pem returns cert+key, ?format=cert just the cert; exhausts at max_uses."""
     import time
@@ -553,6 +558,7 @@ def test_delivery_pull_formats(client):
     assert client.get(f"/api/deliver/pull/{tok}").status_code == 404   # 2 uses exhausted
 
 
+@pytest.mark.tier(1)
 def test_delivery_k8s_guards(client):
     """k8s provider validates target shape + names and requires the private key
     (a kubernetes.io/tls Secret needs tls.key) before any network call."""
@@ -570,6 +576,7 @@ def test_delivery_k8s_guards(client):
                                   "target_host": "h", "key_mode": "destination"})
 
 
+@pytest.mark.tier(1)
 def test_delivery_k8s_env_gated(client):
     """k8s delivery needs OpenBao configured (cred source); refused when it isn't."""
     import deliver
@@ -580,6 +587,7 @@ def test_delivery_k8s_env_gated(client):
                                  "delivery_target": "ns/sec"})
 
 
+@pytest.mark.tier(1)
 def test_delivery_webhook_shaping(client, monkeypatch):
     """webhook: https-only, JSON bundle body, HMAC-SHA256 signature when a shared
     secret is present."""
@@ -609,6 +617,7 @@ def test_delivery_webhook_shaping(client, monkeypatch):
     assert calls["headers"]["X-CSR-Signature"] == expect and "signed" in d
 
 
+@pytest.mark.tier(1)
 def test_delivery_cyberark_shaping(client, monkeypatch):
     """cyberark: authenticate then set the cert variable (and the key variable
     when shipped); refused when unconfigured."""
@@ -638,6 +647,7 @@ def test_delivery_cyberark_shaping(client, monkeypatch):
             deliver._deliver_cyberark({"delivery_target": "x", "target_host": "h", "key_mode": "ship"})
 
 
+@pytest.mark.tier(1)
 def test_delivery_backoff_and_abandon(client, monkeypatch):
     """Exponential backoff schedule; a retryable failure schedules a next attempt,
     and the final attempt abandons + fires job.delivery_failed."""
@@ -723,6 +733,7 @@ def test_auto_renew_noop_when_disabled(client):
     assert (renewed, errors) == (0, 0)
 
 
+@pytest.mark.tier(1)
 def test_run_auto_renew_endpoint(client):
     """Admin trigger returns the (renewed, skipped, errors) shape and requires
     auth + CSRF."""
@@ -818,6 +829,7 @@ def _mint_license(privkey_path, edition="government", entitlements=None, days=36
     return f"{pb}.{licensing.b64u(sig)}"
 
 
+@pytest.mark.tier(2)
 def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     import json
     import subprocess
@@ -879,6 +891,7 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
         assert capabilities.available("profiles.public_sector") is False
 
 
+@pytest.mark.tier(1)
 def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
     """The hardening: in a RELEASE build the dev-only env overrides are inert.
 
@@ -922,6 +935,7 @@ def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
     licensing.reset_cache()
 
 
+@pytest.mark.tier(2)
 def test_license_host_binding_warns_not_blocks(client, monkeypatch, tmp_path):
     """An optional bind_host claim is a soft tripwire: a mismatch surfaces a
     warning (so a copied license names the host it escaped) but never revokes
@@ -1161,6 +1175,7 @@ def test_helper_cmd_container_vs_vm():
     assert vm[0] != "sudo" and len(vm) == 1
 
 
+@pytest.mark.tier(2)
 def test_mtls_managed_by_ingress_in_container_mode(client, monkeypatch):
     """In container mode, switching to client-cert auth records the setting but
     defers TLS/mTLS to the ingress - no in-pod nginx rewrite via the helper."""
@@ -1356,6 +1371,7 @@ def test_template_can_pin_acme_backend(client):
                       data=json.dumps({"signer_backend": "nope"})).status_code == 400
 
 
+@pytest.mark.tier(1)
 def test_acme_client_pure_helpers():
     """Offline unit coverage for the JOSE/encoding + CSR-parsing helpers (no
     network): base64url, JWK + RFC 7638 thumbprint stability, chain split, and
@@ -1384,6 +1400,7 @@ def test_acme_client_pure_helpers():
 
 
 # --- Phase 2: cloud DNS-01 solvers (Cloudflare / Route53 / Azure) ----------
+@pytest.mark.tier(1)
 def test_sigv4_known_answer():
     """AWS SigV4 'get-vanilla' published test vector — independent verification
     of the hand-rolled signing (no live AWS to test against)."""
@@ -1407,6 +1424,7 @@ def _http_recorder(responses):
     return calls, fake
 
 
+@pytest.mark.tier(1)
 def test_cloudflare_solver(monkeypatch):
     import json
     import acme_dns
@@ -1426,6 +1444,7 @@ def test_cloudflare_solver(monkeypatch):
     assert calls[2]["method"] == "DELETE" and "rec456" in calls[2]["url"]
 
 
+@pytest.mark.tier(1)
 def test_route53_solver(monkeypatch):
     import acme_dns
     calls, fake = _http_recorder([(200, {}, b"<ok/>"), (200, {}, b"<ok/>")])
@@ -1441,6 +1460,7 @@ def test_route53_solver(monkeypatch):
     assert b"DELETE" in calls[1]["body"]
 
 
+@pytest.mark.tier(1)
 def test_azure_solver(monkeypatch):
     import json
     import acme_dns
@@ -1471,6 +1491,7 @@ def test_acme_dns_provider_field_shape(client):
     assert any(c["field"] == "dns_provider" for c in f["dns_zone"]["show_if"])
 
 
+@pytest.mark.tier(1)
 def test_acme_solver_azure_zone_validation(client):
     """The dns-01 dispatch validates provider-specific config (Azure needs a
     'sub/rg/zone' triplet)."""
@@ -1509,6 +1530,7 @@ def _ca_recorder(responses):
     return calls, fake
 
 
+@pytest.mark.tier(1)
 def test_ejbca_request(monkeypatch):
     import json
     import ca_providers
@@ -1526,6 +1548,7 @@ def test_ejbca_request(monkeypatch):
     assert sent["certificate_authority_name"] == "CA" and sent["end_entity_profile_name"] == "ENDUSER"
 
 
+@pytest.mark.tier(1)
 def test_venafi_request(monkeypatch):
     import base64
     import json
@@ -1547,6 +1570,7 @@ def test_venafi_request(monkeypatch):
     assert calls[1]["url"].endswith("/vedsdk/certificates/retrieve")
 
 
+@pytest.mark.tier(1)
 def test_aws_pca_request(monkeypatch):
     import base64
     import json
@@ -1632,6 +1656,7 @@ def _jws_post(client, path, key_pem, jwk, nonce, payload, url, kid=None):
         content_type="application/jose+json")
 
 
+@pytest.mark.tier(1)
 def test_acme_server_directory_gated(client, monkeypatch):
     monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
@@ -1650,6 +1675,7 @@ def test_acme_server_directory_gated(client, monkeypatch):
         appmod.set_setting("acme_server_enabled", "0")
 
 
+@pytest.mark.tier(1)
 def test_acme_server_rejects_bad_jws(client, monkeypatch):
     monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
@@ -1671,6 +1697,7 @@ def test_acme_server_rejects_bad_jws(client, monkeypatch):
         appmod.set_setting("acme_server_enabled", "0")
 
 
+@pytest.mark.tier(1)
 def test_acme_server_full_flow(client, monkeypatch):
     """End-to-end through the ACME server: account -> order -> authz ->
     challenge -> finalize -> certificate. The outbound HTTP-01 fetch and the CA
@@ -1761,6 +1788,7 @@ def _inner_jws(key_pem, jwk, payload, url):
     return {"protected": prot, "payload": pay, "signature": _b64u(sig)}
 
 
+@pytest.mark.tier(1)
 def test_acme_dns01_value():
     import acme_server
     v = acme_server.dns01_txt_value("token.thumbprint")
@@ -1769,6 +1797,7 @@ def test_acme_dns01_value():
     assert ok is False
 
 
+@pytest.mark.tier(1)
 def test_acme_server_key_change(client, monkeypatch):
     monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
     import acme_client
@@ -1799,6 +1828,7 @@ def test_acme_server_key_change(client, monkeypatch):
         appmod.set_setting("acme_server_enabled", "0")
 
 
+@pytest.mark.tier(1)
 def test_acme_server_revoke(client, monkeypatch):
     monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
     import subprocess
@@ -1972,6 +2002,7 @@ def test_truststore_targets_and_distribute_gated(client):
             client.delete(f"/api/admin/truststore/{c['id']}", headers=WRITE)
 
 
+@pytest.mark.tier(2)
 def test_mtls_auth_settings(client, monkeypatch):
     """CAC/mTLS is a licensed capability (auth.cac): the auth-settings route
     refuses to enable it (auth_mode=mtls or mtls_mode optional/enforce) without
