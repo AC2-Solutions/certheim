@@ -17,7 +17,7 @@ workflow:
     - if: '$CI_COMMIT_BRANCH'
     - if: '$CI_COMMIT_TAG'
 
-stages: [lint, test, release]
+stages: [lint, test, release, propagate]
 
 default:
   tags: [shell]
@@ -261,3 +261,41 @@ release:
         echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for v$ver."
       fi
       echo "Released v$ver"
+
+# ---------------------------------------------------------------------------
+# Bottom-up edition propagation.
+#
+# The editions stack: Community (base) -> Commercial -> Government. A change
+# committed to a lower branch must flow UP so each higher edition inherits
+# everything below it. This job opens (or reuses) a merge request from the
+# branch that just changed into the next edition up; a human still merges it,
+# so premium/edition-specific conflicts get reviewed. Premium code never flows
+# DOWN (lower branches simply don't contain those files).
+#
+# Needs RELEASE_TOKEN (api scope). No token -> the step skips, harmless.
+propagate-upstream:
+  stage: propagate
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "Community" || $CI_COMMIT_BRANCH == "Commercial"'
+  allow_failure: true
+  script:
+    - |
+      if [ -z "${RELEASE_TOKEN:-}" ]; then echo "RELEASE_TOKEN unset - skipping edition propagation."; exit 0; fi
+      case "$CI_COMMIT_BRANCH" in
+        Community)  TARGET=Commercial ;;
+        Commercial) TARGET=Government ;;
+        *) echo "no upstream edition for $CI_COMMIT_BRANCH"; exit 0 ;;
+      esac
+      API="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests"
+      EXISTING=$(curl -fsS -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
+        "${API}?state=opened&source_branch=${CI_COMMIT_BRANCH}&target_branch=${TARGET}" \
+        | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['iid'] if d else '')")
+      if [ -n "$EXISTING" ]; then
+        echo "Propagation MR !${EXISTING} (${CI_COMMIT_BRANCH} -> ${TARGET}) already open - it will include this commit."
+        exit 0
+      fi
+      DESC="Automated bottom-up propagation: brings **${CI_COMMIT_BRANCH}** changes up into **${TARGET}** so the higher edition inherits everything below. Review for premium/edition-specific conflicts before merging."
+      CODE=$(curl -sS -o /tmp/mr.json -w '%{http_code}' -X POST -H "PRIVATE-TOKEN: ${RELEASE_TOKEN}" -H "Content-Type: application/json" "${API}" \
+        -d "{\"source_branch\":\"${CI_COMMIT_BRANCH}\",\"target_branch\":\"${TARGET}\",\"title\":\"Propagate ${CI_COMMIT_BRANCH} -> ${TARGET}\",\"description\":\"${DESC}\",\"reviewer_ids\":[1],\"remove_source_branch\":false}")
+      if [ "$CODE" = "201" ]; then echo "Opened propagation MR ${CI_COMMIT_BRANCH} -> ${TARGET}.";
+      else echo "MR create HTTP ${CODE} (often 'no diff' when ${TARGET} is already up to date):"; cat /tmp/mr.json; echo; fi
