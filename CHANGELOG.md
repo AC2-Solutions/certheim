@@ -3,6 +3,25 @@
 All notable changes to the CSR Dashboard. Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
 
+## 3.19.0 — 2026-06-23
+
+_Released 2026-06-23. 2 changes since v3.18.1._
+
+### Features
+
+- **ui:** move theme toggle into Settings; pin Admin to far-right corner (`ed48f23`)
+  - The light/dark theme toggle moves out of the header into the Settings modal (under an
+    'Appearance' label); same element ids so the existing toggle logic is untouched. Modal-surface
+    color overrides added.
+  - The Admin button (admin-only) is pinned to the far-right corner of the header as the last
+    action, separated from the everyday nav buttons.
+- **ui:** far-left full-height resizable sidebar (claude-style) (`de73106`)
+  Move the grouped nav out of the centered content column into a true app-shell: a far-left, full-
+  height sidebar (border-right, own scroll) + a content area. main goes full-width; .panel-layout
+  becomes a flex row [sidebar][handle][body]. A drag handle resizes the sidebar (width = --sidebar-w
+  CSS var, clamped 150-460px, persisted to localStorage; double-click resets). Item order unchanged;
+  collapses to a top bar on narrow screens. node --check clean.
+
 ## 3.18.1 — 2026-06-23
 
 _Released 2026-06-23. 1 change since v3.18.0._
