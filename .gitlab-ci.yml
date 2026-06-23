@@ -238,4 +238,26 @@ release:
       else
         echo "note: DOCKERHUB_TOKEN unset or no builder — skipping image publish for v$ver."
       fi
+      # Build + publish the offline installer tarball (Community self-hosted +
+      # air-gapped — one ~4MB artifact, identical for every edition; the portal
+      # injects the per-customer license at download time) to the licenses
+      # portal, which serves it on-domain via www.ac2certinel.com/download.
+      # make-offline-bundle.sh reads the (already-bumped) VERSION file and emits
+      # certinel-offline-$ver.tar.gz in the CWD. Gated on the upload secret (CI
+      # var); non-fatal, like the image publish. </dev/null guards against any
+      # stray read blocking the unattended job.
+      if [ -n "${CERTINEL_RELEASE_UPLOAD_SECRET:-}" ]; then
+        ( set -e
+          bash make-offline-bundle.sh </dev/null
+          bundle="certinel-offline-$ver.tar.gz"
+          sha="$(sha256sum "$bundle" | cut -d' ' -f1)"
+          curl -fsS -X POST "https://licenses.ac2.lan/api/v1/certinel/releases" \
+            -H "Authorization: Bearer $CERTINEL_RELEASE_UPLOAD_SECRET" \
+            -F "version=$ver" -F "sha256=$sha" -F "bundle=@$bundle"
+          echo "Published offline bundle $bundle ($sha) to the licenses portal" ) \
+          || echo "warn: offline-bundle publish failed (release v$ver still cut)"
+        rm -f "certinel-offline-$ver.tar.gz" "certinel-offline-$ver.tar.gz.sha256" 2>/dev/null || true
+      else
+        echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for v$ver."
+      fi
       echo "Released v$ver"
