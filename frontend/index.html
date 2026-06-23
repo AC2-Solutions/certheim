@@ -105,7 +105,6 @@
   <span id="edition-badge" class="edition-badge" hidden></span>
   <div class="header-actions">
     <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
-    <button id="nav-admin" class="header-nav admin-only" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>
     <button id="nav-tour" class="header-nav" type="button" title="Replay the tutorial">Tour</button>
     <button id="nav-guide" class="header-nav" type="button" title="Open the user guide for this page">Guide</button>
     <a id="nav-setup" class="header-nav" href="setup-guide.html" target="_blank" rel="noopener"
@@ -113,11 +112,8 @@
     <button id="nav-feedback" class="header-nav" type="button" title="Send feedback">Feedback</button>
     <button id="nav-settings" class="header-nav" type="button" title="My settings">⚙ Settings</button>
     <button id="nav-logout" class="header-nav" type="button" title="Sign out" hidden>Sign out</button>
-    <button id="theme-toggle" class="theme-toggle" type="button"
-            aria-label="Toggle color theme" title="Toggle color theme">
-      <span id="theme-toggle-icon" aria-hidden="true">☀</span>
-      <span id="theme-toggle-label">Light</span>
-    </button>
+    <!-- Admin pinned to the far-right corner, admin-only (theme toggle lives in Settings). -->
+    <button id="nav-admin" class="header-nav admin-only nav-admin-corner" type="button">Admin<span id="nav-admin-badge" class="nav-badge" hidden></span></button>
   </div>
 </header>
 
@@ -151,6 +147,7 @@
         <button type="button" data-panel="usertemplates">Templates</button>
       </div>
     </nav>
+    <div class="panel-resize" title="Drag to resize the sidebar"></div>
     <div id="main-panels" class="panel-body">
 
 
@@ -471,6 +468,7 @@
         <button type="button" data-panel="license">License</button>
       </div>
     </nav>
+    <div class="panel-resize" title="Drag to resize the sidebar"></div>
     <div id="admin-panels" class="panel-body">
 
 
@@ -1404,6 +1402,12 @@
     <div><code id="settings-dn" style="font-size:11px; word-break:break-all"></code></div>
     <label for="settings-email" class="textarea-label">Default notification email <span class="hint">(used as the default in Generate and External Submit)</span></label>
     <input type="email" id="settings-email" autocomplete="email">
+    <label class="textarea-label">Appearance</label>
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            aria-label="Toggle color theme" title="Toggle light / dark theme">
+      <span id="theme-toggle-icon" aria-hidden="true">☀</span>
+      <span id="theme-toggle-label">Light</span>
+    </button>
     <div class="row" style="justify-content:flex-end; margin-top:14px">
       <button class="secondary modal-cancel" type="button">Cancel</button>
       <button id="settings-save-btn" type="button">Save</button>

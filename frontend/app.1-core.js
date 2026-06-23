@@ -491,6 +491,46 @@ document.querySelectorAll("#main-nav button").forEach(b => {
 showAdminPanel("overview");
 showMainPanel("create");
 
+// Far-left sidebar resize (drag the handle to grow/shrink; width persists).
+(function initSidebarResize() {
+  const MIN = 150, MAX = 460;
+  const saved = parseInt(localStorage.getItem("csr-sidebar-w") || "", 10);
+  if (saved >= MIN && saved <= MAX) {
+    document.documentElement.style.setProperty("--sidebar-w", saved + "px");
+  }
+  let startX = 0, startW = 0, handle = null;
+  function onMove(e) {
+    const w = Math.min(MAX, Math.max(MIN, startW + (e.clientX - startX)));
+    document.documentElement.style.setProperty("--sidebar-w", w + "px");
+  }
+  function onUp() {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.classList.remove("resizing-x");
+    if (handle) handle.classList.remove("dragging");
+    const cur = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w").trim();
+    if (cur) localStorage.setItem("csr-sidebar-w", parseInt(cur, 10));
+  }
+  document.querySelectorAll(".panel-resize").forEach(h => {
+    h.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      handle = h;
+      startX = e.clientX;
+      const navEl = h.previousElementSibling; // the .panel-nav
+      startW = navEl ? navEl.getBoundingClientRect().width : 210;
+      document.body.classList.add("resizing-x");
+      h.classList.add("dragging");
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    // Double-click resets to the default width.
+    h.addEventListener("dblclick", () => {
+      document.documentElement.style.removeProperty("--sidebar-w");
+      localStorage.removeItem("csr-sidebar-w");
+    });
+  });
+})();
+
 async function renewJob(id, host, btn) {
   if (!confirm(`Renew the certificate for ${host}?\n\nA new key and CSR are generated ` +
                "with the same names, types, and key algorithm, and a new pending job " +
