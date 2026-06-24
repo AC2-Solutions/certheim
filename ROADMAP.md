@@ -25,12 +25,12 @@ The inventory spine every later phase reads from.
   chain, over-long validity) plus a composite risk score.
 - ☑ Inventory UI (filter/search/group) + inventory REST API.
 
-### Phase C2 — Outage prevention ◐
-- ☐ Tiered alerting + escalation with owner assignment and SLA-breach tracking.
-- ☐ Scheduled expiry digests per team/owner over existing email/chat channels.
-- ☐ CT-log / shadow-cert monitoring (certs issued on your domains you didn't request).
+### Phase C2 — Outage prevention ☑
+- ☑ Tiered alerting + escalation with owner assignment and SLA-breach tracking.
+- ☑ Scheduled expiry digests per team/owner over existing email/chat channels.
+- ☑ CT-log / shadow-cert monitoring (certs issued on your domains you didn't request).
 
-### Phase C3 — Governance core
+### Phase C3 — Governance core ◐
 - ☐ RBAC + multi-tenancy — teams / business units, fine-grained roles, delegated
   admin, tenant isolation.
 - ☐ Enterprise SSO (SAML + OIDC) and SCIM user/group provisioning.
