@@ -37,33 +37,51 @@ A permission layer that **supersets** the binary admin flag without breaking it.
   reads (so `auditor`/`operator` — not just admin — can use the inventory).
 - Tests: the role→permission resolution (pure).
 
-## Increment C3.2 — Multi-tenancy (teams / business units)
+## Increment C3.2 — Multi-tenancy (HARD isolation) — DECISION: hard isolation
 
-- Promote `groups` into **tenants/teams** with their own membership and a
-  **team-scoped role** (owner/operator/member), reusing `user_groups.role`.
-- **Resource scoping**: tag certs/jobs/templates with an owning team; list/detail
-  endpoints filter to the caller's teams (admins see all). A **delegated
-  team-admin** manages members + assignments within their team only.
-- Inventory ownership (C2.1) gains a team dimension, so alerts/digests route by
-  team as well as individual owner.
-- Open design decision (flagged for sign-off): **soft scoping** (one DB, rows
-  tagged + filtered) vs **hard isolation** (separate schemas/instances). Default
-  recommendation: soft scoping — simpler, fits the single-appliance model, and
-  enough for business-unit separation; hard isolation only if a customer needs a
-  compliance boundary.
+**Decided (2026-06-24):** tenants get a **real data boundary**, not soft
+row-tagging — compliance-grade separation where one tenant's data is physically
+unreachable from another's.
 
-## Increment C3.3 — Enterprise SSO (SAML + OIDC)
+Architecture (works on both DB backends via the single `db.connect()` chokepoint):
+- **Postgres**: one **schema per tenant** (`tenant_<slug>`); each request sets
+  `search_path` to the resolved tenant's schema. Global rows (the tenant
+  registry, license) live in a control schema.
+- **SQLite**: one **database file per tenant**
+  (`/var/opt/certinel/tenants/<slug>.db`); `connect()` opens the resolved
+  tenant's file. The control DB holds the registry.
+- **Tenant registry** (control plane): `tenants(id, slug, name, store, active,
+  created_at)`; `users.tenant_id` binds a user to a tenant. A small `tenancy.py`
+  resolves the **current tenant** from the authenticated user per request and
+  hands `db.connect()` the right schema/file. Provisioning a tenant runs the full
+  `init_schema()` against its new schema/file.
+- **Backward compatible**: an unlicensed or un-provisioned deployment runs as a
+  single implicit `default` tenant — `connect()` behaves exactly as today. Hard
+  isolation only engages once `governance.multitenancy` is licensed and tenants
+  exist.
+- Delegated **team-admin** manages members within their tenant; cross-tenant
+  visibility is reserved for the instance admin.
 
-- **OIDC** first (Authorization Code + PKCE) — Certinel already lives behind
-  Keycloak/OIDC in places, so the auth code is partly proven; then **SAML 2.0**
-  for the enterprises that require it.
-- **Claim → role/team mapping**: admin-configured rules map IdP groups/claims to
-  Certinel roles and teams, so access is governed centrally.
-- Coexists with local + CAC auth (auth method stays per-deployment); SSO is one
-  more `auth_mode`.
-- Open decision: dependency posture — a dependency-free SAML/OIDC implementation
-  (consistent with the rest of Certinel) vs a vetted library. Lean dependency-free
-  for OIDC (JOSE we already do for ACME); reconsider for SAML's XML-dsig.
+Rollout: (1) tenant registry + per-request resolution + a `default` tenant that
+is a no-op [foundation, this increment]; (2) route `db.connect()` by tenant
+(schema/file) + provisioning that runs init_schema; (3) admin UI + user→tenant
+binding; (4) per-tenant background passes (alerts/renew/deliver iterate tenants).
+
+## Increment C3.3 — Enterprise SSO (SAML + OIDC) — DECISION: vetted library
+
+**Decided (2026-06-24):** use a **maintained SAML/OIDC library** rather than
+hand-rolling — full SAML 2.0 + OIDC coverage, and the XML-dsig path stays in
+audited code instead of bespoke crypto.
+
+- Candidate: `python3-saml` (OneLogin) + an OIDC client (`authlib`/`oidclib`),
+  pinned and **vendored into the offline bundle** so the air-gapped install still
+  has zero network dependency at deploy time (the dependency is in the artifact,
+  not fetched). Vetting note: review the lib's own deps for the air-gapped SBOM.
+- **Claim → role/tenant mapping**: admin-configured rules map IdP groups/claims to
+  Certinel roles (C3.1) and tenants (C3.2), so access is governed centrally.
+- Coexists with local + CAC auth; SSO is one more `auth_mode`.
+- Open sub-item to confirm at build time: exact library + version, and that its
+  transitive deps are acceptable for the regulated/air-gapped SBOM.
 
 ## Increment C3.4 — SCIM provisioning
 
