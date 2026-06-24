@@ -1,5 +1,22 @@
 # Certinel Community edition — changelog
 
+## 3.22.0 — 2026-06-24
+
+_Released 2026-06-24. 3 changes since community-v3.21.0._
+
+### Features
+
+- **alerts:** delegate run_expiry_warnings to the inventory alerting engine (`419911a`)
+  When the alerts module is present (Commercial+) and visibility.inventory is entitled,
+  run_expiry_warnings hands off to the inventory-wide engine (alerts.run_alerts), giving one alert
+  path with no double-notification. Guarded by ImportError, so the Community build (no alerts
+  module) runs the base jobs-only pass unchanged. Pairs with the C2.2 engine MR on Commercial.
+
+### Other changes
+
+- C2 outage-prevention design + mark C1 shipped (`406119f`)
+- add product ROADMAP + C1 visibility-inventory design (`af83661`)
+
 ## 3.21.0 — 2026-06-23
 
 _Released 2026-06-23. 13 changes in the initial release._
