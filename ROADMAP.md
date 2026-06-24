@@ -16,16 +16,16 @@ Status legend: ☐ planned · ◐ in progress · ☑ shipped
 Goal: move from "issue and deliver certs" to a full certificate-lifecycle
 platform — visibility, governance, and ecosystem integration.
 
-### Phase C1 — Visibility foundation ◐
+### Phase C1 — Visibility foundation ☑
 The inventory spine every later phase reads from.
-- ☐ Unified certificate inventory — one model over issued (`jobs`), discovered
+- ☑ Unified certificate inventory — one model over issued (`jobs`), discovered
   (`fleet_certs`), and ACME-server (`acme_certs`) certs, with a source-adapter
   interface the discovery add-on plugs into.
-- ☐ Risk intelligence — flags (expiry, weak key, SHA-1, self-signed, broken
+- ☑ Risk intelligence — flags (expiry, weak key, SHA-1, self-signed, broken
   chain, over-long validity) plus a composite risk score.
-- ☐ Inventory UI (filter/search/group) + inventory REST API.
+- ☑ Inventory UI (filter/search/group) + inventory REST API.
 
-### Phase C2 — Outage prevention
+### Phase C2 — Outage prevention ◐
 - ☐ Tiered alerting + escalation with owner assignment and SLA-breach tracking.
 - ☐ Scheduled expiry digests per team/owner over existing email/chat channels.
 - ☐ CT-log / shadow-cert monitoring (certs issued on your domains you didn't request).
