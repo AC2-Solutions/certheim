@@ -1142,6 +1142,17 @@ def run_expiry_warnings():
     """Send tiered expiry warnings (30/14/7 days) for issued certs. Each
     threshold fires at most once per job (tracked in jobs.expiry_warned).
     Safe to call repeatedly. Returns (sent, errors)."""
+    # When the inventory alerting engine is present (Commercial+) and licensed it
+    # supersedes this jobs-only pass with an inventory-wide one, so there's a
+    # single alert path and no double-notification. In the Community build the
+    # `alerts` module isn't shipped -> ImportError -> we run the base pass below.
+    try:
+        import capabilities
+        import alerts
+        if capabilities.is_entitled("visibility.inventory"):
+            return alerts.run_alerts()
+    except ImportError:
+        pass
     now = time.time()
     horizon = now + max(EXPIRY_WARN_THRESHOLDS) * 86400
     with db() as conn:
