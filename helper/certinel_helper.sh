@@ -7,8 +7,11 @@
 #   10-certtypes.sh  cert type profiles, combination + SAN logic
 #   20-generate.sh   generate_typed pipeline
 #
-# SECURITY: the .d directory and every file in it must be root:root and not
-# group/world-writable, since everything sourced here runs as root via sudo.
+# SECURITY: every part sourced here must be owned by the user the helper runs
+# as (root via sudo on a VM; the unprivileged service user in container mode -
+# CERTINEL_CONTAINER=1, where the helper runs sudo-less) and never be
+# group/world-writable. Crossing no privilege boundary, owner == euid is as safe
+# as owner == root, and on a VM euid is 0 so root is still required there.
 set -euo pipefail
 
 HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,12 +22,16 @@ if [[ ! -d "$HELPER_D" ]]; then
     exit 70
 fi
 
-# Refuse to source anything not owned by root or writable by group/other.
+# Refuse to source anything writable by group/other, or not owned by root or the
+# user running the helper (euid). The latter covers sudo-less container mode,
+# where parts are owned by the unprivileged service user, not root.
+self_uid="$(id -u)"
 for part in "$HELPER_D"/*.sh; do
     [[ -e "$part" ]] || { echo "ERROR: no parts in $HELPER_D" >&2; exit 70; }
-    perms=$(stat -c '%U %a' "$part")
-    owner="${perms%% *}"; mode="${perms##* }"
-    if [[ "$owner" != "root" || "${mode: -2:1}" =~ [2367] || "${mode: -1}" =~ [2367] ]]; then
+    perms=$(stat -c '%u %U %a' "$part")
+    ouid="${perms%% *}"; rest="${perms#* }"; owner="${rest%% *}"; mode="${rest##* }"
+    if [[ ( "$ouid" != "0" && "$ouid" != "$self_uid" ) \
+          || "${mode: -2:1}" =~ [2367] || "${mode: -1}" =~ [2367] ]]; then
         echo "ERROR: refusing to source $part (owner=$owner mode=$mode)" >&2
         exit 71
     fi
