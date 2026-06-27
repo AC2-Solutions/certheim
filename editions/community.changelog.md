@@ -1,5 +1,30 @@
 # Certinel Community edition — changelog
 
+## 3.23.0 — 2026-06-27
+
+_Released 2026-06-27. 7 changes since community-v3.22.0._
+
+### Features
+
+- cert-type selection as tiles with EKU help tooltips (`e0a86412`)
+  Make the template/request cert-type pickers easier to scan and use:
+  - Each type is a click-anywhere tile (the native checkbox is hidden but kept, so all selection +
+    exclusivity logic is unchanged); selected tiles highlight.
+  - A '?' in each tile corner shows a custom tooltip (instant on hover, click to pin) explaining
+    what the type is for and its EKU — covers all cert-type grids.
+  - 3-up layout (far-left / middle / far-right), collapsing to 2 then 1 column on smaller screens;
+    long names no longer wrap.
+  Frontend only (app.1-core.js + app.css).
+
+### Other changes
+
+- container-safe file ownership (sudo-less mode) (`c136c186`)
+- accept service-user-owned parts in container mode (`9fc5ec0c`)
+- make the UI mobile-responsive (`baf298c2`)
+- C3.3 SSO design - dependency-free OIDC + vetted-library SAML (`26c30749`)
+- record C3.2/C3.3 decisions - hard tenant isolation + vetted SSO library (`8d5e3c0f`)
+- C3 governance design (RBAC/tenancy/SSO/SCIM) + mark C2 shipped (`2d29a122`)
+
 ## 3.22.0 — 2026-06-24
 
 _Released 2026-06-24. 3 changes since community-v3.21.0._
