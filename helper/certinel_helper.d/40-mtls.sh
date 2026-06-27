@@ -37,7 +37,7 @@ apply_mtls() {
     # Install, test, reload - restoring the previous fragment if nginx rejects it.
     local bak=""
     [[ -f "$MTLS_FRAGMENT" ]] && { bak="$(mktemp)"; cp -p "$MTLS_FRAGMENT" "$bak"; }
-    install -m 0644 -o root -g root "$tmp" "$MTLS_FRAGMENT"; rm -f "$tmp"
+    inst -m 0644 "$tmp" "$MTLS_FRAGMENT"; rm -f "$tmp"
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx
         [[ -n "$bak" ]] && rm -f "$bak"

@@ -103,6 +103,20 @@ apply_domain_choice() {
 # Env path kept for tests / non-sudo callers (sudo strips it in production).
 [[ -n "${CERTINEL_DOMAIN_SUFFIX:-}" ]] && apply_domain_choice "$CERTINEL_DOMAIN_SUFFIX"
 
+# --- container-safe ownership -------------------------------------------------
+# On a VM the helper runs as root (sudo) and installs files root:root. In
+# container mode it runs sudo-less as the unprivileged service user, where
+# chowning to root fails ("Operation not permitted") and is pointless - the
+# container is the privilege boundary. So only assert root ownership when we are
+# actually root; otherwise install/keep files owned by the running user.
+if [[ "$(id -u)" -eq 0 ]]; then
+    inst() { install -o root -g root "$@"; }
+    chown_root() { chown root:root "$@"; }
+else
+    inst() { install "$@"; }
+    chown_root() { :; }
+fi
+
 read_certlist() {
     local path="$1"
     [[ -f "$path" ]] && cat "$path" || true
@@ -121,7 +135,7 @@ write_certlist() {
         echo "ERROR: invalid characters in certlist" >&2
         exit 2
     fi
-    install -m 0644 -o root -g root "$tmp" "$path"
+    inst -m 0644 "$tmp" "$path"
     rm -f "$tmp"
     audit "write_certlist ok bytes=$(stat -c%s "$path")"
 }
@@ -142,7 +156,7 @@ write_subject() {
             audit "write_subject deny slug=$slug"
             echo "ERROR: invalid profile name" >&2; exit 2
         fi
-        install -d -m 0755 -o root -g root "$SUBJECTS_DIR"
+        inst -d -m 0755 "$SUBJECTS_DIR"
         dest="$SUBJECTS_DIR/$slug.conf"
     fi
     local tmp
@@ -156,7 +170,7 @@ write_subject() {
         echo "ERROR: invalid subject content" >&2
         exit 2
     fi
-    install -m 0644 -o root -g root "$tmp" "$dest"
+    inst -m 0644 "$tmp" "$dest"
     rm -f "$tmp"
     audit "write_subject ok dest=$dest bytes=$(stat -c%s "$dest")"
 }

@@ -83,9 +83,9 @@ generate_typed() {
                 -keyout "$key_file" -out "$csr_file" \
                 -config "$config_file" >/dev/null 2>&1; then
             chmod 0600 "$key_file"
-            chown root:root "$key_file"
+            chown_root "$key_file"
             chmod 0644 "$csr_file"
-            chown root:root "$csr_file"
+            chown_root "$csr_file"
             count=$((count + 1))
             echo "OK: [$types_csv/$key_algo] CSR generated for ${cn} -> ${safe_name}.csr"
         else
