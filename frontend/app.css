@@ -395,22 +395,42 @@
     .request-row .req-sans { grid-column: 1 / 2; }
   }
 
-  /* Cert type checkbox grid */
+  /* Cert type TILES: each type is a click-anywhere-to-select card laid out in a
+     3-up grid (far-left / middle / far-right), with the "?" in the tile corner.
+     The native checkbox is hidden but kept, so all existing selection logic
+     (:checked reads, exclusivity greying) is unchanged. */
   .cert-type-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
     font-size: 13px;
     margin-top: 4px;
   }
+  @media (max-width: 620px) { .cert-type-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 380px) { .cert-type-grid { grid-template-columns: 1fr; } }
+  .cert-type-grid input.cert-type-cb {        /* hide native box, keep its state */
+    position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+  }
   .cert-type-grid label {
-    display: flex; gap: 6px; align-items: center;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; white-space: nowrap;
+    min-height: 48px; padding: 10px 30px;       /* side padding leaves room for the ? */
+    border: 1px solid var(--border-input); border-radius: 8px;
+    background: var(--bg-input); color: var(--fg);
     cursor: pointer; user-select: none;
-    transition: opacity 0.12s ease;
+    transition: border-color 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+  }
+  .cert-type-grid label:hover { border-color: var(--accent); }
+  .cert-type-grid label:has(.cert-type-cb:checked) {
+    border-color: var(--accent);
+    background: rgba(74,144,199,0.14);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
   .cert-type-grid label.disabled {
-    opacity: 0.35; cursor: not-allowed;
+    opacity: 0.4; cursor: not-allowed;
   }
+  .cert-type-grid label.disabled:hover { border-color: var(--border-input); }
 
   /* Admin nav badge for unread feedback count */
   .nav-badge {
@@ -672,4 +692,37 @@ body.guide-open { overflow: hidden; }
   .card { padding: 12px; }
   #login-card { padding: 24px 20px; }
   .modal { padding: 16px; }
+}
+
+/* "?" help marker beside each cert type on the template/request grids. Custom
+   tooltip (not native title) so it appears instantly on hover, and clicking the
+   "?" pins it open instead of toggling the checkbox. */
+.eku-help {
+  position: absolute; top: 5px; right: 5px;      /* corner of the tile */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--secondary); color: var(--secondary-fg);
+  font-size: 10px; font-weight: 700; line-height: 1; cursor: pointer;
+  user-select: none; flex: 0 0 auto; z-index: 2;
+}
+.eku-help:hover, .eku-help.show { background: var(--accent); color: var(--accent-fg); }
+.eku-tip {
+  position: absolute; bottom: calc(100% + 8px); right: -6px; left: auto; transform: none;
+  z-index: 60; width: max-content; max-width: 240px;
+  background: var(--bg-elevated); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; font-weight: 400; line-height: 1.4;
+  text-align: left; white-space: normal;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  opacity: 0; visibility: hidden; transition: opacity 0.08s ease;
+  pointer-events: none;
+}
+/* little arrow (under the ? in the tile corner) */
+.eku-tip::after {
+  content: ""; position: absolute; top: 100%; right: 11px; left: auto; transform: none;
+  border: 5px solid transparent; border-top-color: var(--border);
+}
+.eku-help:hover .eku-tip, .eku-help:focus-visible .eku-tip, .eku-help.show .eku-tip {
+  opacity: 1; visibility: visible;
 }
