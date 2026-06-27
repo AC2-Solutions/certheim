@@ -625,3 +625,51 @@ body.guide-open { overflow: hidden; }
   font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
 }
 .panel-help-btn:hover { background: var(--accent); color: var(--accent-fg); }
+
+/* =====================================================================
+   Mobile / small-screen responsiveness.
+   Additive and scoped to narrow widths so the desktop layout is byte-for-byte
+   unchanged. The viewport meta tag in index.html is what makes phones honour
+   these (without it the page renders at ~980px and zooms out). The app already
+   collapses the sidebar (<=760px) and stacks several grids (<=640px); this
+   fills the remaining gaps: header, data-table overflow, modals, touch targets.
+   ===================================================================== */
+@media (max-width: 768px) {
+  header { padding: 10px 14px; flex-wrap: wrap; row-gap: 8px; }
+  header h1 { font-size: 16px; line-height: 1.25; }
+  .header-actions { flex-wrap: wrap; gap: 6px; }
+  .nav-admin-corner { margin-left: 0; }
+  .panel-body { padding: 14px 14px 28px; max-width: none; }
+  .modal { padding: 18px; }
+  .modal-overlay { padding: 10px; }
+  .license-banner { font-size: 13px; }
+  /* Wide data tables: scroll horizontally inside their own box rather than
+     forcing the whole page wide or crushing columns to unreadable widths.
+     Detail (key/value) tables are excluded — they already wrap and stay narrow. */
+  table:not(.detail-table) {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 480px) {
+  header h1 { font-size: 15px; }
+  /* Touch-friendly hit targets (~44px guidance) for the primary controls. */
+  button, .btn, .header-nav, .theme-toggle, .mode-tab, .subtab {
+    min-height: 40px; padding-top: 9px; padding-bottom: 9px;
+  }
+  /* Stack the filter bar so search + selects each get a full row. */
+  .filter-bar input[type="search"], .filter-bar input, .filter-bar select {
+    flex: 1 1 100%; width: 100%;
+  }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .inv-tile { flex-basis: calc(50% - 5px); }
+  table { font-size: 12px; }
+  th, td { padding: 7px 8px; }
+  .card { padding: 12px; }
+  #login-card { padding: 24px 20px; }
+  .modal { padding: 16px; }
+}
