@@ -400,6 +400,63 @@ function certTypePill(t) {
   }).join(" ");
 }
 
+// ===== Cert-type help: a "?" beside each type on the template/request grids,
+// so users see at a glance what each is for (and its EKU) on hover. =====
+const CERT_TYPE_HELP = {
+  "web": "TLS server certificates — HTTPS websites & API endpoints. EKU: serverAuth.",
+  "client": "Client / mutual-TLS auth — proves a user, device, or service to a server. EKU: clientAuth.",
+  "email": "S/MIME — digitally sign and encrypt email. EKU: emailProtection.",
+  "ipsec": "IPsec VPN — IKE peer authentication. EKU: ipsecIKE (1.3.6.1.5.5.7.3.17).",
+  "8021x": "802.1X / EAP-TLS — network access control for wired & Wi-Fi. EKU: clientAuth + EAP-over-LAN.",
+  "codesign": "Sign software, drivers & executables. EKU: codeSigning. Exclusive — can't combine with other types.",
+  "ocsp": "OCSP responder — signs OCSP revocation responses. EKU: OCSPSigning. Exclusive.",
+  "timestamp": "RFC 3161 trusted timestamping authority. EKU: timeStamping (critical). Exclusive.",
+  "server-client": "Legacy combined server + client (serverAuth + clientAuth).",
+};
+function decorateCertTypeHelp(root) {
+  (root || document).querySelectorAll(".cert-type-cb").forEach(cb => {
+    const help = CERT_TYPE_HELP[cb.value];
+    if (!help) return;
+    const label = cb.closest("label");
+    if (!label || label.querySelector(".eku-help")) return;   // idempotent
+    const s = document.createElement("span");
+    s.className = "eku-help";
+    s.tabIndex = 0;
+    s.setAttribute("role", "button");
+    s.setAttribute("aria-label", help);
+    s.append("?");                                  // the visible "?"
+    const tip = document.createElement("span");     // custom (instant) tooltip
+    tip.className = "eku-tip";
+    tip.setAttribute("role", "tooltip");
+    tip.textContent = help;
+    s.appendChild(tip);
+    // Click the "?": pin the tooltip open and DON'T toggle the checkbox.
+    const toggle = (e) => {
+      e.preventDefault();      // cancels the <label>'s checkbox toggle
+      e.stopPropagation();     // don't trip the outside-click closer
+      document.querySelectorAll(".eku-help.show").forEach(o => { if (o !== s) o.classList.remove("show"); });
+      s.classList.toggle("show");
+    };
+    s.addEventListener("click", toggle);
+    s.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") toggle(e); });
+    label.appendChild(s);
+  });
+  // Close any pinned tooltip when clicking elsewhere (install once).
+  if (!window.__ekuTipCloser) {
+    window.__ekuTipCloser = true;
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".eku-help")) {
+        document.querySelectorAll(".eku-help.show").forEach(o => o.classList.remove("show"));
+      }
+    });
+  }
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => decorateCertTypeHelp());
+} else {
+  decorateCertTypeHelp();
+}
+
 // ===== Cert type checkbox groups (compatibility greying) =====
 const CERT_TYPE_EXCLUSIVE = ["codesign", "ocsp", "timestamp"];
 
