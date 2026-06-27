@@ -23,7 +23,7 @@ install_ca_bundle() {
         exit 2
     fi
     if command -v update-ca-trust >/dev/null 2>&1; then
-        install -m 0644 -o root -g root "$tmp" \
+        inst -m 0644 "$tmp" \
             "/etc/pki/ca-trust/source/anchors/$TRUST_ANCHOR_NAME"
         rm -f "$tmp"
         update-ca-trust extract
