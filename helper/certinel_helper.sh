@@ -98,7 +98,7 @@ case "$cmd" in
         fi
         target="$ISSUED_DIR/$fname"
         if [[ -f "$target" ]]; then
-            chown ansible:ansible "$target"
+            { [ "$(id -u)" = "0" ] && id ansible >/dev/null 2>&1 && chown ansible:ansible "$target"; } || true
             chmod 0644 "$target"
             audit "$cmd ok name=$fname"
         fi

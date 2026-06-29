@@ -562,11 +562,20 @@ def _validate_email(addr):
 # ---------- Logging ----------
 audit = logging.getLogger("csr.audit")
 audit.setLevel(logging.INFO)
-_h = logging.handlers.SysLogHandler(
-    address="/dev/log",
-    facility=logging.handlers.SysLogHandler.LOG_AUTHPRIV,
-)
-_h.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
+try:
+    if os.path.exists("/dev/log"):
+        _h = logging.handlers.SysLogHandler(
+            address="/dev/log",
+            facility=logging.handlers.SysLogHandler.LOG_AUTHPRIV,
+        )
+        _h.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
+    else:
+        # No syslog socket (e.g. container): audit to stdout so k8s/journald captures it.
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter("certinel-audit: %(message)s"))
+except Exception:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("certinel-audit: %(message)s"))
 audit.addHandler(_h)
 
 app = Flask(__name__)
@@ -1796,7 +1805,13 @@ def _err(e):
                   msg=str(e)[:160], where=last[:200])
     else:
         log_event("error", "exception", code=code, type=type(e).__name__)
-    return jsonify(error="internal error", request_id=g.get("req_id", "-")), code
+    msg = "internal error"
+    if code < 500:
+        msg = getattr(e, "description", None) or {
+            400: "bad request", 401: "unauthorized", 403: "forbidden",
+            404: "not found", 405: "method not allowed", 409: "conflict",
+            429: "too many requests"}.get(code, "request error")
+    return jsonify(error=msg, request_id=g.get("req_id", "-")), code
 
 # ---------- Sessions ----------
 _sessions = {}

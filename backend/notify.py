@@ -33,7 +33,7 @@ import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
-CONFIG_PATH = Path("/etc/certinel/email.conf")
+CONFIG_PATH = Path("/var/opt/certinel/email.conf")
 
 # Supported delivery methods and the (non-secret + secret) fields each needs.
 # The admin UI shows a method dropdown and only the fields for the selection.

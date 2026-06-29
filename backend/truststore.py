@@ -226,10 +226,14 @@ def bundle_meta(enabled_only=True):
 def install_local():
     """Install the current bundle into THIS host's OS trust via the helper
     (which runs update-ca-trust as root). Returns the helper's stdout."""
-    from app import run_helper
+    from app import run_helper, CONTAINER_MODE
     bundle = build_bundle()
     if not bundle.strip():
         raise TrustError("trust store is empty - nothing to install")
+    if CONTAINER_MODE:
+        raise TrustError("not supported in container mode: the OS trust store is "
+                         "read-only here. Mount the bundle as a volume or bake it "
+                         "into the image; the bundle is still served and pushed normally.")
     rc, out, err = run_helper(["install-ca-bundle"], stdin=bundle, timeout=60)
     if rc != 0:
         raise TrustError(f"local trust install failed: {(err or out or '').strip()[:200]}")

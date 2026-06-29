@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CONFIG_PATH = Path("/etc/certinel/integrations.conf")
+CONFIG_PATH = Path("/var/opt/certinel/integrations.conf")
 API_TIMEOUT = 15
 
 # A PEM cert block pasted directly into an issue comment.
