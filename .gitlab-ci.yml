@@ -63,7 +63,7 @@ smoke-tests:
   script:
     # Endpoint smoke net (route registration + auth + shapes). Catches a
     # dropped/broken route from refactors (e.g. the planned blueprint split).
-    - $PYBIN -m venv /tmp/cienv
+    - $PYBIN -m venv --clear /tmp/cienv
     - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
     - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
 
@@ -85,7 +85,7 @@ smoke-tests-postgres:
     # waiting for it long after the tests finish.
     - pg_ctl -D "$PGHOME/data" -l "$PGHOME/pg.log" -o "-c listen_addresses='' -k $PGHOME/sock" -w start
     - createdb -h "$PGHOME/sock" -U certinel certinel
-    - $PYBIN -m venv /tmp/cienv-pg
+    - $PYBIN -m venv --clear /tmp/cienv-pg
     - /tmp/cienv-pg/bin/pip install -q -r requirements.txt -r requirements-postgres.txt pytest
     - CSR_DB_URL="postgresql://certinel@/certinel?host=$PGHOME/sock" /tmp/cienv-pg/bin/python -m pytest tests/test_smoke.py -q
   after_script:
