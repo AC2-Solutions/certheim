@@ -1,5 +1,26 @@
 # Certinel Community edition — changelog
 
+## 3.23.2 — 2026-06-29
+
+_Released 2026-06-29. 1 change since community-v3.23.1._
+
+### Fixes & improvements
+
+- container-mode hardening (audit log, config paths, error bodies, trust/helper) (`ce2a6ef0`)
+  Bugs found auditing the k8s container deployment (sudo-less, non-root, no syslog), all hot-patched
+  live on clm and now made durable:
+  - audit logger fell back to a missing /dev/log SysLogHandler -> FileNotFoundError flood on every
+    event + lost audit stream; use stdout when /dev/log is absent.
+  - email (notify) + chat (gitlab_integration) config lived under /etc/certinel, which is NOT a
+    volume -> lost on restart; move to /var/opt/certinel (PVC).
+  - error handler returned {error:'internal error'} for every status incl 404; return a code-
+    appropriate message for 4xx.
+  - truststore install-local ran a root-only update-ca-trust; guard with a clear message in
+    container mode (remote SSH/pull installs unaffected).
+  - chown-issued did an unconditional chown ansible:ansible (fails every issuance in-container);
+    no-op unless root + user exists.
+  (SAML metadata 503->404 is Commercial+-only code, handled in a separate MR.)
+
 ## 3.23.1 — 2026-06-29
 
 _Released 2026-06-29. 2 changes since community-v3.23.0._
