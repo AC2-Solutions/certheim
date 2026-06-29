@@ -83,6 +83,46 @@ def _row_to_job(r, include_blobs=False, identity_dn=None,
         out["cert_pem"] = r["cert_pem"]
     return out
 
+def _job_visible_to(row, identity_dn, user_group_ids, is_signer, is_admin):
+    """Object-level read authorization for a single job. Signers and admins see
+    the whole queue (the signing/oversight workflow needs cross-user
+    visibility); everyone else sees only their own requests and their groups'
+    requests. Mirrors the per-action authz already encoded in _row_to_job and
+    get_job_key."""
+    if is_signer or is_admin:
+        return True
+    if row["requester_dn"] == identity_dn:
+        return True
+    gid = row["group_id"] if "group_id" in row.keys() else None
+    return gid is not None and bool(user_group_ids) and gid in user_group_ids
+
+def _require_job_visible(row):
+    """Abort 403 unless the current caller may read this job (see
+    _job_visible_to). Used by the per-job read endpoints; the row must include
+    requester_dn and group_id."""
+    if not _job_visible_to(
+            row, g.identity["dn"], _user_group_ids(g.identity["dn"]),
+            _is_signer(g.identity["dn"]),
+            bool(g.user and g.user.get("is_admin"))):
+        log_event("job_access", "deny_not_visible",
+                  job_id=(row["id"] if "id" in row.keys() else "-"))
+        abort(403)
+
+def _visibility_sql(where, params):
+    """Append a visibility predicate to a jobs query for the current caller.
+    Signers/admins are unrestricted; everyone else is limited to their own and
+    their groups' jobs. Mutates where/params in place."""
+    if _is_signer(g.identity["dn"]) or (g.user and g.user.get("is_admin")):
+        return
+    clauses = ["requester_dn = ?"]
+    params.append(g.identity["dn"])
+    gids = _user_group_ids(g.identity["dn"])
+    if gids:
+        ph = ",".join("?" * len(gids))
+        clauses.append(f"group_id IN ({ph})")
+        params.extend(gids)
+    where.append("(" + " OR ".join(clauses) + ")")
+
 @bp.get("/api/jobs")
 @require_auth
 def list_jobs():
@@ -117,6 +157,10 @@ def list_jobs():
             where.append("created_at >= ?"); params.append(cutoff)
         except ValueError:
             pass
+
+    # Object-level read scoping: non-signer/non-admin callers see only their
+    # own and their groups' jobs.
+    _visibility_sql(where, params)
 
     try:
         limit = min(int(a.get("limit", 100)), 500)
@@ -173,6 +217,7 @@ def get_job(job_id):
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if not row:
         abort(404)
+    _require_job_visible(row)
     user_groups = _user_group_ids(g.identity["dn"])
     user_is_admin = bool(g.user and g.user.get("is_admin"))
     user_is_signer = _is_signer(g.identity["dn"])
@@ -213,10 +258,12 @@ def get_job_csr(job_id):
     if not JOB_ID_RE.match(job_id):
         abort(400)
     with db() as conn:
-        row = conn.execute("SELECT csr_pem, target_host FROM jobs WHERE id = ?",
-                           (job_id,)).fetchone()
+        row = conn.execute(
+            "SELECT csr_pem, target_host, requester_dn, group_id FROM jobs "
+            "WHERE id = ?", (job_id,)).fetchone()
     if not row:
         abort(404)
+    _require_job_visible(row)
     log_event("get_job_csr", "ok", job_id=job_id, target=row["target_host"])
     return Response(row["csr_pem"], mimetype="application/pkcs10",
                     headers={"Content-Disposition":
@@ -229,10 +276,11 @@ def get_job_cert(job_id):
         abort(400)
     with db() as conn:
         row = conn.execute(
-            "SELECT cert_pem, target_host, status FROM jobs WHERE id = ?",
-            (job_id,)).fetchone()
+            "SELECT cert_pem, target_host, status, requester_dn, group_id "
+            "FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if not row:
         abort(404)
+    _require_job_visible(row)
     if row["status"] != "issued" or not row["cert_pem"]:
         return jsonify(error="cert not yet available"), 404
     log_event("get_job_cert", "ok", job_id=job_id)
@@ -373,6 +421,16 @@ def get_job_key(job_id):
 def upload_cert(job_id):
     if not JOB_ID_RE.match(job_id):
         abort(400)
+    # The manual return path completes a job (-> issued, fires delivery/webhooks),
+    # so it must be authorized like any object-level write: requester, group
+    # member, signer or admin only.
+    with db() as conn:
+        jr = conn.execute(
+            "SELECT id, requester_dn, group_id FROM jobs WHERE id = ?",
+            (job_id,)).fetchone()
+    if not jr:
+        abort(404)
+    _require_job_visible(jr)
     payload = request.get_json(silent=True) or {}
     cert_pem = payload.get("cert_pem", "")
     cert_b64 = payload.get("cert_b64", "")
@@ -634,6 +692,8 @@ def export_jobs_csv():
             params.append(time.time() + max(1, min(int(ew), 365)) * 86400)
         except (TypeError, ValueError):
             pass
+    # Same object-level read scoping as the list view.
+    _visibility_sql(where, params)
     sql = "SELECT * FROM jobs"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -674,7 +734,11 @@ def export_jobs_csv():
 @bp.get("/api/signing-queue/csrs.zip")
 @require_auth
 def signing_queue_zip():
-    """All pending CSRs as one zip, for the signer to carry to the CA."""
+    """All pending CSRs as one zip, for the signer to carry to the CA.
+    Bulk access to every pending CSR is a signer/admin operation."""
+    if not (_is_signer(g.identity["dn"]) or (g.user and g.user.get("is_admin"))):
+        log_event("signing_queue_zip", "deny_not_signer")
+        abort(403)
     ids_param = (request.args.get("ids") or "").strip()
     with db() as conn:
         if ids_param:
@@ -852,9 +916,12 @@ def get_job_csr_info(job_id):
     if not JOB_ID_RE.match(job_id):
         abort(400)
     with db() as conn:
-        row = conn.execute("SELECT csr_pem FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        row = conn.execute(
+            "SELECT csr_pem, requester_dn, group_id FROM jobs WHERE id = ?",
+            (job_id,)).fetchone()
     if not row:
         abort(404)
+    _require_job_visible(row)
     try:
         proc = subprocess.run(
             ["openssl", "req", "-noout", "-text"],
@@ -876,10 +943,12 @@ def get_job_cert_info(job_id):
         abort(400)
     with db() as conn:
         row = conn.execute(
-            "SELECT cert_pem, status FROM jobs WHERE id = ?", (job_id,)
+            "SELECT cert_pem, status, requester_dn, group_id FROM jobs "
+            "WHERE id = ?", (job_id,)
         ).fetchone()
     if not row:
         abort(404)
+    _require_job_visible(row)
     if row["status"] != "issued" or not row["cert_pem"]:
         return jsonify(error="cert not yet available"), 404
     try:
