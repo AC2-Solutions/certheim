@@ -1,5 +1,32 @@
 # Certinel Community edition — changelog
 
+## 3.23.3 — 2026-06-29
+
+_Released 2026-06-29. 2 changes since community-v3.23.2._
+
+### Fixes & improvements
+
+- enforce object-level authz on job read/list/upload endpoints (`f1a70689`)
+  The job read surface was scoped only at the action level (can_* flags), never as a visibility
+  filter, so any authenticated user could:
+  - GET /api/jobs            list every user's jobs (hosts, emails, status) and filter by
+    ?requester= to target a person
+  - GET /api/jobs/<id>[/csr|/csr-info|/cert|/cert-info]  read any job + CSR
+  - GET /api/jobs/export.csv          export the whole catalogue
+  - GET /api/signing-queue/csrs.zip   bulk-download every pending CSR
+  - POST /api/jobs/<id>/upload-cert   attach a cert to ANY pending job (write IDOR: forces it to
+    'issued', fires delivery/webhook/email on someone else's job)
+  Add a single visibility model mirroring the existing per-action authz (get_job_key, _row_to_job):
+  signers and admins see the whole queue (the signing/oversight workflow needs it); everyone else is
+  scoped to their own and their groups' jobs. list/export get a SQL predicate; the per-job reads and
+  upload-cert get an object-level 403 gate; the signing-queue zip is restricted to signer/admin.
+  Verified live on clm: non-owner now 403/empty on all paths; owner sees own jobs; admin/signer
+  retain full visibility.
+
+### Other changes
+
+- black-box security authz battery (IDOR + round-trip + XSS) (`1466a520`)
+
 ## 3.23.2 — 2026-06-29
 
 _Released 2026-06-29. 1 change since community-v3.23.1._
