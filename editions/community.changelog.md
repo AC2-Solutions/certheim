@@ -1,5 +1,22 @@
 # Certinel Community edition — changelog
 
+## 3.23.1 — 2026-06-29
+
+_Released 2026-06-29. 2 changes since community-v3.23.0._
+
+### Fixes & improvements
+
+- force a clean venv in smoke-test CI jobs (`964a5997`)
+  The shell runner reuses /tmp/cienv between pipelines; after a runner Python upgrade the cached
+  venv's pip broke (ModuleNotFoundError pip._internal.cli.main) and plain 'venv' won't rebuild an
+  existing dir. Add --clear so each run gets a fresh, matching pip. Same for the postgres job's
+  /tmp/cienv-pg.
+- publish a per-edition <edition>-latest image tag (`f67160cf`)
+  Add an explicit always-latest pointer per edition alongside the existing moving tag: each release
+  now also pushes 'certinel:<edition>-latest' (and '-latest-slim') to both Docker Hub and the
+  entitled registry, so consumers can pull community-latest / commercial-latest / government-latest
+  and always get the newest of that edition without tracking version numbers.
+
 ## 3.23.0 — 2026-06-27
 
 _Released 2026-06-27. 7 changes since community-v3.22.0._
