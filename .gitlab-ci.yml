@@ -63,7 +63,7 @@ smoke-tests:
   script:
     # Endpoint smoke net (route registration + auth + shapes). Catches a
     # dropped/broken route from refactors (e.g. the planned blueprint split).
-    - $PYBIN -m venv /tmp/cienv
+    - $PYBIN -m venv --clear /tmp/cienv
     - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
     - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
 
@@ -85,7 +85,7 @@ smoke-tests-postgres:
     # waiting for it long after the tests finish.
     - pg_ctl -D "$PGHOME/data" -l "$PGHOME/pg.log" -o "-c listen_addresses='' -k $PGHOME/sock" -w start
     - createdb -h "$PGHOME/sock" -U certinel certinel
-    - $PYBIN -m venv /tmp/cienv-pg
+    - $PYBIN -m venv --clear /tmp/cienv-pg
     - /tmp/cienv-pg/bin/pip install -q -r requirements.txt -r requirements-postgres.txt pytest
     - CSR_DB_URL="postgresql://certinel@/certinel?host=$PGHOME/sock" /tmp/cienv-pg/bin/python -m pytest tests/test_smoke.py -q
   after_script:
@@ -200,10 +200,11 @@ release:
       # Non-fatal: a build hiccup must never undo the pushed tag. Falls back to
       # buildah (no attestations) if BuildKit isn't present on the runner.
       HUB_IMAGE="docker.io/ac2solutions/certinel"
-      # Compose the edition's tag set: always RELTAG + MOVING; community also
-      # publishes the bare latest/slim so existing `:latest` pulls track the base.
-      IMG_TAGS="$HUB_IMAGE:$RELTAG,$HUB_IMAGE:$MOVING"
-      SLIM_TAGS="$HUB_IMAGE:$RELTAG-slim,$HUB_IMAGE:$MOVING-slim"
+      # Compose the edition's tag set: always RELTAG + MOVING + a per-edition
+      # "<edition>-latest" alias (an explicit always-latest pointer); community
+      # also publishes the bare latest/slim so existing `:latest` pulls track the base.
+      IMG_TAGS="$HUB_IMAGE:$RELTAG,$HUB_IMAGE:$MOVING,$HUB_IMAGE:$MOVING-latest"
+      SLIM_TAGS="$HUB_IMAGE:$RELTAG-slim,$HUB_IMAGE:$MOVING-slim,$HUB_IMAGE:$MOVING-latest-slim"
       if [ "$PFX" = community ]; then
         IMG_TAGS="$IMG_TAGS,$HUB_IMAGE:latest"; SLIM_TAGS="$SLIM_TAGS,$HUB_IMAGE:slim"
       fi
@@ -237,8 +238,8 @@ release:
             ( REG="192.168.201.19:5000"
               ma=$(printf '_mirror:%s' "$CERTINEL_MIRROR_PUSH_SECRET" | base64 -w0)
               python3 -c "import json;p='$DOCKER_CONFIG/config.json';d=json.load(open(p));d['auths']['$REG']={'auth':'$ma'};json.dump(d,open(p,'w'))"
-              MREG_TAGS="$REG/certinel:$RELTAG,$REG/certinel:$MOVING"
-              MREG_SLIM="$REG/certinel:$RELTAG-slim,$REG/certinel:$MOVING-slim"
+              MREG_TAGS="$REG/certinel:$RELTAG,$REG/certinel:$MOVING,$REG/certinel:$MOVING-latest"
+              MREG_SLIM="$REG/certinel:$RELTAG-slim,$REG/certinel:$MOVING-slim,$REG/certinel:$MOVING-latest-slim"
               if [ "$PFX" = community ]; then MREG_TAGS="$MREG_TAGS,$REG/certinel:latest"; MREG_SLIM="$MREG_SLIM,$REG/certinel:slim"; fi
               bk --output "type=image,\"name=$MREG_TAGS\",push=true,registry.insecure=true"
               bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
