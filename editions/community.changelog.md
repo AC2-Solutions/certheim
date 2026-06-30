@@ -1,5 +1,22 @@
 # Certinel Community edition — changelog
 
+## 3.23.4 — 2026-06-30
+
+_Released 2026-06-30. 1 change since community-v3.23.3._
+
+### Fixes & improvements
+
+- ship per-edition version file in the image so it reports the true version (`b59f2da8`)
+  The Containerfile copied backend/ + the root VERSION but never the editions/ dir. _read_version()
+  prefers editions/<edition>.version (chosen by build_mode.EDITION) and falls back to root VERSION —
+  which release.sh only ever writes from the community release (the base line). So
+  Commercial/Government images shipped no editions/<edition>.version and reported the community
+  number (e.g. clm showed 3.23.3 instead of commercial 3.61.4), even though the build, modules,
+  license and behavior were all correct.
+  Fix: COPY editions/ into the image. Each branch carries only its own .version, so community still
+  resolves community.version; commercial/government now resolve their own. .md changelogs stay
+  excluded by .containerignore, so only the tiny *.version files are added.
+
 ## 3.23.3 — 2026-06-29
 
 _Released 2026-06-29. 2 changes since community-v3.23.2._
