@@ -41,6 +41,13 @@ RUN set -e; \
 COPY --from=builder /opt/venv /opt/venv
 COPY backend/  /opt/certinel/
 COPY VERSION   /opt/certinel/VERSION
+# Per-edition version files. _read_version() prefers editions/<edition>.version
+# (selected by build_mode.EDITION) and only falls back to the root VERSION, which
+# is the community base line. Without this, a Commercial/Government image has no
+# editions/ dir and reports the community version (e.g. 3.23.3) instead of its
+# own (e.g. commercial 3.61.4). Each branch carries only its own .version, so
+# the community image still resolves community.version.
+COPY editions/ /opt/certinel/editions/
 COPY helper/   /opt/certinel/helper/
 COPY frontend/ /var/www/csr/
 COPY container/entrypoint.sh /usr/local/bin/entrypoint.sh
