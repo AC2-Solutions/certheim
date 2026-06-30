@@ -1,5 +1,6 @@
 # Keep the image build context small/fast. The Containerfile COPYs only
-# backend/, frontend/, helper/, container/, requirements*, and VERSION.
+# backend/, frontend/, helper/, container/, requirements*, VERSION, and
+# editions/*.version (the per-edition version the running app reports).
 .git
 **/__pycache__
 **/*.pyc
