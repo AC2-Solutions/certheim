@@ -628,6 +628,11 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("          proxy_set_header Host $host;");
     L.push("          proxy_set_header X-Real-IP $remote_addr;");
     L.push("        }");
+    L.push("        # External clients (ACME/certbot, Prometheus, SCIM IdP) hit the");
+    L.push("        # app's top-level paths — proxy them so they don't fall to the SPA.");
+    L.push("        location /acme/     { proxy_pass http://app:5002/acme/; proxy_set_header Host $host; }");
+    L.push("        location = /metrics { proxy_pass http://app:5002/metrics; proxy_set_header Host $host; }");
+    L.push("        location /scim/     { proxy_pass http://app:5002/scim/; proxy_set_header Host $host; }");
     L.push("        location /csr/ { try_files $uri $uri/ /csr/index.html; }");
     L.push("      }");
     L.push("volumes:");

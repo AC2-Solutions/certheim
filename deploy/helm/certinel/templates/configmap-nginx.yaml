@@ -28,6 +28,27 @@ data:
         proxy_set_header X-Client-Serial $http_x_client_serial;
       }
 
+      # Premium endpoints the app serves for EXTERNAL clients on non-/api paths:
+      # the ACME server (RFC 8555; certbot/cert-manager/acme.sh), Prometheus
+      # /metrics, and SCIM 2.0 (Okta/Entra/Ping). They must proxy to the app, not
+      # fall through to the SPA catch-all below. In editions/deployments where a
+      # feature isn't present or enabled, the app simply returns 404/disabled.
+      location /acme/ {
+        proxy_pass http://127.0.0.1:5002/acme/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+      }
+      location = /metrics {
+        proxy_pass http://127.0.0.1:5002/metrics;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+      }
+      location /scim/ {
+        proxy_pass http://127.0.0.1:5002/scim/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+      }
+
       location /csr/ {
         try_files $uri $uri/ /csr/index.html;
       }
