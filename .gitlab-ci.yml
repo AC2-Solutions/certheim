@@ -21,6 +21,23 @@ stages: [lint, test, release, propagate]
 
 default:
   tags: [shell]
+  # Self-heal transient shell-runner hiccups instead of showing a red pipeline:
+  # git get_sources ref-lock races on the shared build dir (e.g.
+  # "couldn't set 'refs/remotes/origin/<branch>'"), network blips, and runner
+  # restarts. Safe to retry here — every job is either deterministic (lint,
+  # smoke tests) or retry-safe (the release job re-syncs to the tip and
+  # recomputes), so a genuine failure still fails all attempts and reports red;
+  # only flakes recover. GitLab mislabels get_sources failures as
+  # script_failure, so that reason is included deliberately.
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - scheduler_failure
+      - api_failure
+      - unknown_failure
+      - data_integrity_failure
+      - script_failure
 
 python-syntax:
   stage: lint
