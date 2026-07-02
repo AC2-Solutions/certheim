@@ -1,5 +1,24 @@
 # Certinel Community edition — changelog
 
+## 3.25.0 — 2026-07-02
+
+_Released 2026-07-02. 1 change since community-v3.24.0._
+
+### Features
+
+- **ui:** gray out upgrade-gated features on the Community edition (`5c15574`)
+  On the free Community build, licensed features this build physically cannot run are now disabled
+  and badged "Commercial" in the admin UI, so admins don't burn time configuring backends that can
+  never work here. Covers the real dead-ends: the signing/CA backend pickers (global + per-
+  template), delivery destinations, automated renewal, and the ACME server toggle. The free OpenBao
+  and ACME-client backends are never gated.
+  Deliberately scoped to the Community edition only: Commercial/Government keep these controls live
+  because they can genuinely license/configure them (their capabilities read "needs <env>", not
+  "upgrade"). The gate keys off capability.upgrade (build/edition gating), NOT .available (which
+  folds in env config) — otherwise a free-but-unconfigured backend like OpenBao would be wrongly
+  grayed on Community.
+  Client-side only; no backend or capability changes.
+
 ## 3.24.0 — 2026-07-02
 
 _Released 2026-07-02. 1 change since community-v3.23.4._
