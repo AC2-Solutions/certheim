@@ -271,23 +271,27 @@ EDITIONS = ("community", "commercial", "unlimited", "government")
 
 # Capability keys each PAID tier adds on top of free Community.
 #
-# The line: **Community (free) = the core request -> sign -> issue loop with the
-# open-source CA.** It can generate CSRs, sign in-UI via **OpenBao** (and renew
-# on demand by re-signing through it), upload manually-issued certs, and use
-# fleet/audit/SMTP/local+CAC auth. No usage caps. **Commercial = breadth +
-# automation:** every *other* signing backend (Windows/CyberArk/EJBCA/Venafi/
-# AWS PCA, ACME client), the ACME *server*, background automated renewal, and
-# connected integrations (chat / Slack-interactive / email APIs). **Government =
-# Commercial + the public-sector pack.** Every key is enforced at its call site,
-# so membership here is the gate. (OpenBao is deliberately NOT here -> free.)
+# The line: **Community (free) = the core request -> sign -> issue loop using the
+# free ACME client** (any RFC 8555 CA — Let's Encrypt / step-ca), plus manual
+# cert upload. It can generate CSRs, sign in-UI via ACME, upload manually-issued
+# certs, and use fleet/audit/SMTP/local+CAC auth. No usage caps. **Commercial =
+# breadth + automation:** every *other* signing backend (OpenBao, Windows/
+# CyberArk/EJBCA/Venafi/AWS PCA), the ACME *server*, background automated
+# renewal, and connected integrations (chat / Slack-interactive / email APIs).
+# **Government = Commercial + the public-sector pack.** Every key is enforced at
+# its call site, so membership here is the gate. (ca.signing.acme is deliberately
+# NOT here -> the ACME client is the free signing path.)
 COMMERCIAL_CAPABILITIES = {
-    # in-UI signing beyond the free OpenBao + ACME-client backends. ACME
-    # (ca.signing.acme) is intentionally NOT here: obtaining certs FROM an
+    # In-UI signing: the free Community tier is MANUAL upload + the ACME client
+    # only. ca.signing.acme is intentionally NOT here — obtaining certs FROM an
     # external ACME CA (Let's Encrypt / step-ca / any RFC 8555 CA) uses a free,
-    # open protocol, so the ACME *client* ships free with Community alongside
-    # OpenBao. The core client (acme_client.py) covers HTTP-01 and internal
-    # DNS-01 (rfc2136); the *cloud* DNS-01 solvers (acme_dns.py: Cloudflare/
-    # Route53/Azure) and the ACME *server* (ca.server.acme) stay Commercial.
+    # open protocol, so the ACME *client* (acme_client.py: HTTP-01 + internal
+    # DNS-01/rfc2136) ships free. EVERY other in-UI backend is Commercial,
+    # INCLUDING OpenBao: the enterprise secret-manager CA is a paid integration,
+    # so Community shows it grayed/unselectable (manual or ACME only). The cloud
+    # DNS-01 solvers (acme_dns.py) and the ACME *server* (ca.server.acme) also
+    # stay Commercial.
+    "ca.signing.openbao",
     "ca.signing.windows_ca", "ca.signing.cyberark",
     "ca.signing.ejbca", "ca.signing.venafi", "ca.signing.aws_pca",
     # the dashboard as an ACME CA

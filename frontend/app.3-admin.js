@@ -616,6 +616,18 @@ function _signingRenderProvider() {
   const wrap = document.getElementById("signing-provider-fields");
   const hint = document.getElementById("signing-backend-hint");
   const cred = document.getElementById("signing-cred-state");
+  // Community: a gated backend's connection settings must NEVER be shown, even
+  // if it is somehow the selected value — render an upgrade note, no fields.
+  const _selKey = document.getElementById("signing-cfg-backend").value;
+  if (_isCommunityEdition() && capUpgrade("ca.signing." + _selKey)) {
+    document.getElementById("signing-ttl-wrap").hidden = true;
+    wrap.innerHTML = ""; cred.innerHTML = "";
+    hint.innerHTML = '<span class="upgrade-badge">Commercial</span> '
+      + escapeHtml((p && p.label) || _selKey)
+      + ' signing requires a Commercial or Government license. Community can '
+      + 'sign via ACME or accept manual cert uploads.';
+    return;
+  }
   document.getElementById("signing-ttl-wrap").hidden = !(p && p.automated);
   if (!p || !p.automated) {
     wrap.innerHTML = ""; cred.innerHTML = "";
@@ -673,6 +685,10 @@ async function loadSigningConfig() {
     `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
   sel.value = c.default_backend || "manual";
   applyCommunityGating(document);   // Community: gray out paid CA backends
+  // Never leave a gated (disabled) backend selected on Community — its
+  // connection settings must not be shown; fall back to manual (ACME + manual
+  // are the only selectable options).
+  if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = "manual";
   document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
   document.getElementById("signing-cfg-autorenew").checked = !!c.auto_renew_enabled;
   document.getElementById("signing-cfg-renewdays").value = c.auto_renew_before_days || 30;
