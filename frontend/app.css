@@ -163,6 +163,16 @@
   .status.ok { color: var(--ok); }
   .status.err { color: var(--danger); }
 
+  /* Community-edition upsell: a licensed feature this free build cannot run is
+     disabled + badged "Commercial" so admins don't chase configs that can't
+     work. Applied client-side only on the Community edition. */
+  .upgrade-locked { opacity: 0.5; }
+  .upgrade-badge { display: inline-block; margin-left: 6px; padding: 1px 7px;
+                   font-size: 11px; font-weight: 600; line-height: 1.5;
+                   border: 1px solid var(--warning); color: var(--warning);
+                   border-radius: 10px; vertical-align: middle; letter-spacing: .02em;
+                   cursor: help; }
+
   pre.log { background: var(--log-bg); color: var(--log-fg); padding: 12px;
             border-radius: 4px; max-height: 300px; overflow: auto;
             font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;

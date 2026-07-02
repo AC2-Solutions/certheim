@@ -115,6 +115,76 @@ function applyCapabilityHints() {
       }
     }
   });
+  applyCommunityGating(document);
+}
+
+// ---- Community-edition upsell gating --------------------------------------
+// On the free Community build, licensed features this build physically cannot
+// run (capability.upgrade === true) are disabled + badged "Commercial" so
+// admins don't configure things that can never work. Deliberately scoped to the
+// Community edition: Commercial/Government keep these controls live because they
+// can genuinely license/configure them (a capability there reads "needs <env>",
+// not "upgrade"). We key off `upgrade` (build/edition gating), NOT `available`
+// (which folds in env config) — else free-but-unconfigured backends like
+// OpenBao would be wrongly grayed on Community.
+function _isCommunityEdition() {
+  return typeof currentUser !== "undefined" && !!currentUser
+    && currentUser.edition === "community";
+}
+function capUpgrade(key) {
+  return !!(_capCache && _capCache[key] && _capCache[key].upgrade);
+}
+function _upgradeBadgeAfter(host) {
+  if (!host || !host.parentNode) return;
+  const sib = host.nextElementSibling;
+  if (sib && sib.classList && sib.classList.contains("upgrade-badge")) return; // no dupes
+  const b = document.createElement("span");
+  b.className = "upgrade-badge";
+  b.textContent = "Commercial";
+  b.title = "Available in the Commercial and Government editions";
+  host.parentNode.insertBefore(b, host.nextSibling);
+}
+// Disable + badge a fixed control (by id) tied to a capability.
+function _gateControl(id, key) {
+  const el = document.getElementById(id);
+  if (!el || !(_isCommunityEdition() && capUpgrade(key))) return;
+  el.disabled = true;
+  const host = el.closest("label") || el;
+  host.classList.add("upgrade-locked");
+  _upgradeBadgeAfter(host);
+}
+// Disable + label the <option>s of a select whose backing feature isn't in this
+// build. keyFor maps an option value -> capability key (null = leave it alone).
+function _gateOptions(root, selector, keyFor) {
+  root.querySelectorAll(selector).forEach(opt => {
+    const key = keyFor(opt.value);
+    if (key && _isCommunityEdition() && capUpgrade(key)) {
+      opt.disabled = true;
+      if (!/—\s*Commercial/.test(opt.textContent)) opt.textContent += "  —  Commercial";
+    }
+  });
+}
+function applyCommunityGating(root) {
+  if (!_isCommunityEdition() || !_capCache) return;
+  root = root || document;
+  // Signing / CA backends — both the global picker and the per-template one.
+  // OpenBao + ACME stay free (upgrade=false), so they're never gated here.
+  _gateOptions(root, "#signing-cfg-backend option, .sig-backend option",
+    v => (v && v !== "manual") ? "ca.signing." + v : null);
+  // Automated delivery destinations.
+  _gateOptions(root, ".sig-deliver option",
+    v => (v && v !== "none") ? "delivery." + v : null);
+  // Global toggles: automated renewal + the ACME server.
+  _gateControl("signing-cfg-autorenew", "lifecycle.auto_renew");
+  _gateControl("signing-cfg-acmesrv", "ca.server.acme");
+  // Per-template auto-renew checkboxes.
+  if (capUpgrade("lifecycle.auto_renew")) {
+    root.querySelectorAll(".sig-renew").forEach(el => {
+      el.disabled = true;
+      const l = el.closest("label");
+      if (l) { l.classList.add("upgrade-locked"); l.title = "Automated renewal is a Commercial feature"; }
+    });
+  }
 }
 
 // ===== Admin: templates =====
@@ -245,6 +315,7 @@ function editTemplateSigning(td, t) {
     <button class="btn sig-save" style="padding:2px 10px">Save</button>
     <button class="link-btn sig-cancel">Cancel</button>
     <span class="sig-status status"></span>`;
+  applyCommunityGating(td);   // Community: gray out paid backends/delivery/renew
   const backSel = td.querySelector(".sig-backend");
   const obWrap = td.querySelector(".sig-auto-wrap");
   const obFields = td.querySelector(".sig-ob");
@@ -601,6 +672,7 @@ async function loadSigningConfig() {
   sel.innerHTML = (c.providers || []).map(p =>
     `<option value="${p.key}">${escapeHtml(p.label)}</option>`).join("");
   sel.value = c.default_backend || "manual";
+  applyCommunityGating(document);   // Community: gray out paid CA backends
   document.getElementById("signing-cfg-ttl").value = c.max_ttl || "";
   document.getElementById("signing-cfg-autorenew").checked = !!c.auto_renew_enabled;
   document.getElementById("signing-cfg-renewdays").value = c.auto_renew_before_days || 30;
