@@ -241,11 +241,23 @@ release:
               MREG_TAGS="$REG/certinel:$RELTAG,$REG/certinel:$MOVING,$REG/certinel:$MOVING-latest"
               MREG_SLIM="$REG/certinel:$RELTAG-slim,$REG/certinel:$MOVING-slim,$REG/certinel:$MOVING-latest-slim"
               if [ "$PFX" = community ]; then MREG_TAGS="$MREG_TAGS,$REG/certinel:latest"; MREG_SLIM="$MREG_SLIM,$REG/certinel:slim"; fi
-              bk --output "type=image,\"name=$MREG_TAGS\",push=true,registry.insecure=true"
-              bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
-                 --output "type=image,\"name=$MREG_SLIM\",push=true,registry.insecure=true"
-              echo "Mirrored to entitled registry $REG (attested)" ) \
-              || echo "note: entitled-registry mirror skipped/failed (Docker Hub publish still succeeded)"
+              # A miss here leaves the entitled registry (what the K8s pods pull)
+              # a release behind — and it used to be swallowed silently. Retry the
+              # LAN push, then fail LOUD via a flag file read after the buildkit
+              # sandbox is torn down (this set -e subshell's non-zero exit is
+              # intentionally softened by the caller so the Docker Hub publish
+              # stays authoritative for the tag).
+              mok=""
+              for att in 1 2 3; do
+                if bk --output "type=image,\"name=$MREG_TAGS\",push=true,registry.insecure=true" \
+                   && bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
+                         --output "type=image,\"name=$MREG_SLIM\",push=true,registry.insecure=true"; then
+                  mok=1; echo "Mirrored to entitled registry $REG (attested, attempt $att)"; break
+                fi
+                echo "warn: entitled-registry mirror attempt $att/3 failed; retrying in $((att*15))s"; sleep $((att*15))
+              done
+              [ -n "$mok" ] || { echo "ERROR: entitled-registry mirror to $REG FAILED after 3 attempts — the K8s pods will lag $RELTAG until re-run"; touch "$CI_PROJECT_DIR/.mirror-failed"; } ) \
+              || { echo "note: entitled-registry mirror errored (Docker Hub publish still succeeded)"; touch "$CI_PROJECT_DIR/.mirror-failed"; }
           fi ) \
           || echo "warn: attested image publish failed (release $RELTAG still cut; rebuild manually)"
         buildah unshare -- rm -rf "$BK" 2>/dev/null || rm -rf "$BK" 2>/dev/null || true
@@ -294,6 +306,16 @@ release:
         echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for $RELTAG."
       else
         echo "note: offline bundle is published from Community only — skipping for $RELTAG."
+      fi
+      # Fail LOUD (red pipeline) if the entitled-registry mirror never landed —
+      # done last, so Docker Hub, the GitLab release/tag, and the offline bundle
+      # all publish first. Only edition propagation (a later, re-runnable stage)
+      # is gated on this, which is the correct "stop and fix the pods' registry"
+      # signal rather than the old silent skip.
+      if [ -f "$CI_PROJECT_DIR/.mirror-failed" ]; then
+        rm -f "$CI_PROJECT_DIR/.mirror-failed"
+        echo "FATAL: entitled-registry mirror failed for $RELTAG. Docker Hub + release/tag are fine, but the K8s pods (which pull the entitled registry) will NOT see $RELTAG until the mirror is re-run. Failing the job so this is visible."
+        exit 1
       fi
       echo "Released $RELTAG"
 
