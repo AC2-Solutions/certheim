@@ -1,5 +1,44 @@
 # Certinel Community edition — changelog
 
+## 3.26.0 — 2026-07-02
+
+_Released 2026-07-02. 2 changes since community-v3.25.1._
+
+### Features
+
+- **signing:** Community signing is manual + ACME only; gate OpenBao (`8883fdd`)
+  Per product direction, the free Community tier's in-UI signing is the ACME client (any RFC 8555
+  CA) plus manual cert upload — nothing else. OpenBao, the enterprise secret-manager CA, moves into
+  the Commercial capability set alongside the other paid backends (Windows/CyberArk/EJBCA/Venafi/AWS
+  PCA).
+  Effect on the Signing/CA admin panel (Community only):
+  - OpenBao now reports capability.upgrade=true, so the existing gray-out logic disables + badges
+    it "Commercial" in the backend dropdown, leaving only Manual and ACME selectable.
+  - The connection-settings form is never rendered for a gated backend: if a gated backend is
+    somehow the selected/default value, the picker falls back to Manual and _signingRenderProvider
+    shows an upgrade note instead of the fields — admins can't even view a paid backend's
+    connection settings.
+  Commercial/Government are unaffected: their license entitles OpenBao, so it reads "needs <env>"
+  (configurable), not "upgrade", and is not grayed.
+
+### Fixes & improvements
+
+- **signing:** gate the signing core on capabilities, not a stale build tuple (`5894025`)
+  sign.py's sign_csr/test_connection hard-coded the Community-allowed backends as ("manual",
+  "openbao") — written before ACME became the free Community signing path. That left two
+  contradictions on Community: ACME (the advertised free backend) was REFUSED by the core ("acme is
+  a licensed signing backend"), while OpenBao (now premium, grayed in the UI) was still ALLOWED. So
+  the one backend the UI offers didn't work and the one it hides did.
+  Replace both hard-coded gates with `capabilities.is_entitled("ca.signing." + backend)`, which
+  folds the license AND the build ceiling into one check: ACME passes on Community (free), OpenBao +
+  the enterprise backends are refused (premium / code absent), and Commercial/Government keep
+  everything their license grants. This reconciles the signing core with the capability layer and
+  the frontend gray-out.
+  Template/global signing CONFIG stays intentionally decoupled from license (you can pre-pin a
+  backend before applying a license — see test_template_pin_enterprise_backend); enforcement is at
+  sign time only.
+  Regression test: test_sign_core_gate_matches_capabilities.
+
 ## 3.25.1 — 2026-07-02
 
 _Released 2026-07-02. 1 change since community-v3.25.0._
