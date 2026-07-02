@@ -62,6 +62,30 @@ def test_free_solvers_construct():
         tsig_algo="hmac-sha256", port=53) is not None
 
 
+def test_sign_core_gate_matches_capabilities():
+    """The signing core must gate on the capability layer, not a stale hard-coded
+    tuple: on a Community build ACME (free) passes the gate while OpenBao and the
+    enterprise backends (premium) are refused at sign time. Regression for the
+    bug where sign.py allowed manual+openbao and refused ACME after ACME was made
+    the free Community backend."""
+    import build_mode
+    import sign
+    if not build_mode.is_community_build():
+        pytest.skip("only meaningful on a Community build")
+    # premium on Community -> refused by the entitlement gate (before any module use)
+    for paid in ("openbao", "venafi", "windows_ca"):
+        with pytest.raises(sign.BackendUnavailable, match="license"):
+            sign.sign_csr("dummy REQUEST", {"signer_backend": paid})
+    # ACME is free -> must NOT be blocked by the license gate (it fails later for
+    # lack of ACME config, but never with the "requires a license" message).
+    try:
+        sign.sign_csr("dummy REQUEST", {"signer_backend": "acme"})
+    except sign.BackendUnavailable as e:
+        assert "license" not in str(e).lower(), "ACME must be free on Community"
+    except Exception:
+        pass  # expected: downstream failure (no ACME directory configured)
+
+
 def test_cloud_dns_gating_matches_build():
     """When the premium acme_dns module is absent (Community build), the UI must
     advertise only free challenge paths and the cloud solver must fail with a

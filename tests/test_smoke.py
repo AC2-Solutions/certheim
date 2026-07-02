@@ -852,10 +852,12 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     bad = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": "not.a.license"}))
     assert bad.status_code == 400
 
-    # community (no license): OpenBao signing is FREE; everything else is gated.
+    # community (no license): the free signing path is the ACME client (+ manual
+    # upload); every other in-UI backend — including OpenBao — is gated.
     monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
-    assert "ca.signing.openbao" not in capabilities.LICENSED_CAPABILITIES
-    assert capabilities.is_entitled("ca.signing.openbao") is True       # free CA
+    assert "ca.signing.acme" not in capabilities.LICENSED_CAPABILITIES
+    assert capabilities.is_entitled("ca.signing.acme") is True          # free CA (ACME client)
+    assert capabilities.is_entitled("ca.signing.openbao") is False      # paid CA
     assert capabilities.is_entitled("ca.signing.windows_ca") is False   # paid CA
     assert capabilities.is_entitled("ca.server.acme") is False          # paid
     # an env-free commercial cap to isolate the license gate
