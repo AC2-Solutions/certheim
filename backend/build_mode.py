@@ -31,8 +31,11 @@ import os
 RELEASE_BUILD = False
 
 # Product edition of THIS build. The Community build physically OMITS the premium
-# modules (ca_providers, acme_client/dns, acme_server, routes_acme, deliver,
-# routes_deliver, renew, slack_listener); this marker lets the surviving core
+# modules (ca_providers, acme_dns, acme_server, routes_acme, deliver,
+# routes_deliver, renew, slack_listener); the free ACME *client* (acme_client.py:
+# RFC 8555 + HTTP-01 + internal DNS-01/rfc2136) DOES ship with Community — only
+# the cloud DNS-01 solvers (acme_dns) and the ACME server stay premium. This
+# marker lets the surviving core
 # force every licensed capability OFF regardless of any license file, and lets
 # the UI render those features grayed-out as upsell. The licensed (Full) build
 # sets EDITION = "full" — no license can turn a Community BUILD into a paid one,
