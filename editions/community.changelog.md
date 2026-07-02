@@ -1,5 +1,23 @@
 # Certinel Community edition — changelog
 
+## 3.25.1 — 2026-07-02
+
+_Released 2026-07-02. 1 change since community-v3.25.0._
+
+### Fixes & improvements
+
+- **ci:** retry the entitled-registry mirror and fail loud on miss (`40732fb`)
+  The release job mirrors each edition's image from Docker Hub into the entitled registry
+  (registry.ac2certinel.com) that the K8s pods pull from. That push is over the plain-HTTP LAN
+  origin and occasionally fails; the failure was swallowed by `|| echo "note: ...skipped/failed"`,
+  so the job stayed green while the pods silently lagged a release behind (this is exactly what
+  stranded community/commercial/government one version back — the -latest tags never advanced and
+  the newest images 404 in the registry).
+  Now the mirror push is retried up to 3x with backoff, and a genuine miss records a flag that fails
+  the job LOUD at the end — after Docker Hub, the GitLab release/tag, and the offline bundle have
+  all published, so only the re-runnable edition-propagation stage is gated. This re-release also
+  re-mirrors the current build, healing the stranded registry tags.
+
 ## 3.25.0 — 2026-07-02
 
 _Released 2026-07-02. 1 change since community-v3.24.0._
