@@ -1486,7 +1486,13 @@ def test_acme_dns_provider_field_shape(client):
     acme = next(p for p in body["providers"] if p["key"] == "acme")
     f = {x["key"]: x for x in acme["fields"]}
     assert f["challenge_type"]["options"] == ["dns-01", "http-01"]
-    assert f["dns_provider"]["options"] == ["rfc2136", "cloudflare", "route53", "azure"]
+    # The cloud DNS-01 solvers (acme_dns) are Commercial-only; a Community build
+    # (module absent) advertises just the free internal rfc2136 path.
+    try:
+        import acme_dns  # noqa: F401
+        assert f["dns_provider"]["options"] == ["rfc2136", "cloudflare", "route53", "azure"]
+    except ImportError:
+        assert f["dns_provider"]["options"] == ["rfc2136"]
     # dns_zone is conditional on challenge=dns-01 AND a cloud provider
     assert any(c["field"] == "dns_provider" for c in f["dns_zone"]["show_if"])
 

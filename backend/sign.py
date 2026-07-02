@@ -423,7 +423,15 @@ def _acme_solver():
     prov = (_cfg("acme_dns_provider", "CSR_ACME_DNS_PROVIDER") or "rfc2136").strip().lower()
     zone = _cfg("acme_dns_zone", "CSR_ACME_DNS_ZONE")
     if prov in ("cloudflare", "route53", "azure"):
-        import acme_dns
+        try:
+            import acme_dns
+        except ImportError:
+            # Cloud DNS-01 solvers live in acme_dns, a Commercial-only module.
+            # The free ACME client (HTTP-01 + internal DNS-01/rfc2136) ships with
+            # Community; the managed-DNS automation is a paid upgrade.
+            raise SignError(
+                "Cloud DNS-01 solvers (Cloudflare / Route53 / Azure) require a "
+                "Commercial license. Use HTTP-01 or internal DNS-01 (rfc2136).")
         if prov == "cloudflare":
             return acme_dns.Dns01CloudflareSolver(
                 os.environ.get("CSR_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
@@ -620,6 +628,18 @@ PROVIDERS = {
         ],
     },
 }
+
+# Cloud DNS-01 solvers (Cloudflare / Route53 / Azure) live in acme_dns, a
+# Commercial-only module. In a build without it (Community), advertise only the
+# free ACME challenge paths — HTTP-01 and internal DNS-01 (rfc2136) — so the
+# admin UI never offers a managed-DNS provider this build can't actually run.
+try:
+    import acme_dns as _acme_dns_probe  # noqa: F401
+except ImportError:
+    for _f in PROVIDERS["acme"]["fields"]:
+        if _f.get("key") == "dns_provider":
+            _f["options"] = [o for o in _f["options"] if o not in
+                             ("cloudflare", "route53", "azure")]
 
 BACKENDS = tuple(PROVIDERS.keys())
 
