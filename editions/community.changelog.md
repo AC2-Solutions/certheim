@@ -1,5 +1,23 @@
 # Certinel Community edition — changelog
 
+## 3.26.1 — 2026-07-02
+
+_Released 2026-07-02. 1 change since community-v3.26.0._
+
+### Fixes & improvements
+
+- **deploy:** proxy the ACME server, /metrics and SCIM through nginx (`a6803cc`)
+  The in-pod (helm) and VM nginx only proxied /csr/api/ to the app; everything else fell through to
+  the SPA catch-all. Three premium endpoints the app serves for EXTERNAL clients live on their own
+  top-level paths — the ACME server (/acme/*, RFC 8555), Prometheus /metrics, and SCIM 2.0
+  (/scim/v2/*) — so an external certbot/cert-manager, Prometheus scrape, or IdP SCIM push hit the
+  HTML shell instead of the handler. The features' advertised URLs could never work even once an
+  admin enabled them.
+  Add proxy_pass locations for /acme/, /metrics, and /scim/ to the helm ConfigMap, the VM nginx
+  snippet, and the setup-guide config generator so generated deployments are correct too.
+  Editions/deployments without a given feature just return 404/disabled from the app, so the blocks
+  are safe everywhere.
+
 ## 3.26.0 — 2026-07-02
 
 _Released 2026-07-02. 2 changes since community-v3.25.1._
