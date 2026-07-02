@@ -1,5 +1,24 @@
 # Certinel Community edition — changelog
 
+## 3.24.0 — 2026-07-02
+
+_Released 2026-07-02. 1 change since community-v3.23.4._
+
+### Features
+
+- **signing:** ship the ACME client as a free Community backend (`a0bc898`)
+  Obtaining certs FROM an external ACME CA (Let's Encrypt / step-ca / any RFC 8555 CA) uses a free,
+  open protocol, so gating the ACME *client* as Commercial was hard to justify. It now ships free
+  with Community alongside the OpenBao backend: the core client (acme_client.py — HTTP-01 + internal
+  DNS-01/rfc2136) is included in the Community build and ca.signing.acme is removed from the
+  licensed capability set.
+  Held back as premium (unchanged): the cloud DNS-01 solvers (acme_dns.py —
+  Cloudflare/Route53/Azure) and the ACME *server* (ca.server.acme). On a build without acme_dns, the
+  admin UI advertises only the free challenge paths and a cloud-provider selection fails with a
+  clear "requires Commercial" SignError rather than an ImportError.
+  Edition-robust tests: test_community_acme.py plus a shape fix in the smoke suite (both branch on
+  whether acme_dns physically ships).
+
 ## 3.23.4 — 2026-06-30
 
 _Released 2026-06-30. 1 change since community-v3.23.3._
