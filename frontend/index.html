@@ -1979,9 +1979,11 @@
             <p>Shows the active edition and installs your license.</p>
             <ul>
               <li><strong>Community</strong> (free) covers the core request → sign → issue
-                  workflow via the open-source CA. <strong>Commercial</strong> and
-                  <strong>Government</strong> editions unlock additional CA backends, the
-                  ACME server, automated renewal, integrations, and the public-sector pack.</li>
+                  workflow: generate CSRs and sign in-app via the built-in <strong>ACME client</strong>
+                  (Let's Encrypt, step-ca, or any RFC 8555 CA), or upload manually-issued certs.
+                  <strong>Commercial</strong> and <strong>Government</strong> editions add
+                  OpenBao/Vault + enterprise CA backends, the ACME server, automated renewal,
+                  integrations, and the public-sector pack.</li>
               <li>Paste a license to upgrade; it's verified <strong>offline</strong> against an
                   embedded key, so even air-gapped sites stay licensed without contacting a
                   server.</li>
