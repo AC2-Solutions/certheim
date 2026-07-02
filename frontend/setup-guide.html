@@ -141,13 +141,15 @@
       </div>
     </div>
 
-    <label>Do you want Certinel to sign certificates automatically using OpenBao / Vault?<button type="button" class="help" data-help="ob" aria-label="How to find this">?</button></label>
+    <label>Do you want Certinel to issue certificates automatically in the app?<button type="button" class="help" data-help="ob" aria-label="How to find this">?</button></label>
     <div class="choices" id="ob">
       <button data-val="yes" aria-pressed="true"><span class="t">Yes</span><span class="d">Auto-issue in the web app.</span></button>
       <button data-val="no"><span class="t">Not yet</span><span class="d">I&rsquo;ll upload signed certs by hand.</span></button>
     </div>
+    <p class="sub when-acme-free">Community issues automatically via <b>ACME</b> — Let&rsquo;s Encrypt, step-ca, or any RFC&nbsp;8555 CA. You set the CA&rsquo;s directory URL in the app (Step&nbsp;6); no details needed here. OpenBao/Vault and enterprise CAs are Commercial features.</p>
+    <p class="sub when-ob-vault">The free path is <b>ACME</b> (any RFC&nbsp;8555 CA — set up in the app). For a deeper enterprise integration you can use <b>OpenBao / Vault</b> — fill its details in below (optional; leave blank to use ACME instead).</p>
 
-    <div class="when-openbao">
+    <div class="when-ob-vault">
       <div class="row">
         <div><label>OpenBao address<button type="button" class="help" data-help="ob_addr" aria-label="How to find this">?</button></label><input type="text" id="ob_addr" placeholder="https://openbao.example.com"></div>
         <div><label>PKI mount <span class="hint">(default pki_csr)</span><button type="button" class="help" data-help="ob_mount" aria-label="How to find this">?</button></label><input type="text" id="ob_mount" placeholder="pki_csr"></div>
@@ -199,7 +201,8 @@
     <div class="do">✅ A <b>Linux server</b> (RHEL or AlmaLinux 9) that you can sign into, with <b>administrator (sudo)</b> rights.</div>
     <div class="do">✅ The <b>Certinel installer files</b> (a folder, or an <code>certinel-offline-*.tar.gz</code> file for sealed/offline networks).</div>
     <div class="do">✅ Your <b>license file</b> — a short text blob you received after purchase (issued from your vendor&rsquo;s License portal). <span class="when-community" hidden>Community edition needs no license — skip the license step.</span></div>
-    <div class="do when-openbao">✅ Your <b>OpenBao/Vault details</b> (address + an AppRole <i>role_id</i> and <i>secret_id</i>) from whoever runs your Vault.</div>
+    <div class="do when-acme-free">✅ For automatic signing: the <b>directory URL</b> of an ACME CA (Let&rsquo;s Encrypt, ZeroSSL, or your internal step-ca) — that&rsquo;s all Community needs, entered in the app.</div>
+    <div class="do when-ob-vault">✅ For OpenBao/Vault signing (Commercial): your <b>Vault details</b> (address + an AppRole <i>role_id</i> and <i>secret_id</i>) from whoever runs your Vault. Or just use <b>ACME</b> — no Vault required.</div>
     <div class="do when-cac">✅ For CAC sign-in: your <b>client-certificate CA bundle</b> (e.g., the DoD root/intermediate chain) for the web server.</div>
     <div class="note">Don&rsquo;t have a server yet? That part is a one-time job for an IT admin. Once it exists, everything below is copy-paste or point-and-click.</div>
   </div>
@@ -374,9 +377,21 @@ sudo systemctl restart certinel-api</pre></div>
 
   <!-- ─────────────  STEP 6 (OpenBao)  ───────────── -->
   <div class="card when-openbao" id="s6">
-    <h2><span class="num">6</span>Turn on automatic signing (OpenBao)</h2>
-    <p class="sub">This lets Certinel issue certificates itself in the web app, instead of you uploading signed files by hand.</p>
+    <h2><span class="num">6</span>Turn on automatic signing</h2>
+    <p class="sub">This lets Certinel issue certificates itself in the web app, instead of you uploading signed files by hand. Pick <b>one</b> signing backend and set it as the default.</p>
 
+    <!-- Option A: ACME — the free path, works on every edition (incl. Community) -->
+    <p style="font-weight:700;margin:16px 0 4px">Option A — ACME <span class="hint" style="font-weight:400">(free; Let&rsquo;s Encrypt, step-ca, or any RFC&nbsp;8555 CA)</span></p>
+    <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>ACME</b>, paste your CA&rsquo;s
+      <b>directory URL</b> (e.g. <code>https://acme-v02.api.letsencrypt.org/directory</code>, or your internal step-ca&rsquo;s
+      <code>/acme/&lt;provisioner&gt;/directory</code>), pick the <b>challenge type</b> (DNS-01 or HTTP-01), set it as the
+      <b>default</b>, and click <b>Save &amp; Test</b>.</div>
+    <div class="tip">ACME needs no server-side secrets — it&rsquo;s configured entirely in the app. This is the free signing path on
+      <b>Community</b>, and it works on every edition.</div>
+
+    <!-- Option B: OpenBao / Vault — Commercial+ deep integration -->
+    <div class="when-ob-vault">
+    <p style="font-weight:700;margin:20px 0 4px">Option B — OpenBao / Vault <span class="hint" style="font-weight:400">(Commercial)</span></p>
     <div class="do when-vm">⌨️ <b>Add your Vault details</b> to the settings file on the server, then restart. (These live only on the
       server, never in the web app — that&rsquo;s deliberate.)</div>
     <div class="when-vm">
@@ -395,16 +410,17 @@ sudo systemctl restart certinel-api</pre></div>
       environment variables — nothing to add here. Just confirm them in the next step.</div>
     <div class="do when-k8s" hidden>✅ <b>Already wired.</b> The <code>openbao:</code> block in your values file from Step&nbsp;1 puts the
       address/mount/role in the pod and the role_id/secret_id in a Secret — nothing to add here. Confirm in the next step.</div>
-
     <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>OpenBao PKI</b>,
       confirm the address / mount / role, set it as the <b>default</b>, and click <b>Save &amp; Test</b>.</div>
+    <div class="note">Need the Vault side built (the PKI role + AppRole)? That&rsquo;s a one-time job for your Vault admin:
+      a policy allowing <code>&lt;mount&gt;/sign/&lt;role&gt;</code> (and, for per-user audit, <code>auth/token/create</code>),
+      an AppRole, and its role_id/secret_id.</div>
+    </div>
+
     <div class="tip"><b>Save &amp; Test</b> does a real test sign. A green &ldquo;OK&rdquo; means you&rsquo;re fully wired — Certinel can
       now issue certificates on its own.</div>
     <div class="do">🖥️ <b>Hands-off issuing (optional):</b> on a certificate template, turn on <b>Auto-sign</b> so matching requests
       are issued instantly with no approval click.</div>
-    <div class="note">Need the Vault side built (the PKI role + AppRole)? That&rsquo;s a one-time job for your Vault admin:
-      a policy allowing <code>&lt;mount&gt;/sign/&lt;role&gt;</code> (and, for per-user audit, <code>auth/token/create</code>),
-      an AppRole, and its role_id/secret_id.</div>
   </div>
 
   <!-- ─────────────  STEP 7 (email)  ───────────── -->
@@ -422,7 +438,7 @@ sudo systemctl restart certinel-api</pre></div>
     <h2><span class="num">8</span>Issue your first certificate 🎉</h2>
     <div class="do">🖥️ <span class="where">Create requests</span> → fill in the host name(s) you need a certificate for → submit.
       It appears as a <b>pending</b> request.</div>
-    <div class="do when-openbao">🖥️ Open the request and click <b>Approve &amp; sign</b>. Certinel signs it through OpenBao and it flips to
+    <div class="do when-openbao">🖥️ Open the request and click <b>Approve &amp; sign</b>. Certinel signs it through your configured CA (ACME or OpenBao) and it flips to
       <b>issued</b> — download the certificate and chain right there.</div>
     <div class="do when-manual" hidden>🖥️ Send the request to your certificate authority, then come back and <b>upload</b> the signed certificate to finish it.</div>
     <div class="tip">That&rsquo;s the everyday loop your team will use. You&rsquo;re done setting up!</div>
@@ -762,6 +778,8 @@ sudo systemctl restart certinel-api</pre></div>
       "when-community":  st.edition==="community",
       "when-licensed":   st.edition!=="community",
       "when-openbao":    st.ob==="yes",
+      "when-ob-vault":   st.ob==="yes" && st.edition!=="community",
+      "when-acme-free":  st.ob==="yes" && st.edition==="community",
       "when-manual":     st.ob!=="yes",
       "when-local":      st.auth==="local",
       "when-cac":        st.auth==="mtls",

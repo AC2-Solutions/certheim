@@ -14,6 +14,27 @@ are terminated at the **ingress** (the verified identity is forwarded as
 proxies the API. SQLite on a PVC by default (single replica); point at an
 external PostgreSQL for HA.
 
+## Reverse-proxy / ingress path requirements
+
+If you front Certinel with **your own** reverse proxy or ingress (instead of the
+bundled nginx sidecar), it must forward these paths to the app container
+(gunicorn on `:5002`) — not just `/csr/`:
+
+| Public path | Proxies to | Used by |
+|-------------|-----------|---------|
+| `/csr/api/` | `/api/` | the web UI (all editions) |
+| `/csr/`     | static frontend | the web UI (all editions) |
+| `/acme/`    | `/acme/` | external ACME clients (certbot, cert-manager, acme.sh) enrolling against the built-in **ACME server** (Commercial) |
+| `/metrics`  | `/metrics` | **Prometheus** scrape (Commercial) |
+| `/scim/`    | `/scim/` | **SCIM 2.0** provisioning from your IdP (Okta/Entra/Ping, Commercial) |
+
+`/acme`, `/metrics`, and `/scim` are top-level (not under `/csr/`) because
+external clients hit them directly. If they aren't proxied, those requests fall
+through to the SPA and return HTML instead of the handler. The bundled nginx
+sidecar (and the VM `nginx/30-csr.conf`) already include all of the above.
+Features that are absent/disabled simply return `404`/`disabled` from the app,
+so proxying the paths is safe on every edition.
+
 ## Common values
 
 | Key | Default | Notes |
