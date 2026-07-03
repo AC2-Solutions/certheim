@@ -1888,29 +1888,162 @@
 
           <section data-page="admin-webhooks" data-title="Integrations" data-group="Administration" hidden>
             <h3>Admin · Integrations</h3>
-            <p>Send notifications to chat when jobs change — issued, failed, or assigned.</p>
-            <ul>
-              <li>Supports <strong>Slack, Microsoft Teams, Discord</strong>, and generic
-                  <strong>webhooks</strong>.</li>
-              <li>Messages include a deep link back to the job and the assignee/group.</li>
-              <li>Slack can be made <em>interactive</em> (assign a job from Slack) over an
-                  HTTP endpoint or Socket Mode.</li>
-            </ul>
-            <p>Secrets (tokens, signing secrets) are provided through the server
-               environment, not stored in the UI.</p>
+            <p>Send notifications to chat or any HTTP receiver when jobs change. Each
+               integration is a <em>webhook</em>: pick the type, paste its URL, and choose
+               which events fire it (created, issued, revoked, renewed, expiring, delivered,
+               delivery failed, cancelled, failed, expired). Chat messages include a deep
+               link back to the job and the assignee/group.</p>
+            <p class="guide-filter-row">
+              <label for="guide-chat-pick"><strong>Setup steps for:</strong></label>
+              <select id="guide-chat-pick" data-guide-filter>
+                <option value="all" selected>All integrations</option>
+                <option value="slack">Slack</option>
+                <option value="slack_interactive">Slack interactivity (assign from Slack)</option>
+                <option value="teams">Microsoft Teams</option>
+                <option value="discord">Discord</option>
+                <option value="generic">Generic webhook</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="slack">
+              <h4>Slack</h4>
+              <ol>
+                <li>In Slack, create an app (or use an existing one) and enable
+                    <strong>Incoming Webhooks</strong>; add a webhook to the target channel
+                    and copy its <code>https://hooks.slack.com/services/…</code> URL.</li>
+                <li>Here: <em>Add integration</em> → type <strong>Slack</strong>, paste the
+                    URL, pick the events.</li>
+                <li><strong>Send test</strong> posts a sample message so you can confirm the
+                    channel before real traffic.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="slack_interactive">
+              <h4>Slack interactivity (assign a job from Slack)</h4>
+              <p>Adds an <em>Assign to…</em> control to Slack messages. Two transports —
+                 pick by whether Slack can reach this server:</p>
+              <ul>
+                <li><strong>HTTP mode</strong> — Slack POSTs button clicks to this server, so
+                    it must be reachable from slack.com. Set the app's <em>Interactivity
+                    Request URL</em> to this dashboard's interactive endpoint and paste the
+                    app's <em>signing secret</em> here (requests are signature-verified).</li>
+                <li><strong>Socket Mode</strong> — the dashboard opens an outbound WebSocket
+                    to Slack; nothing inbound to expose. Enable Socket Mode on the app and
+                    provide the <em>bot token</em> (<code>xoxb-…</code>) and <em>app-level
+                    token</em> (<code>xapp-…</code>). Right choice for LAN-only deployments
+                    that still have outbound egress.</li>
+              </ul>
+              <p>Assignments made from Slack are audit-logged with the acting Slack user.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="teams">
+              <h4>Microsoft Teams</h4>
+              <ol>
+                <li>In the Teams channel: <em>Connectors → Incoming Webhook</em> (or a
+                    Workflows webhook), name it, and copy the
+                    <code>https://…webhook.office.com/…</code> URL.</li>
+                <li>Here: <em>Add integration</em> → type <strong>Teams</strong>, paste the
+                    URL, pick the events, send a test.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="discord">
+              <h4>Discord</h4>
+              <ol>
+                <li>Channel settings → <em>Integrations → Webhooks → New Webhook</em>; copy
+                    the <code>https://discord.com/api/webhooks/…</code> URL.</li>
+                <li>Here: <em>Add integration</em> → type <strong>Discord</strong>, paste the
+                    URL, pick the events, send a test.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="generic">
+              <h4>Generic webhook</h4>
+              <p>For anything that isn't chat — ticketing, automation, SIEM enrichment. The
+                 dashboard POSTs a JSON payload (event name, job id/host/status, actor,
+                 timestamp) to your URL for each selected event. Gate the receiver by
+                 network policy or mTLS and validate the payload before acting. Internal
+                 (non-internet) receivers work fine — this is the one integration type that
+                 never needs egress.</p>
+            </div>
+
+            <p>Chat types (Slack/Teams/Discord) need outbound internet from the server; on
+               an air-gapped deployment they report "unavailable in this environment" rather
+               than erroring. Tokens and signing secrets are held server-side, never shown
+               back in the UI.</p>
           </section>
 
           <section data-page="admin-email" data-title="Email" data-group="Administration" hidden>
             <h3>Admin · Email</h3>
-            <p>Configure how the dashboard emails requesters (issued/expiry notices).</p>
-            <ul>
-              <li>Choose a delivery method — SMTP relay, a mail API, or <strong>None</strong>
-                  to disable email entirely.</li>
-              <li>Fill in the method-specific fields (host/port, from-address, base URL used
-                  in links).</li>
-            </ul>
-            <p>On an IP-whitelisted relay, no auth is needed — just ensure the relay accepts
-               this server's address.</p>
+            <p>Configure how the dashboard emails requesters (issued certs, expiry notices,
+               job updates). Pick one method; the form shows only that method's fields.</p>
+            <p class="guide-filter-row">
+              <label for="guide-mail-pick"><strong>Setup steps for:</strong></label>
+              <select id="guide-mail-pick" data-guide-filter>
+                <option value="all" selected>All methods</option>
+                <option value="smg">Plain relay (SMG / unauthenticated SMTP)</option>
+                <option value="smtp">Authenticated SMTP</option>
+                <option value="mailgun">Mailgun API</option>
+                <option value="sendgrid">SendGrid API</option>
+                <option value="none">None (disable email)</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="smg">
+              <h4>Plain relay (SMG / unauthenticated SMTP)</h4>
+              <p>For an internal mail gateway that accepts by source IP — the common
+                 on-prem / air-gapped setup, and the only method with no credential.</p>
+              <ol>
+                <li>Whitelist this server's IP on the relay.</li>
+                <li>Fill in <em>host</em>, <em>port</em> (usually 25), and the
+                    <em>timeout</em>.</li>
+                <li>Set the from-address and the base URL used in email links, then
+                    <strong>Send test email</strong>.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="smtp">
+              <h4>Authenticated SMTP</h4>
+              <ol>
+                <li>Fill in <em>host</em>, <em>port</em>, and <em>security</em>
+                    (STARTTLS or implicit TLS — match what the server offers on that
+                    port; 587 is usually STARTTLS, 465 implicit).</li>
+                <li>Enter the <em>username</em> and <em>password</em> for the sending
+                    account (for Gmail/Office&nbsp;365 use an app password, not the login
+                    password).</li>
+                <li><strong>Send test email</strong> to prove auth + TLS before relying on
+                    notices.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="mailgun">
+              <h4>Mailgun API</h4>
+              <ol>
+                <li>In Mailgun, add + verify your sending domain and create an API key.</li>
+                <li>Fill in the <em>API key</em>, <em>domain</em>, and <em>region</em>
+                    (US or EU — must match where the domain lives in Mailgun).</li>
+                <li>Send a test. Needs outbound internet (HTTPS to the Mailgun API).</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="sendgrid">
+              <h4>SendGrid API</h4>
+              <ol>
+                <li>In SendGrid, verify a sender (single sender or domain authentication)
+                    and create an API key with <em>Mail Send</em> permission.</li>
+                <li>Paste the <em>API key</em>; the from-address must be the verified
+                    sender.</li>
+                <li>Send a test. Needs outbound internet (HTTPS to the SendGrid API).</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="none">
+              <h4>None (disable email)</h4>
+              <p>Turns all outbound email off on purpose — no warnings, no half-configured
+                 errors. Requesters see status in the dashboard; pair with a chat
+                 integration if you still want push notifications. You can switch to a real
+                 method later without losing any other settings.</p>
+            </div>
           </section>
 
           <section data-page="admin-signingca" data-title="Signing / CA" data-group="Administration" hidden>
