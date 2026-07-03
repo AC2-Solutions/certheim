@@ -1916,20 +1916,214 @@
           <section data-page="admin-signingca" data-title="Signing / CA" data-group="Administration" hidden>
             <h3>Admin · Signing / CA</h3>
             <p>Connect the certificate authorities the dashboard signs against, and test them
-               before use.</p>
-            <ul>
-              <li><strong>Backends:</strong> OpenBao/Vault PKI, ACME (Let's Encrypt, step-ca,
-                  commercial), and enterprise CAs (Microsoft AD CS, EJBCA, Venafi, AWS
-                  Private CA), plus cloud DNS-01 solvers for ACME.</li>
-              <li><strong>Test connection</strong> to confirm credentials and reachability
-                  before pointing a template at a backend.</li>
-              <li>Optionally run the dashboard's own <strong>ACME server</strong> so certbot
-                  / cert-manager can enroll directly.</li>
-              <li>Issued certificates can be <strong>revoked</strong>, with CRL/OCSP where the
-                  backend supports it.</li>
-            </ul>
-            <p>Credentials live in the server environment; this page holds only non-secret
-               connection settings.</p>
+               before use. Connection settings on this page are non-secret; every credential
+               (tokens, keys, PINs) comes from the <strong>service environment file</strong> and
+               is never stored in the database.</p>
+            <p class="guide-filter-row">
+              <label for="guide-ca-pick"><strong>Setup steps for:</strong></label>
+              <select id="guide-ca-pick" data-guide-filter>
+                <option value="all" selected>All backends</option>
+                <option value="local_ca">Local CA (built-in) — Commercial</option>
+                <option value="openbao">OpenBao / Vault PKI — Commercial</option>
+                <option value="acme">ACME client (Let's Encrypt, step-ca, …)</option>
+                <option value="windows_ca">Windows CA (AD CS) — Commercial</option>
+                <option value="ejbca">EJBCA — Commercial</option>
+                <option value="venafi">Venafi TPP — Commercial</option>
+                <option value="aws_pca">AWS Private CA — Commercial</option>
+                <option value="hsm">HSM-backed CA (PKCS#11) — Commercial</option>
+                <option value="cyberark">CyberArk — Commercial</option>
+                <option value="manual">Manual (upload certs by hand)</option>
+                <option value="acme_server">Built-in ACME server — Commercial</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="manual">
+              <h4>Manual (signers upload certs by hand)</h4>
+              <p>The default — nothing to configure. Signers download the CSR from a job,
+                 sign it at their CA of choice, and return the certificate via
+                 <em>Upload cert</em>. The Approve&nbsp;&amp;&nbsp;sign and Revoke actions stay
+                 hidden. Pick this when your signing process must stay fully out-of-band.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="local_ca">
+              <h4>Local CA (built-in) <span class="guide-ed">Commercial / Government</span></h4>
+              <p>A self-contained CA inside Certinel — no external vault or CA service. The CA
+                 private key is envelope-encrypted in the built-in <strong>sealed keystore</strong>
+                 and CSRs are signed locally.</p>
+              <ol>
+                <li>Initialise and <strong>unseal</strong> the sealed keystore first
+                    (Admin&nbsp;→&nbsp;Sealed keystore). The Local CA refuses to generate,
+                    import, or sign while the keystore is sealed.</li>
+                <li>Select <em>Local CA</em> as the backend, then either
+                    <strong>Generate a new CA</strong> (CN required; EC&nbsp;P-256/P-384 or RSA;
+                    validity in days) or <strong>Import an existing CA</strong> (cert + private
+                    key PEM — the key is validated against the cert and re-encrypted into the
+                    keystore, so its old passphrase is not kept).</li>
+                <li><strong>Download the CA certificate</strong> and distribute it to the systems
+                    that must trust what you issue (the Trust Store page can push bundles to
+                    fleet hosts).</li>
+                <li>Revocation is built in: revoke from the job, then <strong>Download CRL</strong>
+                    here and publish it wherever your clients check.</li>
+              </ol>
+              <p>Generating a new CA replaces the previous one, and its issued/revoked index
+                 starts fresh. Prefer the HSM backend if you have hardware — a PKCS#11 key is
+                 stronger than any software keystore.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="openbao">
+              <h4>OpenBao / Vault PKI <span class="guide-ed">Commercial / Government</span></h4>
+              <ol>
+                <li>On OpenBao, enable a PKI secrets engine and create a <em>role</em> that
+                    encodes your issuance policy (allowed domains, SANs, EKU, max TTL) — the
+                    role is authoritative, the dashboard only pre-checks TTL.</li>
+                <li>Create an AppRole whose policy allows <code>update</code> on
+                    <code>&lt;mount&gt;/sign/&lt;role&gt;</code> only (add
+                    <code>update &lt;mount&gt;/revoke</code> if you want in-UI revocation).
+                    The CA key never touches the app box.</li>
+                <li>Fill in <em>OpenBao address</em>, <em>PKI mount</em>, and
+                    <em>Default role</em> here.</li>
+                <li>Put the credential in the service env:
+                    <code>CSR_OPENBAO_ROLE_ID</code> / <code>CSR_OPENBAO_SECRET_ID</code>
+                    (optional <code>CSR_OPENBAO_CA_FILE</code> to pin the TLS CA).</li>
+                <li><strong>Test connection</strong> — it proves the AppRole login and that the
+                    mount answers with a CA certificate.</li>
+              </ol>
+              <p>CRL / OCSP distribution points are served by OpenBao itself and shown on this
+                 page once the backend is active. The connection wizard on this page can also
+                 generate the OpenBao-side setup commands for you.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="acme">
+              <h4>ACME client (Let's Encrypt, step-ca, ZeroSSL, …)</h4>
+              <ol>
+                <li>Set the <em>ACME directory URL</em> (e.g.
+                    <code>https://acme-v02.api.letsencrypt.org/directory</code> or your internal
+                    step-ca) and an <em>account contact email</em>. The account key is created
+                    and stored automatically on first use.</li>
+                <li>If your CA requires External Account Binding, set the <em>EAB key id</em>
+                    field and <code>CSR_ACME_EAB_HMAC</code> in the service env.</li>
+                <li>Pick the <em>challenge type</em>:
+                    <ul>
+                      <li><strong>http-01</strong> — set the <em>webroot path</em>; your web
+                          server must serve it at
+                          <code>/.well-known/acme-challenge/</code> for every name you issue.</li>
+                      <li><strong>dns-01</strong> — pick a DNS provider.
+                          <em>rfc2136</em> (any BIND-style server): update server, TSIG key name +
+                          algorithm here, secret in <code>CSR_ACME_DNS_TSIG_SECRET</code>.
+                          Cloud solvers (Commercial): <em>cloudflare</em>
+                          (<code>CSR_ACME_DNS_API_TOKEN</code>), <em>route53</em>
+                          (<code>CSR_ACME_DNS_ACCESS_KEY</code>/<code>SECRET_KEY</code>),
+                          <em>azure</em> (<code>CSR_ACME_DNS_CLIENT_ID</code>/<code>CLIENT_SECRET</code>
+                          + tenant field), plus the zone / id field.</li>
+                    </ul></li>
+                <li><strong>Test connection</strong> fetches the directory and verifies the
+                    account.</li>
+              </ol>
+              <p>Free on every edition (with http-01 / rfc2136); wildcard names require dns-01.
+                 Revocation for ACME-issued certs is done at the CA, not in-UI.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="windows_ca">
+              <h4>Windows CA (AD CS / certreq) <span class="guide-ed">Commercial / Government</span></h4>
+              <ol>
+                <li>Enable Windows OpenSSH on the CA host and authorise a CA-admin user with a
+                    key pair.</li>
+                <li>Fill in <em>CA host</em>, the <em>CA config string</em>
+                    (<code>host\CA-common-name</code>, from <code>certutil -dump</code>), the
+                    <em>SSH user</em>, and — for an Enterprise (domain-joined) CA — the
+                    <em>certificate template</em> to issue against (leave blank for a
+                    standalone CA).</li>
+                <li>Point <code>CSR_WINCA_SSH_KEY</code> at the private key file in the service
+                    env (optional <code>CSR_WINCA_KNOWN_HOSTS</code> to pin the host key).</li>
+                <li><strong>Test connection</strong> runs a harmless <code>certutil</code> probe
+                    over SSH. In-UI revocation is supported.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="ejbca">
+              <h4>EJBCA (REST enrollment) <span class="guide-ed">Commercial / Government</span></h4>
+              <ol>
+                <li>Enable the EJBCA REST API and create an enrollment end-entity.</li>
+                <li>Fill in <em>base URL</em>, <em>CA name</em>, <em>certificate profile</em>,
+                    <em>end-entity profile</em>, and the <em>enrollment username</em>.</li>
+                <li>Secret in the service env: <code>CSR_EJBCA_PASSWORD</code>, or client-cert
+                    auth via <code>CSR_EJBCA_CLIENT_CERT</code>.</li>
+                <li><strong>Test connection</strong> before pointing templates at it.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="venafi">
+              <h4>Venafi TPP <span class="guide-ed">Commercial / Government</span></h4>
+              <ol>
+                <li>Create an API integration in Trust Protection Platform and grant it the
+                    policy folder you'll issue from.</li>
+                <li>Fill in the <em>TPP base URL</em> and the <em>policy folder DN</em>
+                    (e.g. <code>\VED\Policy\Certificates\Certinel</code>).</li>
+                <li>Put the OAuth bearer token in <code>CSR_VENAFI_TOKEN</code> in the service
+                    env.</li>
+                <li><strong>Test connection</strong> to confirm the token and folder.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="aws_pca">
+              <h4>AWS Private CA (ACM PCA) <span class="guide-ed">Commercial / Government</span></h4>
+              <ol>
+                <li>Create (or pick) a private CA in ACM PCA and an IAM principal allowed to
+                    <code>IssueCertificate</code> / <code>GetCertificate</code> on it.</li>
+                <li>Fill in the <em>CA ARN</em>, <em>region</em>, <em>signing algorithm</em>
+                    (e.g. <code>SHA256WITHRSA</code>), and <em>validity days</em>.</li>
+                <li>Credentials in the service env: <code>CSR_AWS_PCA_ACCESS_KEY</code> /
+                    <code>CSR_AWS_PCA_SECRET_KEY</code> (plus
+                    <code>CSR_AWS_PCA_SESSION_TOKEN</code> for temporary credentials).</li>
+                <li><strong>Test connection</strong> describes the CA to prove access.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="hsm">
+              <h4>HSM-backed CA (PKCS#11) <span class="guide-ed">Commercial / Government</span></h4>
+              <p>Signs on this host through a hardware security module — Luna, nCipher,
+                 CloudHSM, Azure, or SoftHSM2. The CA private key lives in the HSM and is never
+                 extractable; the strongest option for a self-hosted CA.</p>
+              <ol>
+                <li>Load or generate the CA key in your HSM and note its token + key labels.</li>
+                <li>Fill in the <em>PKCS#11 module</em> path (<code>.so</code>), the openssl
+                    <em>mode</em> (engine or provider), <em>token label</em>, <em>key label</em>
+                    (or hex key id), <em>validity days</em>, and paste the <em>CA certificate
+                    (PEM)</em>.</li>
+                <li>Put the HSM PIN in <code>CSR_HSM_PIN</code> in the service env — never in
+                    the database.</li>
+                <li>Verify outside the app first (e.g.
+                    <code>pkcs11-tool --module &lt;.so&gt; --list-objects</code>), then sign a
+                    low-stakes test job — this backend has no in-UI connection test.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="cyberark">
+              <h4>CyberArk <span class="guide-ed">Commercial / Government</span></h4>
+              <p>A configurable slot: enter the <em>base URL</em>, <em>issuing CA / policy id</em>,
+                 and <em>application id</em>, with the API token in
+                 <code>CSR_CYBERARK_TOKEN</code>. The connection settings are saved, but the
+                 signing API call is not wired in this release — use OpenBao for automated
+                 signing, or contact support about enabling your CyberArk integration.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="acme_server">
+              <h4>Built-in ACME server <span class="guide-ed">Commercial / Government</span></h4>
+              <p>Separate from the backends above: the dashboard can also <em>be</em> an ACME CA,
+                 so certbot / cert-manager / step clients enroll directly against it.</p>
+              <ol>
+                <li>Configure an automated signing backend first (the ACME server issues
+                    through it).</li>
+                <li>Toggle <em>ACME server</em> on and set the <em>base URL</em> clients will
+                    use — the directory is served at <code>&lt;base URL&gt;/acme/directory</code>.</li>
+                <li>Clients validate via http-01 or dns-01 exactly as against a public CA.</li>
+              </ol>
+            </div>
+
+            <p>Whichever backend you choose, wire templates to it under
+               Admin&nbsp;→&nbsp;Templates (a template may pin its own backend), and use
+               <strong>Test connection</strong> before going live. Issued certificates can be
+               <strong>revoked</strong> in-UI where the backend supports it.</p>
           </section>
 
           <section data-page="admin-csrsubject" data-title="CSR Subject" data-group="Administration" hidden>

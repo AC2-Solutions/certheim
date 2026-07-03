@@ -74,6 +74,22 @@
     return n < 0 ? 0 : n;
   }
 
+  // Per-page content filters: a <select data-guide-filter> inside a guide page
+  // narrows that page to the [data-filter-tag] blocks matching the selection,
+  // so long reference pages (e.g. Signing/CA backend setup) don't force a
+  // scroll-through. "all" — the default — shows every block.
+  root.addEventListener("change", (e) => {
+    const sel = e.target.closest("select[data-guide-filter]");
+    if (!sel) return;
+    const page = sel.closest("[data-page]");
+    if (!page) return;
+    page.querySelectorAll("[data-filter-tag]").forEach((el) => {
+      el.hidden = sel.value !== "all"
+        && el.getAttribute("data-filter-tag") !== sel.value;
+    });
+    if (content) content.scrollTop = 0;
+  });
+
   // Regular users only get the Getting-started + Dashboard guides; the
   // Administration pages are admin-only (they can't reach those screens anyway).
   // Recomputed on each open so it tracks the logged-in user.
