@@ -455,6 +455,27 @@ sudo systemctl restart certinel-api</pre></div>
     <div class="tip">All green? You&rsquo;re live. Bookmark <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> and share it with your team.</div>
   </div>
 
+  <!-- ─────────────  advanced features (Commercial & Government)  ───────────── -->
+  <div class="card when-licensed">
+    <h2>Advanced features <span class="hint" style="font-weight:400">(Commercial &amp; Government)</span></h2>
+    <p class="sub">Optional capabilities you can turn on from the admin console once your license is installed &mdash; each appears only when your edition is entitled.</p>
+    <div class="do">🔐 <b>Encrypted keystore.</b> No OpenBao/CyberArk? Keep signing keys in a built-in encrypted store. In
+      <span class="where">Admin → Encrypted keystore</span> pick a protection model (passphrase + recovery code, or Shamir N-of-K shares)
+      and a cipher (AES-256-GCM recommended), then <b>record the one-time recovery material</b> shown &mdash; it is never displayed again.
+      Route generated keys to it via <span class="where">Admin → Signing / CA → key storage → Encrypted keystore</span>, and export an
+      offline backup for safekeeping.</div>
+    <div class="do">📲 <b>Device enrollment (EST &amp; SCEP).</b> Auto-enroll MDM fleets (Intune, Jamf) and network gear. In
+      <span class="where">Admin → Enrollment &amp; signing</span> enable <b>EST</b> (set a shared secret) and/or <b>SCEP</b> (click
+      <b>Generate RA</b>, optional challenge password). ⚠️ Your reverse proxy must forward <code>/.well-known/est/</code> and
+      <code>/scep</code> to Certinel.</div>
+    <div class="do">🖋️ <b>Code-signing &amp; timestamping.</b> In <span class="where">Admin → Enrollment &amp; signing</span> enable
+      <b>code-signing</b> (upload a signer cert with the <code>codeSigning</code> EKU) to CMS-sign software artifacts, and the
+      <b>RFC 3161</b> timestamp authority (cert with the <code>timeStamping</code> EKU) so signatures stay verifiable after the cert
+      expires. ⚠️ Forward <code>/tsa</code> at your proxy.</div>
+    <div class="do">🌐 <b>DNSSEC rollover.</b> Keep DNSSEC-signed zones on Citrix NetScaler/ADC alive. Add zones in
+      <span class="where">Admin → DNSSEC</span>; new zones start in <b>dry-run</b> (nothing changes) until you switch them live.</div>
+  </div>
+
   <!-- ─────────────  edition extras  ───────────── -->
   <div class="card when-commercial">
     <h2>Good to know — Commercial</h2>
