@@ -239,19 +239,38 @@ release:
                  DOCKER_CONFIG="$BK/docker" BUILDKITD_FLAGS="--oci-worker-no-process-sandbox"
           a=$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)
           printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$a" > "$DOCKER_CONFIG/config.json"
-          bk() { buildctl-daemonless.sh build --frontend dockerfile.v0 \
+          # Bounded + self-healing. A base-image pull (registry.access.redhat.com
+          # UBI9) can stall with NO output — buildkit has no pull timeout — and
+          # GitLab then kills the job as no_updates_running ~35min later: a red
+          # pipeline for a transient network blip, and (worse) the old `|| warn`
+          # softener can't catch a hang, only a clean non-zero exit. So cap every
+          # build with `timeout` and retry, so a flaky pull recovers within one run.
+          BK_TIMEOUT="${BK_TIMEOUT:-900}"
+          bk() { timeout -k 30 "$BK_TIMEOUT" buildctl-daemonless.sh build --frontend dockerfile.v0 \
                    --local context="$CI_PROJECT_DIR" --local dockerfile="$CI_PROJECT_DIR" --opt filename=Containerfile \
                    --opt attest:sbom=true --opt attest:provenance=mode=max "$@"; }
-          bk --output "type=image,\"name=$IMG_TAGS\",push=true"
-          bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
-             --output "type=image,\"name=$SLIM_TAGS\",push=true"
-          echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: $IMG_TAGS,$SLIM_TAGS"
+          hub_ok=""
+          for att in 1 2 3; do
+            if bk --output "type=image,\"name=$IMG_TAGS\",push=true" \
+               && bk --opt build-arg:PYBASE=docker.io/library/python:3.12-slim \
+                     --output "type=image,\"name=$SLIM_TAGS\",push=true"; then
+              hub_ok=1
+              echo "Published $HUB_IMAGE with SBOM + provenance attestations  tags: $IMG_TAGS,$SLIM_TAGS"
+              break
+            fi
+            echo "warn: Docker Hub image build/publish attempt $att/3 failed (timeout or base-image pull stall); retrying in $((att*20))s"
+            sleep $((att*20))
+          done
+          if [ -z "$hub_ok" ]; then
+            echo "ERROR: Docker Hub image publish for $RELTAG FAILED after 3 attempts (tag/release still cut). Rebuild+push, then re-run."
+            touch "$CI_PROJECT_DIR/.publish-failed"
+          fi
           # Mirror the same attested images into the entitled Certinel registry
           # (the license-server origin, over the LAN — bypasses Cloudflare's
           # 100MB body cap). Auth: the _mirror push credential on the portal's
           # token endpoint. registry.insecure: the origin is plain HTTP on the
           # LAN (TLS is terminated at the Cloudflare tunnel for customer pulls).
-          if [ -n "${CERTINEL_MIRROR_PUSH_SECRET:-}" ]; then
+          if [ -n "$hub_ok" ] && [ -n "${CERTINEL_MIRROR_PUSH_SECRET:-}" ]; then
             ( REG="192.168.201.19:5000"
               ma=$(printf '_mirror:%s' "$CERTINEL_MIRROR_PUSH_SECRET" | base64 -w0)
               python3 -c "import json;p='$DOCKER_CONFIG/config.json';d=json.load(open(p));d['auths']['$REG']={'auth':'$ma'};json.dump(d,open(p,'w'))"
@@ -287,8 +306,9 @@ release:
           echo "$DOCKERHUB_TOKEN" | $B login -u "$DOCKERHUB_USERNAME" --password-stdin docker.io
           tflags=""; for t in $(echo "$IMG_TAGS" | tr ',' ' '); do tflags="$tflags -t $t"; done
           sflags=""; for t in $(echo "$SLIM_TAGS" | tr ',' ' '); do sflags="$sflags -t $t"; done
-          $B bud --isolation chroot $tflags -f Containerfile .
-          $B bud --isolation chroot --build-arg PYBASE=docker.io/library/python:3.12-slim \
+          BK_TIMEOUT="${BK_TIMEOUT:-900}"   # same hang guard as the BuildKit path
+          timeout -k 30 "$BK_TIMEOUT" $B bud --isolation chroot $tflags -f Containerfile .
+          timeout -k 30 "$BK_TIMEOUT" $B bud --isolation chroot --build-arg PYBASE=docker.io/library/python:3.12-slim \
                  $sflags -f Containerfile .
           for t in $(echo "$IMG_TAGS,$SLIM_TAGS" | tr ',' ' '); do $B push "$t"; done
           echo "Published $HUB_IMAGE  tags: $IMG_TAGS,$SLIM_TAGS" ) \
@@ -329,6 +349,14 @@ release:
       # all publish first. Only edition propagation (a later, re-runnable stage)
       # is gated on this, which is the correct "stop and fix the pods' registry"
       # signal rather than the old silent skip.
+      # Docker Hub image publish exhausted its retries (timeouts / pull stalls) —
+      # the release is cut but NO image was published. Surface it (red) rather than
+      # the old silent green-with-warning, so a broken release can't slip through.
+      if [ -f "$CI_PROJECT_DIR/.publish-failed" ]; then
+        rm -f "$CI_PROJECT_DIR/.publish-failed"
+        echo "FATAL: Docker Hub image publish for $RELTAG failed after retries. Tag/release are cut, but no image was published. Rebuild+push the image, then re-run this pipeline."
+        exit 1
+      fi
       if [ -f "$CI_PROJECT_DIR/.mirror-failed" ]; then
         rm -f "$CI_PROJECT_DIR/.mirror-failed"
         echo "FATAL: entitled-registry mirror failed for $RELTAG. Docker Hub + release/tag are fine, but the K8s pods (which pull the entitled registry) will NOT see $RELTAG until the mirror is re-run. Failing the job so this is visible."
