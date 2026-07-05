@@ -164,6 +164,14 @@ def test_write_requires_auth(client):
     assert r.status_code == 403
 
 
+def test_rhel_generate_bad_input_is_not_5xx(client):
+    # Empty/misconfigured generation input must be a 4xx (unprocessable), never a
+    # 5xx — a 500 reads as a server bug and trips uptime monitors.
+    import json
+    r = client.post("/api/rhel/generate", headers=WRITE, data=json.dumps({}))
+    assert 400 <= r.status_code < 500, f"expected 4xx, got {r.status_code}"
+
+
 def test_bad_group_name_rejected(client):
     import json
     r = client.post("/api/admin/groups", headers=WRITE,
