@@ -13,7 +13,25 @@ from contextlib import contextmanager
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
+import pytest
+
+import capabilities
 import support_bundle
+
+
+@pytest.fixture(autouse=True)
+def _stub_env_detection():
+    """build() calls capabilities.all_status(), whose env detection imports the
+    real db module and caches its sqlite path. In this bare-process unit test
+    CSR_DB_PATH isn't set, so that would cache the default path and poison other
+    test files that share the process. Pre-seed the env cache so _detect_env()
+    (and its db access) never runs, then restore it."""
+    saved = capabilities._env_cache
+    capabilities._env_cache = {}
+    try:
+        yield
+    finally:
+        capabilities._env_cache = saved
 
 
 def _harness(settings):
