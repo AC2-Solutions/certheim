@@ -448,6 +448,13 @@ server {
     ssl_certificate_key ${CERT_DIR}/server.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
+    # --- security hardening (applies to every response via 'always') ---
+    server_tokens off;                                            # don't leak the nginx version
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header X-Frame-Options           "DENY"    always;
+    add_header Referrer-Policy           "no-referrer" always;
+
     include ${NGINX_INCLUDE_DIR}/*.conf;
 }
 NGINXCONF
