@@ -1,5 +1,48 @@
 # Certinel Community edition — changelog
 
+## 3.27.0 — 2026-07-05
+
+_Released 2026-07-05. 7 changes since community-v3.26.1._
+
+### Features
+
+- **launch:** security-disclosure policy, release verification, support bundle, ASN.1 fuzz tests (`78cabbf`)
+  Pre-launch hardening pass (edition-agnostic, so on Community → propagates up):
+  Disclosure + supply-chain docs
+  - SECURITY.md — vulnerability disclosure policy: security@ contact, CVSS-based triage SLAs
+    (3-day ack / 30-day critical fix), coordinated-disclosure window, researcher safe harbor, and
+    scope.
+  - docs/verifying-releases.md — how customers verify what they run: inspect the BuildKit SBOM +
+    SLSA provenance attestations (buildx imagetools / cosign), pin by digest, and check tarball
+    SHA-256.
+  - NOTICE + docs/third-party-licenses.md — third-party license inventory, with the psycopg LGPL
+    obligation called out explicitly (used unmodified, dynamic, Postgres-only).
+  Support bundle (all editions)
+  - backend/support_bundle.py + GET /api/admin/support-bundle (admin-only) + an Overview button.
+    Assembles a ZIP of version/edition/env, capability + FIPS posture, DB schema SHAPE (table row-
+    counts, never row data), a recent audit tail, and app settings with every secret VALUE
+    redacted. Deny-by-default redaction: any credential-shaped key OR credential-shaped value is
+    masked, so a newly-added secret setting can't leak by being unlisted. Cuts support cost for
+    air-gapped installs where we can't see anything.
+  Security regression tests
+  - tests/test_support_bundle.py — proves no secret value appears in the DECOMPRESSED bundle while
+    benign settings survive (checking raw zip bytes would be meaningless — deflate hides
+    plaintext; that bug was caught + fixed).
+  - tests/test_asn1_fuzz.py — robustness fuzzing of the three unauthenticated ASN.1 parsers (SCEP
+    /scep, EST /.well-known/est, CMP /cmp): ~2000 malformed inputs (length/indefinite-length
+    bombs, a nesting bomb, truncations, byte-flips) must fail with a controlled error, never an
+    unhandled crash, Recursion/Memory error, or hang. Verified 0 findings against the live
+    Commercial parsers; skips where the premium modules/asn1crypto are absent.
+
+### Other changes
+
+- **guide:** per-option setup steps for Integrations + Email, with filters (`6ed5fb0`)
+- **guide:** per-backend setup steps on the Signing/CA "?" page, with a filter (`61ff164`)
+- **setup-guide:** add advanced-features section (encrypted keystore, EST/SCEP, code-signing+TSA, DNSSEC) (`e72b787`)
+- **release:** cap image builds with timeout + retry so a base-image pull stall can't wedge the pipeline (`28626f4`)
+- auto-retry jobs on transient runner failures (`d552bb1`)
+- **guide:** make signing docs reflect ACME-free Community; add proxy note (`541b87c`)
+
 ## 3.26.1 — 2026-07-02
 
 _Released 2026-07-02. 1 change since community-v3.26.0._
