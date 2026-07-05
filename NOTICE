@@ -1,0 +1,18 @@
+Certinel
+Copyright (c) AC2 Solutions. All rights reserved.
+
+This product includes third-party open-source software. Each component is the
+property of its respective authors and is used under its own license. A full
+inventory, with license identifiers and links, is in
+docs/third-party-licenses.md.
+
+Notable obligations:
+
+- psycopg (the optional PostgreSQL driver, LGPL-3.0-or-later) is included only
+  in Postgres deployments. It is used unmodified as published on PyPI; its
+  source and license are available from https://github.com/psycopg/psycopg .
+- All other bundled Python dependencies are permissively licensed (BSD, MIT, or
+  Apache-2.0).
+- The container base images (Red Hat UBI9 python-312-minimal, or the Debian
+  python:3.12-slim "slim" variant) and the nginx sidecar carry their own
+  upstream licenses; see docs/third-party-licenses.md.
