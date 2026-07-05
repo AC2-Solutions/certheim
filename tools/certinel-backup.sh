@@ -1,7 +1,22 @@
 #!/bin/bash
-# certinel-backup - snapshot the Certinel deployment files and database.
+# certinel-backup - snapshot the recoverable state of a Certinel deployment.
 #
-# Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/
+# Backs up the things that CANNOT be regenerated from a release artifact:
+#   - the database (all jobs, settings, sealed-keystore ciphertext, ACME state)
+#   - /etc/certinel   (env, license, email/chat/doctor config, install.conf)
+#   - /var/opt/certinel/private  (on-disk private keys, when key_storage=file)
+#   - the systemd units + sudoers drop-in that wire it together
+# Application code (/opt/certinel, /var/www/csr) is intentionally NOT included:
+# reinstall it from the pinned release. install.conf records that version.
+#
+# Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/ (a tarball alongside).
+#
+# IMPORTANT — sealed keystore: the encrypted secrets live in the DB and ARE
+# captured here, but the unseal material (passphrase / recovery code / Shamir
+# shares) is admin-held and is NOT in any backup. Store it separately, or a
+# restore cannot decrypt CA/RA/TSA/code-signing keys. For a portable escrow
+# bundle that re-encrypts under a new passphrase, use the admin UI:
+# Settings -> Sealed keystore -> Export backup.
 #
 # Usage:
 #   certinel-backup            # take a backup now
@@ -10,7 +25,6 @@
 
 set -euo pipefail
 
-# ----- Argument handling -----
 case "${1:-}" in
     -l|--list)
         echo "Existing Certinel backups in /root/:"
@@ -18,16 +32,7 @@ case "${1:-}" in
         exit 0
         ;;
     -h|--help)
-        cat <<'EOF'
-certinel-backup - snapshot the Certinel deployment files and database.
-
-Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/
-
-Usage:
-  certinel-backup            # take a backup now
-  certinel-backup --list     # show existing backups
-  certinel-backup --help     # this message
-EOF
+        sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
         exit 0
         ;;
 esac
@@ -37,78 +42,97 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# ----- Configuration -----
-# Files to back up. Each is conditionally included only if it exists, so this
-# script stays forward-compatible as new files are added to the deployment.
-FILES=(
-    /opt/certinel/app.py
-    /opt/certinel/notify.py
-    /var/www/csr/index.html
-    /var/www/csr/app.js
-    /opt/certinel/helper/certinel_helper.sh
-    /etc/systemd/system/certinel-api.service
+SERVICE_USER="${CERTINEL_USER:-certinel}"
+ENV_FILE="/etc/certinel/certinel.env"
+# Pull DB coordinates from the service env if present (CSR_DB_URL for Postgres,
+# CSR_DB_PATH for sqlite). Defaults mirror backend/db.py.
+CSR_DB_URL=""; CSR_DB_PATH=""
+if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    CSR_DB_URL="$(grep -E '^CSR_DB_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
+    CSR_DB_PATH="$(grep -E '^CSR_DB_PATH=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
+fi
+DB="${CSR_DB_PATH:-/var/lib/certinel/jobs.db}"
+
+# Directory trees / files to snapshot, each included only if present so the
+# script stays forward-compatible as the deployment grows.
+PATHS=(
+    /etc/certinel
     /etc/sudoers.d/certinel
-    /etc/certinel/email.conf
-    /usr/local/sbin/certinel-bootstrap-admin
-    /usr/local/sbin/certinel-backup
+    /var/opt/certinel/private
+    /var/opt/certinel/issued
 )
-DB="/var/lib/certinel/jobs.db"
+for u in /etc/systemd/system/certinel-*.service /etc/systemd/system/certinel-*.timer; do
+    [[ -e "$u" ]] && PATHS+=("$u")
+done
 
 TS="$(date +%Y%m%d-%H%M%S)"
 DEST="/root/certinel-backup-$TS"
-
-# ----- Run -----
 echo "certinel-backup: snapshot to $DEST"
 mkdir -p "$DEST"
 
-copied=0
-skipped=()
-for f in "${FILES[@]}"; do
+copied=0; skipped=()
+for f in "${PATHS[@]}"; do
     if [[ -e "$f" ]]; then
-        cp -p --parents "$f" "$DEST"
+        cp -a --parents "$f" "$DEST"
         copied=$((copied + 1))
     else
         skipped+=("$f")
     fi
 done
 
-# SQLite snapshot via .backup (handles WAL consistently). Write to a path
-# certinel owns, then move into the backup tree as root.
+# ----- Database -----
 db_status="not present"
-if [[ -e "$DB" ]]; then
-    mkdir -p "$DEST/var/lib/certinel"
-    SNAP="/var/lib/certinel/jobs.db.snapshot.$$"
-    if sudo -u certinel sqlite3 "$DB" ".backup '$SNAP'"; then
-        mv "$SNAP" "$DEST/var/lib/certinel/jobs.db"
-        db_size=$(stat -c%s "$DEST/var/lib/certinel/jobs.db")
-        db_jobs=$(sqlite3 "$DEST/var/lib/certinel/jobs.db" \
-            "SELECT COUNT(*) FROM jobs;" 2>/dev/null || echo "?")
-        db_status="${db_size} bytes, ${db_jobs} job rows"
+if [[ -n "$CSR_DB_URL" && "$CSR_DB_URL" == postgres* ]]; then
+    mkdir -p "$DEST/db"
+    if PGCONNECT_TIMEOUT=10 pg_dump "$CSR_DB_URL" -Fc -f "$DEST/db/certinel.dump" 2>"$DEST/db/pg_dump.err"; then
+        db_status="Postgres pg_dump: $(stat -c%s "$DEST/db/certinel.dump") bytes (restore with pg_restore)"
+        rm -f "$DEST/db/pg_dump.err"
     else
-        db_status="FAILED — see error above"
+        db_status="Postgres pg_dump FAILED — see $DEST/db/pg_dump.err"
+    fi
+elif [[ -e "$DB" ]]; then
+    mkdir -p "$DEST/db"
+    # Online .backup handles WAL consistently. Snapshot to a path the service
+    # user owns, then move it into the backup tree as root.
+    SNAP="$(dirname "$DB")/.certinel-backup.$$.db"
+    if sudo -u "$SERVICE_USER" sqlite3 "$DB" ".backup '$SNAP'"; then
+        mv "$SNAP" "$DEST/db/jobs.db"
+        db_jobs=$(sqlite3 "$DEST/db/jobs.db" "SELECT COUNT(*) FROM jobs;" 2>/dev/null || echo "?")
+        db_status="sqlite $(stat -c%s "$DEST/db/jobs.db") bytes, ${db_jobs} job rows"
+    else
+        db_status="sqlite .backup FAILED — see error above"
     fi
 fi
 
+# Provenance stamp so a restore knows exactly what it is looking at.
+{
+    echo "created=$TS"
+    echo "host=$(hostname -f 2>/dev/null || hostname)"
+    echo "service_user=$SERVICE_USER"
+    echo "db=$db_status"
+    [[ -f /opt/certinel/VERSION ]] && echo "version=$(cat /opt/certinel/VERSION)"
+} > "$DEST/BACKUP-MANIFEST.txt"
+
 # ----- Report -----
 echo ""
-echo "certinel-backup: files copied: $copied"
+echo "certinel-backup: paths copied: $copied"
 if [[ ${#skipped[@]} -gt 0 ]]; then
     echo "certinel-backup: not present (skipped):"
     for f in "${skipped[@]}"; do echo "  $f"; done
 fi
 echo "certinel-backup: database: $db_status"
+
+# Tar it up for easy off-box transfer; keep the tree too for spot restores.
+TARBALL="$DEST.tar.gz"
+tar -C /root -czf "$TARBALL" "certinel-backup-$TS"
+echo "certinel-backup: total size: $(du -sh "$DEST" | cut -f1)  (tarball: $(du -sh "$TARBALL" | cut -f1))"
 echo ""
-echo "certinel-backup: contents:"
-find "$DEST" -type f -printf '  %M %u:%g %10s  %p\n'
+echo "certinel-backup: DONE."
+echo "  tree:    $DEST"
+echo "  tarball: $TARBALL"
 echo ""
-echo "certinel-backup: total size: $(du -sh "$DEST" | cut -f1)"
+echo "Restore with:   certinel-restore $TARBALL"
 echo ""
-echo "Restore an individual file:"
-echo "  cp -p $DEST/<path/to/file> /<path/to/file>"
-echo "Restore the database (stop service first):"
-echo "  systemctl stop certinel-api"
-echo "  cp -p $DEST/var/lib/certinel/jobs.db /var/lib/certinel/jobs.db"
-echo "  rm -f /var/lib/certinel/jobs.db-wal /var/lib/certinel/jobs.db-shm"
-echo "  chown certinel:certinel /var/lib/certinel/jobs.db"
-echo "  chmod 0640          /var/lib/certinel/jobs.db"
-echo "  systemctl start certinel-api"
+echo "REMINDER: the sealed-keystore unseal material (passphrase / recovery code"
+echo "/ Shamir shares) is NOT in this backup. Confirm it is stored separately."
