@@ -1,5 +1,21 @@
 # Certinel Community edition — changelog
 
+## 3.27.1 — 2026-07-05
+
+_Released 2026-07-05. 2 changes since community-v3.27.0._
+
+### Fixes & improvements
+
+- **rhel:** return 422 (not 500) when generation fails (`35626a8`)
+  POST /api/rhel/generate returned 500 when the helper's generate-typed failed (bad cert type /
+  missing CSR-subject config). A generation failure is an unprocessable request, not an internal
+  server fault — 500 reads as an app bug and trips uptime monitors. Return 422 with a clear message
+  + the helper output. Smoke test asserts empty input is 4xx, never 5xx.
+
+### Other changes
+
+- isolate test_support_bundle from the shared-process smoke harness (`75746cb`)
+
 ## 3.27.0 — 2026-07-05
 
 _Released 2026-07-05. 7 changes since community-v3.26.1._
