@@ -1159,6 +1159,33 @@ document.getElementById("admin-test-email-btn").addEventListener("click", async 
   }
 });
 
+// Support bundle: fetch as a blob so a server-side error (JSON) surfaces
+// instead of downloading a broken zip.
+document.getElementById("admin-support-bundle-btn")?.addEventListener("click", async () => {
+  const status = document.getElementById("admin-support-bundle-status");
+  setStatus(status, "Building bundle…");
+  try {
+    const resp = await fetch(API + "/admin/support-bundle", { credentials: "same-origin" });
+    if (!resp.ok) {
+      let msg = resp.status;
+      try { msg = (await resp.json()).error || msg; } catch (_) {}
+      setStatus(status, "Failed: " + msg, "err");
+      return;
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get("Content-Disposition") || "";
+    const name = (cd.match(/filename=([^;]+)/) || [])[1] || "certinel-support-bundle.zip";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name.trim();
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setStatus(status, "Downloaded " + name.trim() + " — review before sharing.", "ok");
+  } catch (e) {
+    setStatus(status, "Failed: " + e, "err");
+  }
+});
+
 // Render the group-membership checkboxes in the user-edit modal. Owner
 // memberships are shown checked + disabled (managed from the group side).
 function _renderUserEditGroups(user) {

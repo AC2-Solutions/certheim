@@ -1767,3 +1767,26 @@ FEEDBACK_CATEGORIES = ("bug", "feature", "general")
 
 
 # ============================================================
+
+
+# ============================================================
+# Admin: support bundle (redacted diagnostics for tickets)
+# ============================================================
+@bp.get("/api/admin/support-bundle")
+@require_admin
+def admin_support_bundle():
+    """Assemble a redacted diagnostic ZIP (versions, capability/FIPS posture,
+    schema shape, redacted settings, audit tail). No keys/tokens/license/PII."""
+    import support_bundle
+    from app import app, APP_VERSION
+    import build_mode
+    try:
+        data, fname = support_bundle.build(
+            get_setting=get_setting, db=db, app_version=APP_VERSION,
+            edition=build_mode.EDITION, log_event=log_event)
+    except Exception as e:  # noqa: BLE001 - never leave the admin without a reason
+        log_event("support_bundle", "error", error=str(e)[:200])
+        return jsonify(error=f"could not build support bundle: {e}"), 500
+    return app.response_class(
+        data, mimetype="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={fname}"})

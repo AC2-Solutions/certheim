@@ -483,11 +483,19 @@
     <section class="card admin-panel" data-panel="overview">
       <div class="card-header">
         <h2>Service overview</h2>
-        <button id="admin-test-email-btn" class="secondary" type="button">Send test email</button>
+        <div class="row">
+          <button id="admin-support-bundle-btn" class="secondary" type="button">Download support bundle</button>
+          <button id="admin-test-email-btn" class="secondary" type="button">Send test email</button>
+        </div>
       </div>
       <div class="stats-grid" id="stats-grid">
         <div class="stat-tile"><div class="label">Loading…</div></div>
       </div>
+      <p class="hint">The <strong>support bundle</strong> is a small ZIP with this
+        deployment's version, capability/FIPS posture, DB schema shape, redacted
+        settings, and a recent audit tail — safe to attach to a support ticket
+        (no keys, tokens, license, or certificate material).</p>
+      <p id="admin-support-bundle-status" class="status"></p>
       <p id="admin-test-email-status" class="status"></p>
     </section>
 
