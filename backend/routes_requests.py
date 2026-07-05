@@ -141,8 +141,13 @@ def generate_rhel():
     rc, out, err = run_helper(
         ["generate-typed", cert_type, key_algo, domain_choice, profile], timeout=600)
     if rc != 0:
+        # A generation failure is an unprocessable request (bad cert type or
+        # missing CSR-subject configuration), not an internal server fault — 422
+        # so it doesn't read as a 5xx server bug or trip uptime monitors.
         log_event("generate_rhel", "error", rc=rc, cert_type=cert_type)
-        return jsonify(returncode=rc, output=out + err, jobs=[]), 500
+        return jsonify(error="certificate generation failed — check the cert type "
+                             "and the admin CSR-subject configuration",
+                       returncode=rc, output=out + err, jobs=[]), 422
 
     rc_l, out_l, _ = run_helper(["list-csrs"])
     new_csrs = [r["name"] for r in _parse_helper_listing(out_l)
