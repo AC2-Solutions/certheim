@@ -263,10 +263,10 @@ def _entitlements():
 # Unlimited, and Government are paid editions unlocked by a signed license (see
 # licensing.py). Capability-wise the paid tiers stack: Unlimited and Government
 # both grant the full Commercial capability set; Government adds the public-
-# sector pack. The tiers differ in the signing DOMAIN CAP, not capabilities:
-# Commercial meters at one registrable domain (licensing.max_domains() == 1),
-# while Unlimited and Government are uncapped (0). The cap is enforced in
-# sign.py, not here.
+# sector pack. As of v4.0.0 every paid edition is uncapped on the signing DOMAIN
+# CAP (Commercial is a single flat plan now, no per-domain metering); "unlimited"
+# stays a valid edition string, now equivalent to Commercial. A license may still
+# set an explicit max_domains to cap a deployment; enforced in sign.py, not here.
 EDITIONS = ("community", "commercial", "unlimited", "government")
 
 # Capability keys each PAID tier adds on top of free Community.

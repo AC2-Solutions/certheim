@@ -823,7 +823,8 @@ def test_csr_subject_shape(client):
 
 
 # --- licensing / entitlements (offline signed license, edition tiers) ------
-def _mint_license(privkey_path, edition="government", entitlements=None, days=365):
+def _mint_license(privkey_path, edition="government", entitlements=None, days=365,
+                  max_domains=None):
     import json
     import subprocess
     import time
@@ -831,6 +832,8 @@ def _mint_license(privkey_path, edition="government", entitlements=None, days=36
     payload = {"customer": "Test Customer", "edition": edition,
                "entitlements": entitlements or [],
                "issued": int(time.time()), "expires": int(time.time()) + days * 86400}
+    if max_domains is not None:
+        payload["max_domains"] = max_domains
     pb = licensing.b64u(json.dumps(payload, separators=(",", ":"), sort_keys=True))
     sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", privkey_path],
                          input=pb.encode(), capture_output=True).stdout
@@ -1071,10 +1074,11 @@ def test_commercial_domain_quota_blocks_second_domain(monkeypatch, tmp_path):
     monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
 
     lic = tmp_path / "lic"
-    lic.write_text(_mint_license(priv, edition="commercial"))   # max_domains defaults to 1
+    # v4.0.0: Commercial is a flat, unlimited plan — no per-domain cap by default.
+    lic.write_text(_mint_license(priv, edition="commercial"))
     monkeypatch.setenv("CSR_LICENSE_FILE", str(lic))
     licensing.reset_cache()
-    assert licensing.max_domains() == 1
+    assert licensing.max_domains() == 0   # commercial now uncapped
 
     # in-memory app_settings so sign.py can persist the licensed-domain set.
     # Snapshot the real getter/setter and restore them after (configure() won't
@@ -1092,23 +1096,24 @@ def test_commercial_domain_quota_blocks_second_domain(monkeypatch, tmp_path):
                         "-addext", "subjectAltName=DNS:" + cn], capture_output=True)
         return open(out).read()
 
+    import pytest
     try:
-        # first domain: allowed, claims the single slot
+        # Default Commercial: uncapped — many distinct registrable domains sign.
         sign._enforce_domain_quota(csr_for("app.example.com"))
-        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
-        # same registrable domain again (renewal / another subdomain): allowed
-        sign._enforce_domain_quota(csr_for("api.example.com"))
-        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
-        # a SECOND distinct registrable domain: refused
-        import pytest
-        with pytest.raises(sign.SignError):
-            sign._enforce_domain_quota(csr_for("other.org"))
+        sign._enforce_domain_quota(csr_for("other.org"))
+        sign._enforce_domain_quota(csr_for("third.net"))   # no raise, no cap
 
-        # Unlimited license lifts the cap -> the second domain now signs
-        lic.write_text(_mint_license(priv, edition="unlimited"))
+        # The enforcement mechanism still works when a license carries an EXPLICIT
+        # max_domains cap (e.g. a bespoke/legacy deal). Reset state and re-test.
+        store.clear()
+        lic.write_text(_mint_license(priv, edition="commercial", max_domains=1))
         licensing.reset_cache()
-        assert licensing.max_domains() == 0
-        sign._enforce_domain_quota(csr_for("other.org"))   # no raise
+        assert licensing.max_domains() == 1
+        sign._enforce_domain_quota(csr_for("app.example.com"))          # claims slot
+        sign._enforce_domain_quota(csr_for("api.example.com"))          # same domain ok
+        assert set(json.loads(store["licensed_domains"])) == {"example.com"}
+        with pytest.raises(sign.SignError):
+            sign._enforce_domain_quota(csr_for("other.org"))            # 2nd domain refused
     finally:
         sign._get_setting, sign._set_setting = prev_get, prev_set
         licensing.reset_cache()
