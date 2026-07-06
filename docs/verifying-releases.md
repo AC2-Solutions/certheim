@@ -15,16 +15,23 @@ regulated deployment.
 
 ## Container images
 
-Public images live at `docker.io/ac2solutions/certinel` (Commercial/Government
-customers also pull the same attested images from the entitled registry
-`registry.ac2certinel.com/certinel`). Tags:
+Public images live at `docker.io/ac2solutions/certinel`. Licensed customers pull
+the same attested images from the entitled registry `registry.ac2certinel.com`,
+where each edition has its **own repository** so a pull token only reaches the
+edition (and lower tiers) its license entitles:
 
-- `:<edition>-vX.Y.Z` — immutable, one per release (e.g. `commercial-v3.72.0`)
-- `:<edition>-latest` — moving pointer to the newest release of that edition
-- `:latest` / `:slim` — newest Community (UBI9 / python-slim base)
+- **Entitled registry** — `registry.ac2certinel.com/certinel/<edition>`
+  (`community` / `commercial` / `government`), tags `:vX.Y.Z` (immutable) and
+  `:latest` (+ `:vX.Y.Z-slim` / `:slim`). Auth: `docker login
+  registry.ac2certinel.com` with your **license id** as the username and **pull
+  token** as the password.
+- **Docker Hub mirror** — `docker.io/ac2solutions/certinel`, single repo with the
+  edition in the tag: `:<edition>-vX.Y.Z` (immutable), `:<edition>-latest`
+  (moving), and `:latest` / `:slim` (newest Community).
 
-**Always pin the immutable `:<edition>-vX.Y.Z` tag for a verified deployment** —
-a moving tag can advance under you between the check and the pull.
+**Always pin an immutable tag for a verified deployment** — `certinel/<edition>:vX.Y.Z`
+on the entitled registry, or `:<edition>-vX.Y.Z` on Docker Hub — a moving tag can
+advance under you between the check and the pull.
 
 ### 1. Inspect the attestations
 

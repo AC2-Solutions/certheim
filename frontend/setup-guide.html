@@ -534,7 +534,11 @@ sudo systemctl restart certinel-api</pre></div>
 
   // Plain-text helpers for generated, downloadable files (no HTML markup).
   function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
-  var IMAGE = "registry.ac2certinel.com/certinel:latest";
+  // Per-edition entitled repository: registry.ac2certinel.com/certinel/<edition>.
+  // The pull token minted with your license is scoped to your edition (and lower
+  // tiers), so the image path must match the edition you selected.
+  function imageRepo(){ return "registry.ac2certinel.com/certinel/" + st.edition; }
+  function imageRef(){ return imageRepo() + ":latest"; }
   function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 
   function ph(v, placeholder){ return v && v.trim() ? esc(v.trim()) : '<span class="var">'+esc(placeholder)+'</span>'; }
@@ -599,11 +603,11 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("services:");
     L.push("  # One-shot: stage the static frontend (baked into the image) for nginx.");
     L.push("  copy-frontend:");
-    L.push("    image: "+IMAGE);
+    L.push("    image: "+imageRef());
     L.push("    command: [\"sh\",\"-c\",\"mkdir -p /static/csr && cp -r /var/www/csr/. /static/csr/\"]");
     L.push("    volumes: [\"static:/static\"]");
     L.push("  app:");
-    L.push("    image: "+IMAGE);
+    L.push("    image: "+imageRef());
     L.push("    command: [\"web\"]");
     L.push("    environment:");
     L.push("      CERTINEL_CONTAINER: \"1\"");
@@ -688,7 +692,7 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("#                 -n certinel --create-namespace -f certinel-values.yaml");
     L.push("");
     L.push("image:");
-    L.push("  repository: registry.ac2certinel.com/certinel");
+    L.push("  repository: "+imageRepo());
     L.push("  tag: latest");
     L.push("  pullSecrets: [{ name: regcred }]   # your license is the pull credential (regcred below)");
     if(pg){ L.push("");
