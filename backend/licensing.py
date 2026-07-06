@@ -168,9 +168,11 @@ def _community(reason):
 
 def _default_max_domains(edition):
     """Per-edition default cap on distinct registrable domains the deployment may
-    sign for. Commercial meters at a single domain (additional domains are sold
-    separately); Unlimited and Government are uncapped. 0 = unlimited."""
-    return 1 if edition == "commercial" else 0
+    sign for. As of v4.0.0 every paid edition — Commercial included — is uncapped:
+    Commercial is now a single flat plan with no per-domain metering. A license
+    may still carry an explicit max_domains to cap a specific deployment, but the
+    default for any edition is unlimited. 0 = unlimited."""
+    return 0
 
 
 def info():

@@ -1,10 +1,11 @@
 """domains.py - registrable-domain (eTLD+1) extraction + signing-quota math.
 
-A Commercial license caps how many distinct registrable domains a deployment may
-sign certificates for (licensing.max_domains() == 1); Unlimited and Government
-are uncapped. This module turns a CSR's names into registrable domains and does
-the pure quota arithmetic; sign.py wires it to the license + persisted state and
-enforces it at the single signing chokepoint (sign_csr).
+A license may cap how many distinct registrable domains a deployment may sign
+certificates for (licensing.max_domains(); 0 = unlimited). As of v4.0.0 every
+paid edition — Commercial included — is uncapped by default; the cap applies only
+when a license carries an explicit max_domains. This module turns a CSR's names
+into registrable domains and does the pure quota arithmetic; sign.py wires it to
+the license + persisted state and enforces it at the single signing chokepoint.
 
 Dependency-free by design (regulated / air-gapped product): CSR parsing shells
 out to `openssl` like the rest of sign.py, and the public-suffix logic uses a
