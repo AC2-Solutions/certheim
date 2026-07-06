@@ -1,5 +1,25 @@
 # Certinel Community edition — changelog
 
+## 4.1.0 — 2026-07-06
+
+_Released 2026-07-06. 1 change since community-v4.0.1._
+
+### Features
+
+- surface valid-license-on-lower-tier-build mismatch (`3e978a1`)
+  A Commercial/Government license installed on a Community (or otherwise lower-tier) build cannot
+  enable premium features — that code isn't in the artifact (build = ceiling, license = key).
+  Previously the app reported the LICENSE edition, so a Commercial license on a Community build
+  claimed "Commercial edition" while nothing was actually on, leaving the operator confused.
+  licensing.build_mismatch() detects when a valid license out-ranks the build and returns an
+  actionable upgrade message (redeploy with the edition image using the registry pull credentials
+  from the license email). info() now carries build_edition + edition_mismatch (and folds the
+  message into warnings); the boot banner reports the BUILD ceiling on mismatch; /api/me exposes it;
+  the Admin -> License page shows a warning callout + a "<edition> license · <build> build" pill,
+  and the header edition badge names the running build tier instead of the inactive license tier.
+  Test: test_license_build_edition_mismatch covers Commercial-on-Community (mismatch + /api/me),
+  Commercial-on-Commercial (clean), Government-on-Commercial.
+
 ## 4.0.1 — 2026-07-06
 
 _Released 2026-07-06. 1 change since community-v4.0.0._
