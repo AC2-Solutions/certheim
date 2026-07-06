@@ -209,6 +209,13 @@
   .pill-blue    { background: rgba(74,144,199,0.12); color: var(--accent); border-color: var(--accent); }
   .pill-purple  { background: rgba(179,128,232,0.12); color: var(--purple); border-color: var(--purple); }
 
+  /* Callout: a block-level notice (e.g. a license build/edition mismatch that
+     needs an operator action, not just a status line). */
+  .callout { padding: 10px 12px; border: 1px solid; border-radius: 6px;
+             font-size: 0.92rem; line-height: 1.4; }
+  .callout-warn { background: rgba(240,184,108,0.10); color: var(--fg);
+                  border-color: var(--warning); }
+
   /* Filter bar */
   .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .filter-bar input[type="search"] { flex: 1 1 220px; }

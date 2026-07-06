@@ -36,6 +36,11 @@ def get_me():
         # Persistent edition watermark for the UI chrome. licensed_to is null on
         # the free Community baseline; a named customer means a valid license.
         "edition": li.get("edition") or "community",
+        # What this ARTIFACT can actually run (the ceiling), vs. `edition` above
+        # which is what the license grants. When a valid license outranks the
+        # build, edition_mismatch carries the actionable upgrade message.
+        "build_edition": li.get("build_edition") or "community",
+        "edition_mismatch": li.get("edition_mismatch"),
         "licensed_to": li.get("customer") if li.get("valid") else None,
         "license_warnings": li.get("warnings") or [],
         "version": APP_VERSION,

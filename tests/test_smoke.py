@@ -904,6 +904,52 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
         assert capabilities.available("profiles.public_sector") is False
 
 
+def test_license_build_edition_mismatch(client, monkeypatch, tmp_path):
+    """A VALID license for a higher tier than the BUILD can run must surface an
+    actionable mismatch (the paid code isn't in a lower-tier artifact, so the
+    license alone can't enable it) — not silently claim the higher edition."""
+    import json
+    import subprocess
+    import build_mode
+    import licensing
+    priv = str(tmp_path / "vendor.key")
+    pub = str(tmp_path / "vendor.pem")
+    subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
+    subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
+    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+
+    # Commercial license installed on a COMMUNITY build -> mismatch, features off.
+    monkeypatch.setattr(build_mode, "EDITION", "community")
+    comm = _mint_license(priv, edition="commercial")
+    licensing.reset_cache()
+    r = client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": comm}))
+    assert r.status_code == 200
+    info = licensing.info()
+    assert info["valid"] is True and info["edition"] == "commercial"
+    assert info["build_edition"] == "community"
+    assert info["edition_mismatch"] and "redeploy" in info["edition_mismatch"].lower()
+    assert any("redeploy" in w.lower() for w in info["warnings"])       # also a soft warning
+    # /api/me carries it to the UI banner
+    me = client.get("/api/me", headers=CAC).get_json()
+    assert me["edition_mismatch"] and me["build_edition"] == "community"
+
+    # Same license on a COMMERCIAL build -> no mismatch (build can run it).
+    monkeypatch.setattr(build_mode, "EDITION", "commercial")
+    licensing.reset_cache()
+    info2 = licensing.info()
+    assert info2["edition_mismatch"] is None
+    assert not any("redeploy" in w.lower() for w in info2["warnings"])
+
+    # A GOVERNMENT license still mismatches on a commercial build (higher tier).
+    gov = _mint_license(priv, edition="government")
+    client.put("/api/admin/license", headers=WRITE, data=json.dumps({"license": gov}))
+    licensing.reset_cache()
+    assert licensing.info()["edition_mismatch"]
+
+    client.delete("/api/admin/license", headers=WRITE)
+    licensing.reset_cache()
+
+
 @pytest.mark.tier(1)
 def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
     """The hardening: in a RELEASE build the dev-only env overrides are inert.

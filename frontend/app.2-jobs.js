@@ -624,10 +624,18 @@ function updateEditionBadge() {
   const ed = (currentUser && currentUser.edition) || "community";
   const who = currentUser && currentUser.licensed_to;
   const warns = (currentUser && currentUser.license_warnings) || [];
-  const label = ed.charAt(0).toUpperCase() + ed.slice(1);
-  el.textContent = who ? `${label} · Licensed to ${who}` : label;
-  el.classList.toggle("edition-badge-licensed", !!who);
-  el.classList.toggle("edition-badge-warn", warns.length > 0);
+  const mismatch = currentUser && currentUser.edition_mismatch;
+  const buildEd = (currentUser && currentUser.build_edition) || "community";
+  const capw = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const label = capw(ed);
+  // On a build/license mismatch the paid tier isn't actually running, so the
+  // badge names the BUILD tier and flags the license as inactive rather than
+  // implying the higher tier is live.
+  el.textContent = mismatch
+    ? `${capw(buildEd)} build · ${label} license inactive`
+    : (who ? `${label} · Licensed to ${who}` : label);
+  el.classList.toggle("edition-badge-licensed", !!who && !mismatch);
+  el.classList.toggle("edition-badge-warn", warns.length > 0 || !!mismatch);
   el.title = warns.length ? warns.join(" ") : `${label} edition`;
   el.hidden = false;
 }

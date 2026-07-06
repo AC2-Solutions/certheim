@@ -162,6 +162,7 @@ def _community(reason):
     # The unlicensed baseline is the free Community edition. max_domains 0 =
     # uncapped: the domain limit is a paid-tier (Commercial) construct.
     return {"valid": False, "licensed": False, "edition": "community",
+            "build_edition": build_mode.EDITION, "edition_mismatch": None,
             "reason": reason, "entitlements": [], "expired": False,
             "max_domains": 0}
 
@@ -175,10 +176,46 @@ def _default_max_domains(edition):
     return 0
 
 
+# Edition ladder rank, mirroring build_mode._EDITION_RANK but keyed by a LICENSE
+# edition string ("unlimited" is a Commercial-equivalent selling name). Used only
+# to detect the "valid license for a higher tier than this BUILD can run" case.
+_LICENSE_EDITION_RANK = {
+    "community": 0, "commercial": 1, "unlimited": 1, "government": 2, "full": 3,
+}
+
+
+def build_mismatch(edition):
+    """When a VALID license grants a higher edition than this build physically
+    contains, return an actionable message; else "".
+
+    Editions are separate build artifacts, not runtime flags: a Community build
+    omits the premium code, so a Commercial (or higher) license installed on it
+    can't turn anything on. The license is the key, the build is the ceiling. The
+    fix is to redeploy with the matching edition image — which the customer pulls
+    with the registry credentials that shipped in their license email — not to
+    reinstall the license. This message makes that explicit instead of leaving
+    the operator staring at a valid license with no new features."""
+    want = _LICENSE_EDITION_RANK.get((edition or "").lower(), 0)
+    have = build_mode.edition_rank()
+    if want <= have:
+        return ""
+    ed = (edition or "").capitalize()
+    return (f"This license grants the {ed} edition, but this deployment is the "
+            f"{build_mode.EDITION.capitalize()} build — the {ed} features are not "
+            f"present in this artifact, so installing the license alone does not "
+            f"enable them. To upgrade, redeploy with the {ed} edition image using "
+            f"the registry pull credentials from your license email (username = "
+            f"license ID, token = pull token), then keep this same license. Your "
+            f"data and configuration carry over.")
+
+
 def info():
     """License status for the admin UI / gating.
-    {valid, licensed, reason, customer, edition, entitlements[], issued,
-    expires, expired}. No/invalid license => Community edition."""
+    {valid, licensed, reason, customer, edition, build_edition, edition_mismatch,
+    entitlements[], issued, expires, expired}. No/invalid license => Community
+    edition. `edition` is what the license GRANTS; `build_edition` is what this
+    artifact can actually run; `edition_mismatch` is non-empty when the former
+    outranks the latter (see build_mismatch)."""
     blob = _raw_license()
     if not blob:
         return _community("Community Edition (no license installed)")
@@ -193,13 +230,21 @@ def info():
     edition = p.get("edition") or "commercial"
     md = p.get("max_domains")
     md = int(md) if md is not None else _default_max_domains(edition)
+    # Surface a build/license edition mismatch as both a structured field (for a
+    # dedicated UI banner) and a soft warning (so every existing warning surface
+    # shows it too).
+    mismatch = build_mismatch(edition)
+    warnings = _binding_warnings(p)
+    if mismatch:
+        warnings = warnings + [mismatch]
     return {
         "valid": True, "licensed": True, "reason": "ok",
         "customer": p.get("customer"), "edition": edition,
+        "build_edition": build_mode.EDITION, "edition_mismatch": mismatch or None,
         "entitlements": list(p.get("entitlements", [])),
         "issued": p.get("issued"), "expires": exp, "expired": False,
         "max_domains": md,
-        "bind_host": p.get("bind_host"), "warnings": _binding_warnings(p),
+        "bind_host": p.get("bind_host"), "warnings": warnings,
     }
 
 
