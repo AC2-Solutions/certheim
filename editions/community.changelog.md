@@ -1,5 +1,44 @@
 # Certinel Community edition — changelog
 
+## 4.0.0 — 2026-07-06
+
+_Released 2026-07-06. 3 changes since community-v3.27.1._
+
+### Breaking changes
+
+- Commercial is a flat, unlimited plan — no per-domain cap (`3fdcc80`)
+  Pricing/packaging change: Commercial is now sold as a single flat plan ($5k/mo, unlimited domains)
+  with support/HSM/onboarding as add-ons, replacing the per-domain metering. Backend:
+  _default_max_domains() now returns 0 (unlimited) for every edition — Commercial included. A
+  license may still carry an explicit max_domains to cap a bespoke deployment, and the enforcement
+  mechanism (domains.py + sign._enforce_domain_quota) is retained and still tested for that case.
+  "unlimited" stays a valid edition string, now equivalent to Commercial.
+  Updated the domain-quota smoke test: Commercial defaults to uncapped; the cap path is now
+  exercised via an explicit-max_domains license. Comments in licensing/capabilities/domains updated.
+  75 smoke tests pass.
+  at one registrable domain). Existing Commercial deployments gain unlimited domains on upgrade.
+  This is the v4.0.0 line across all editions.
+
+### Features
+
+- Commercial is a flat, unlimited plan — no per-domain cap (`3fdcc80`)
+  Pricing/packaging change: Commercial is now sold as a single flat plan ($5k/mo, unlimited domains)
+  with support/HSM/onboarding as add-ons, replacing the per-domain metering. Backend:
+  _default_max_domains() now returns 0 (unlimited) for every edition — Commercial included. A
+  license may still carry an explicit max_domains to cap a bespoke deployment, and the enforcement
+  mechanism (domains.py + sign._enforce_domain_quota) is retained and still tested for that case.
+  "unlimited" stays a valid edition string, now equivalent to Commercial.
+  Updated the domain-quota smoke test: Commercial defaults to uncapped; the cap path is now
+  exercised via an explicit-max_domains license. Comments in licensing/capabilities/domains updated.
+  75 smoke tests pass.
+  at one registrable domain). Existing Commercial deployments gain unlimited domains on upgrade.
+  This is the v4.0.0 line across all editions.
+
+### Other changes
+
+- **nginx:** server_tokens off + security headers (HSTS, nosniff, frame-deny, referrer) (`dc18f20`)
+- **ops:** tested backup / restore / upgrade / disaster-recovery runbook (`234c161`)
+
 ## 3.27.1 — 2026-07-05
 
 _Released 2026-07-05. 2 changes since community-v3.27.0._
