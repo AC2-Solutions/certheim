@@ -2295,7 +2295,17 @@ def _startup_license_banner():
             exp = info.get("expires")
             when = ("perpetual" if not exp
                     else time.strftime("%Y-%m-%d", time.gmtime(float(exp))))
-            emit(logging.INFO, f"{edition} edition - licensed to {cust} (expires {when})")
+            if info.get("edition_mismatch"):
+                # A valid higher-tier license on a lower-tier build: report the
+                # BUILD ceiling, not the license, so the log doesn't claim a tier
+                # whose features aren't actually running.
+                build_ed = build_mode.EDITION.capitalize()
+                emit(logging.WARNING,
+                     f"{edition} license on the {build_ed} build - {edition} "
+                     f"features INACTIVE (redeploy with the {edition} image to "
+                     f"upgrade); licensed to {cust} (expires {when})")
+            else:
+                emit(logging.INFO, f"{edition} edition - licensed to {cust} (expires {when})")
             for w in info.get("warnings") or []:
                 emit(logging.WARNING, f"LICENSE WARNING: {w}")
         else:

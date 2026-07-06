@@ -23,9 +23,19 @@ async function loadLicense() {
   const c = r.body;
   const st = document.getElementById("license-status");
   const det = document.getElementById("license-details");
+  const mm = document.getElementById("license-mismatch");
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  // A valid license that outranks the running build: the paid features aren't in
+  // this artifact, so show the pill in a warning state and surface the actionable
+  // upgrade text instead of implying the tier is active.
+  if (mm) {
+    if (c.valid && c.edition_mismatch) { mm.hidden = false; mm.textContent = c.edition_mismatch; }
+    else { mm.hidden = true; mm.textContent = ""; }
+  }
   if (c.valid) {
-    st.innerHTML = `<span class="pill pill-ok">${escapeHtml(cap(c.edition || "commercial"))} Edition</span>`;
+    st.innerHTML = c.edition_mismatch
+      ? `<span class="pill pill-warn">${escapeHtml(cap(c.edition || "commercial"))} license · ${escapeHtml(cap(c.build_edition || "community"))} build</span>`
+      : `<span class="pill pill-ok">${escapeHtml(cap(c.edition || "commercial"))} Edition</span>`;
     det.hidden = false;
     document.getElementById("license-customer").textContent = c.customer || "—";
     document.getElementById("license-edition").textContent = cap(c.edition || "commercial");
