@@ -277,6 +277,17 @@ release:
               MREG_TAGS="$REG/certinel:$RELTAG,$REG/certinel:$MOVING,$REG/certinel:$MOVING-latest"
               MREG_SLIM="$REG/certinel:$RELTAG-slim,$REG/certinel:$MOVING-slim,$REG/certinel:$MOVING-latest-slim"
               if [ "$PFX" = community ]; then MREG_TAGS="$MREG_TAGS,$REG/certinel:latest"; MREG_SLIM="$MREG_SLIM,$REG/certinel:slim"; fi
+              # Per-edition repositories: certinel/<edition>. Registry v2 auth scopes
+              # are repository-granular (not tag-granular), so giving each edition its
+              # own repo is what lets the license-server mint a Commercial pull token
+              # scoped to certinel/commercial (+ certinel/community) but NOT
+              # certinel/government. Published ALONGSIDE the flat certinel repo during
+              # the transition — the token authority still grants the flat repo until
+              # enforce_edition_scope is turned on. Nested tags drop the redundant
+              # edition prefix (it's in the repo name): :vX.Y.Z (immutable) + :latest.
+              NREPO="$REG/certinel/$PFX"
+              MREG_TAGS="$MREG_TAGS,$NREPO:v$ver,$NREPO:latest"
+              MREG_SLIM="$MREG_SLIM,$NREPO:v$ver-slim,$NREPO:slim"
               # A miss here leaves the entitled registry (what the K8s pods pull)
               # a release behind — and it used to be swallowed silently. Retry the
               # LAN push, then fail LOUD via a flag file read after the buildkit
