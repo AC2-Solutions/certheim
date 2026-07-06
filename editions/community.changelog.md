@@ -1,5 +1,20 @@
 # Certinel Community edition — changelog
 
+## 4.0.1 — 2026-07-06
+
+_Released 2026-07-06. 1 change since community-v4.0.0._
+
+### Fixes & improvements
+
+- **release:** re-align upper editions to a Community-cut major on propagation (`9829b7a`)
+  release.sh documented that a Community major "sweeps upward via propagation (every edition re-
+  aligns on vN.0.0)", but no code implemented it: the major-from-base-only clamp turned an up-tier
+  breaking change into a MINOR and stopped, leaving Commercial/Government a major behind forever
+  (e.g. after Community v4.0.0, Commercial cut 3.77.0 instead of 4.0.0).
+  Adds the missing step: a non-community edition whose base line (editions/community.version) has a
+  higher MAJOR than the edition's last tag now adopts vMAJOR.0.0. Same-major editions are
+  unaffected. Verified the arithmetic for both cases.
+
 ## 4.0.0 — 2026-07-06
 
 _Released 2026-07-06. 3 changes since community-v3.27.1._
