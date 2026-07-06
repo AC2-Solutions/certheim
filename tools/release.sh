@@ -99,6 +99,18 @@ case "$bump" in
   *)     echo "none"; exit 0 ;;
 esac
 
+# Re-align to a Community-cut platform generation. The MAJOR is shared across
+# editions: when Community stamps a new major it propagates up (carrying the
+# base line's editions/community.version), and a non-community edition then
+# adopts vMAJOR.0.0 — "major zeroes minor/patch, every edition re-aligns on
+# vN.0.0". This is the code for the policy the header documents; without it the
+# up-tier clamp-to-minor leaves Commercial/Government a major behind forever.
+if [ "$PFX" != community ] && [ -f editions/community.version ]; then
+  base_major="$(cut -d. -f1 editions/community.version 2>/dev/null || echo 0)"
+  case "$base_major" in ''|*[!0-9]*) base_major=0 ;; esac
+  if [ "$base_major" -gt "$LMAJ" ]; then target="${base_major}.0.0"; fi
+fi
+
 # Honor a manually-set higher edition version (lets a maintainer force a target).
 cur="$(cat "$VER_FILE" 2>/dev/null || echo 0.0.0)"
 if [ "$(printf '%s\n%s\n' "$cur" "$target" | sort -V | tail -1)" = "$cur" ] && [ "$cur" != "$target" ]; then
