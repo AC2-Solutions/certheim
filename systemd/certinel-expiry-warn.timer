@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Certinel expiry warning run
+Description=Daily Certheim expiry warning run
 
 [Timer]
 OnCalendar=*-*-* 06:30:00

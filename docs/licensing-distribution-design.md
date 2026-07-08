@@ -6,7 +6,7 @@ Status: **proposed** (2026-06-22). Owner: AC2. Related: `licensing.py`,
 
 ## Goal
 
-Ensure the Certinel container images can't be **freely obtained or run** without a
+Ensure the Certheim container images can't be **freely obtained or run** without a
 valid entitlement, while keeping a single image (no edition branches) and
 preserving air-gapped / on-prem deployment.
 
@@ -134,7 +134,7 @@ auth service:
 ## Open items to confirm
 
 - **Public hostname** for the entitled registry (`dl.certinel.io`? under an
-  `*.ac2solutions.com` name? the eventual Certinel product domain?).
+  `*.ac2solutions.com` name? the eventual Certheim product domain?).
 - **TLS source** (public ACME vs step-ca — customer-facing ⇒ public CA).
 - Registry storage backend + retention (which tags to mirror/keep).
 

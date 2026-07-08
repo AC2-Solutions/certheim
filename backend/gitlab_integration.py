@@ -1,4 +1,4 @@
-"""GitLab integration for the Certinel.
+"""GitLab integration for the Certheim.
 
 Bidirectional, issue-driven signing loop:
 
@@ -138,7 +138,7 @@ def create_issue(job):
     group = job.get("group_name") or "—"
     title = f"CSR signing: {job.get('target_host')} ({job.get('id')})"
     description = (
-        "A certificate signing request awaits signing from the Certinel.\n\n"
+        "A certificate signing request awaits signing from the Certheim.\n\n"
         f"- **Target host:** `{job.get('target_host')}`\n"
         f"- **Job ID:** `{job.get('id')}`\n"
         f"- **Requested by:** {job.get('requester_cn') or '—'}"

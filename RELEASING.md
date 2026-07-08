@@ -7,7 +7,7 @@ messages and merge; the release falls out.
 
 ## Three editions, three version lines
 
-Certinel ships as three stacked editions on three branches:
+Certheim ships as three stacked editions on three branches:
 
 ```
 Community (base)  ->  Commercial  ->  Government

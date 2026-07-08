@@ -5,7 +5,7 @@ phases (alerting, policy, crypto-agility) read from.
 
 ## Goal
 
-One normalized view of **every certificate Certinel knows about**, regardless of
+One normalized view of **every certificate Certheim knows about**, regardless of
 where it came from, each annotated with risk flags and a composite score, exposed
 via API (and, in a follow-up task, a UI).
 
@@ -17,7 +17,7 @@ them:
 
 | Source key | Table | What it is | Has PEM? |
 |---|---|---|---|
-| `managed` | `jobs` | Certs issued/managed through Certinel | `cert_pem` (when issued) |
+| `managed` | `jobs` | Certs issued/managed through Certheim | `cert_pem` (when issued) |
 | `fleet` | `fleet_certs` | Certs found by the fleet cert-scan | `pem` (sometimes) + parsed cols |
 | `acme` | `acme_certs` | Certs issued by the built-in ACME server | `pem` |
 

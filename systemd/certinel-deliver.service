@@ -1,5 +1,5 @@
 [Unit]
-Description=Certinel - deliver issued certificates to their destinations (retry pass)
+Description=Certheim - deliver issued certificates to their destinations (retry pass)
 After=network-online.target
 
 [Service]

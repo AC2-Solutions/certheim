@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Certinel</title>
+<title>Certheim</title>
 
 <script>
   (function () {
@@ -28,7 +28,7 @@
 
 <div id="login-view" hidden>
   <div id="login-card">
-    <h1>Certinel</h1>
+    <h1>Certheim</h1>
     <p class="sub" id="login-sub">Sign in to continue</p>
 
     <!-- Username / password (shown when local auth is enabled) -->
@@ -99,7 +99,7 @@
 </div>
 
 <header>
-  <h1>Certinel</h1>
+  <h1>Certheim</h1>
   <!-- Edition / license watermark. Populated from /api/me by loadMe(): shows the
        edition and, when licensed, "Licensed to <customer>" so a leaked license
        names its owner. "Community" when unlicensed. -->
@@ -504,7 +504,7 @@
         <h2>Database</h2>
         <button id="admin-db-refresh" class="secondary" type="button">Refresh</button>
       </div>
-      <p class="hint">Certinel runs on <b>SQLite</b> (single node, zero-setup) or
+      <p class="hint">Certheim runs on <b>SQLite</b> (single node, zero-setup) or
         <b>PostgreSQL</b> (for high availability / Kubernetes). The backend is chosen
         by the <code>CSR_DB_URL</code> environment variable; switching is a one-time
         migrate&nbsp;+&nbsp;restart, laid out below.</p>
@@ -645,7 +645,7 @@
           <input type="text" id="admin-mtls-bundle" class="form-input"
                  placeholder="/etc/pki/dod/dod-cas.pem">
         </div>
-        <p class="hint" style="margin-top:4px">Certinel writes the nginx client-cert
+        <p class="hint" style="margin-top:4px">Certheim writes the nginx client-cert
            config and reloads nginx (config‑tested, auto‑reverted if invalid). Use
            <strong>Required</strong> with your CAC/DoD CA bundle to enforce certificates
            at the edge; pair it with the CAC auth mode above.</p>
@@ -1046,7 +1046,7 @@
           <strong>Vault</strong> keeps keys in the credential manager, never on this host —
           recommended. <strong>Return once</strong> stores the key in the vault and destroys
           it after the first retrieval. <strong>Host keystore</strong> is the legacy on-disk
-          store for air-gapped sites. Applied to keys Certinel generates; falls back to the
+          store for air-gapped sites. Applied to keys Certheim generates; falls back to the
           host keystore if no credential manager is configured. Override per template in
           Admin → Templates.</p>
         <label for="signing-cfg-shortlived-ttl" class="textarea-label" style="margin-top:8px">Short-lived auto-policy
@@ -1717,8 +1717,8 @@
         <div class="guide-pages" data-guide>
 
           <section data-page="welcome" data-title="Welcome" data-group="Getting started">
-            <h3>Welcome to Certinel</h3>
-            <p>Certinel is where your team requests, signs, issues, delivers,
+            <h3>Welcome to Certheim</h3>
+            <p>Certheim is where your team requests, signs, issues, delivers,
                tracks, and renews TLS/PKI certificates — without juggling spreadsheets,
                shared inboxes, or manual OpenSSL commands.</p>
             <p>The app has two areas, switched from the header:</p>
@@ -2090,7 +2090,7 @@
 
             <div class="guide-ca-block" data-filter-tag="local_ca">
               <h4>Local CA (built-in) <span class="guide-ed">Commercial / Government</span></h4>
-              <p>A self-contained CA inside Certinel — no external vault or CA service. The CA
+              <p>A self-contained CA inside Certheim — no external vault or CA service. The CA
                  private key is envelope-encrypted in the built-in <strong>sealed keystore</strong>
                  and CSRs are signed locally.</p>
               <ol>
@@ -2201,7 +2201,7 @@
                 <li>Create an API integration in Trust Protection Platform and grant it the
                     policy folder you'll issue from.</li>
                 <li>Fill in the <em>TPP base URL</em> and the <em>policy folder DN</em>
-                    (e.g. <code>\VED\Policy\Certificates\Certinel</code>).</li>
+                    (e.g. <code>\VED\Policy\Certificates\Certheim</code>).</li>
                 <li>Put the OAuth bearer token in <code>CSR_VENAFI_TOKEN</code> in the service
                     env.</li>
                 <li><strong>Test connection</strong> to confirm the token and folder.</li>

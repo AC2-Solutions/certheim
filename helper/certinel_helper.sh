@@ -107,7 +107,7 @@ case "$cmd" in
         delete_file "$ISSUED_DIR" '^[A-Za-z0-9._-]+\.cer$' "${1:-}"
         ;;
     install-ca-bundle)
-        # Install the Certinel CA trust bundle (PEM on stdin) into this host.
+        # Install the Certheim CA trust bundle (PEM on stdin) into this host.
         install_ca_bundle
         ;;
     apply-mtls)

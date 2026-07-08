@@ -1,5 +1,5 @@
 [Unit]
-Description=Renew the Certinel nginx TLS certificate (every 6h)
+Description=Renew the Certheim nginx TLS certificate (every 6h)
 
 [Timer]
 # step-ca certs can be short-lived (e.g. 24h). A once-daily renewer leaves no

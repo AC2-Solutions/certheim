@@ -1,6 +1,6 @@
 """keystore.py - server-generated private-key storage policy (key-handling Phase 2).
 
-The admin picks `key_storage` (Admin -> Signing/CA) for how a key Certinel
+The admin picks `key_storage` (Admin -> Signing/CA) for how a key Certheim
 generates is kept:
 
   vault        (default) - write the key to OpenBao immediately after generation

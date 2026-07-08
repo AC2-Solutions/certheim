@@ -816,7 +816,7 @@ def admin_set_template_signing(template_id):
     dbackend = (payload.get("delivery_backend") or "none").strip()
     if deliver is None:
         if dbackend != "none":
-            return jsonify(error="automated delivery requires a Certinel license"), 403
+            return jsonify(error="automated delivery requires a Certheim license"), 403
         key_mode = "destination"
     else:
         if dbackend not in ({"none"} | set(deliver.PROVIDERS)):
@@ -1280,7 +1280,7 @@ def admin_run_auto_renew():
     try:                                # premium: auto-renew is Full-build only
         from renew import run_auto_renew
     except ImportError:
-        return jsonify(error="automated renewal requires a Certinel license"), 403
+        return jsonify(error="automated renewal requires a Certheim license"), 403
     renewed, skipped, errors = run_auto_renew()
     log_event("auto_renew", "run", renewed=renewed, skipped=skipped, errors=errors)
     return jsonify(ok=True, renewed=renewed, skipped=skipped, errors=errors)

@@ -1,8 +1,8 @@
-# Certinel — FIPS 140-3 Cryptography
+# Certheim — FIPS 140-3 Cryptography
 
 ## The claim, stated precisely
 
-Certinel **bundles no cryptography of its own**. Every cryptographic operation it
+Certheim **bundles no cryptography of its own**. Every cryptographic operation it
 performs is delegated to the **platform's cryptographic module**:
 
 - the Python **standard library** (`hashlib`, `hmac`, `ssl`, `secrets`), which is
@@ -14,16 +14,16 @@ OpenSSL routes all crypto through the **FIPS 140-3 validated module** — the
 *Red Hat Enterprise Linux 9 OpenSSL FIPS Provider* (OpenSSL 3.0.x FIPS provider,
 CMVP-validated). So the accurate statement is:
 
-> **When run on a FIPS-mode host, Certinel uses only FIPS 140-3 validated
+> **When run on a FIPS-mode host, Certheim uses only FIPS 140-3 validated
 > cryptography.**
 
-It is *not* a claim that "Certinel" is itself a validated module — an application
+It is *not* a claim that "Certheim" is itself a validated module — an application
 cannot be 140-3 validated; the **module it calls** is. This is the same posture
 HashiCorp/Red Hat/etc. products take.
 
 ## Why it's already compliant (no re-engineering)
 
-| Operation | How Certinel does it | FIPS-approved? |
+| Operation | How Certheim does it | FIPS-approved? |
 |---|---|---|
 | Password hashing | `hashlib.pbkdf2_hmac("sha256", …)` (PBKDF2-HMAC-SHA256) | **Yes.** Deliberately *not* werkzeug's default `scrypt`, which is **not** approved. |
 | Webhook / token signatures | `hmac` + SHA-256 | Yes (HMAC-SHA-256) |
@@ -39,12 +39,12 @@ module.
 
 ## What's in / out of the boundary
 
-- **In Certinel's boundary:** everything above (its own hashing, HMAC, RNG, TLS,
+- **In Certheim's boundary:** everything above (its own hashing, HMAC, RNG, TLS,
   CSR/key generation, license verify).
 - **Out of boundary (separate validation):** the **signing CA**. When signing via
   OpenBao/Vault, ACME, AD CS, EJBCA, Venafi, or AWS PCA, that backend performs the
   CA crypto and carries its **own** FIPS posture. Run a FIPS-validated CA backend
-  for an end-to-end FIPS chain. Certinel only ever handles the CSR (public) and
+  for an end-to-end FIPS chain. Certheim only ever handles the CSR (public) and
   the returned certificate.
 - Private keys generated server-side are written straight to the credential
   manager and shredded from the host (see `key-handling-design.md`); the brief
@@ -74,15 +74,15 @@ cat /proc/sys/crypto/fips_enabled       # 1
 openssl list -providers | grep -A2 fips # name: ... OpenSSL FIPS Provider / status: active
 ```
 
-Then in Certinel set **Require FIPS** (Admin → Signing/CA) so any drift is visible.
+Then in Certheim set **Require FIPS** (Admin → Signing/CA) so any drift is visible.
 
 ## RHEL major support — 140-2 vs 140-3
 
 The FIPS *validation* is a property of the platform crypto module, not of
-Certinel (which runs the same source on all three). One codebase serves them;
+Certheim (which runs the same source on all three). One codebase serves them;
 `fips_status().standard` reports which standard the host meets.
 
-| RHEL | OpenSSL | FIPS standard | How Certinel detects it |
+| RHEL | OpenSSL | FIPS standard | How Certheim detects it |
 |---|---|---|---|
 | **9** | 3.x (provider) | **140-3, validated** — *RHEL 9 OpenSSL FIPS Provider* (`openssl-3.0.7`), CMVP cert **#4857** (9.2–9.7; 9.0 is #4746) | FIPS **provider active** in `openssl list -providers` |
 | **10** | 3.x (provider) | **140-3 NOT YET validated** — Red Hat *plans* to reuse the same `3.0.7` module, but RHEL 10 is **"Pending Operational Environment update"** on the CMVP list with **no cert number assigned** (as of 2026-06). Do **not** claim 140-3 on a 10 host until the OE is certified. | same provider check |
@@ -105,7 +105,7 @@ Notes:
 ## Status across the reference deployment
 
 - **disa (STIG/gov):** FIPS mode **enabled** — provider *Red Hat Enterprise
-  Linux 9 - OpenSSL FIPS Provider 3.0.7*, active. Certinel there runs on the
+  Linux 9 - OpenSSL FIPS Provider 3.0.7*, active. Certheim there runs on the
   validated module today.
 - **csr-dev (dev):** non-FIPS, by design.
 
@@ -127,7 +127,7 @@ Walk this list once per accredited install and attach the evidence to the SSP.
     RHEL 10 OpenSSL provider as *"Pending Operational Environment update"* with **no
     CMVP cert number**. The module is the same `3.0.7`, but the **OE certification is
     outstanding** — so 10 is FIPS-*capable*, not FIPS-*validated*. **Do not assert
-    140-3 on a 10 host until a cert number lands.** The Certinel reference VM is
+    140-3 on a 10 host until a cert number lands.** The Certheim reference VM is
     Alma 10 → today, make the validated claim only on a 9 host, and re-check the
     [CMVP list](https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules)
     for RHEL 10 before each accreditation.
@@ -143,19 +143,19 @@ Walk this list once per accredited install and attach the evidence to the SSP.
       `validated: true`. The active-provider check is stronger than the kernel flag.
 - [ ] **Turn on the policy.** Set **Require FIPS** (Admin → Signing/CA) so any
       drift (kernel off, provider not loaded) is surfaced loudly in the UI.
-- [ ] **Pin the release for the ATO.** Record the deployed Certinel **git tag** and
+- [ ] **Pin the release for the ATO.** Record the deployed Certheim **git tag** and
       build the **offline wheelhouse/venv against the target host's RHEL major** so
       the accredited artifact is reproducible. (App source is identical across RHEL
       majors; only the platform module — and its validation — differs.)
 - [ ] **Account for the CA backend separately.** The signing CA is **out of
-      Certinel's boundary**. If an end-to-end FIPS chain is required, confirm the CA
+      Certheim's boundary**. If an end-to-end FIPS chain is required, confirm the CA
       backend (OpenBao/Vault, AD CS, EJBCA, Venafi, AWS PCA, ACME server) carries
-      its **own** FIPS validation and document it alongside Certinel's.
+      its **own** FIPS validation and document it alongside Certheim's.
 - [ ] **No third-party crypto crept in.** Confirm `requirements.txt` is still
       Flask + stdlib only (no pip-shipped OpenSSL/BoringSSL wheel that would run
       outside the validated module). Re-check after any dependency bump.
 
 > **One-line claim to put in front of an accreditor:** *"On a FIPS-mode RHEL/Alma 9
-> or 10 host, Certinel performs all cryptography through the platform's CMVP-validated
-> OpenSSL FIPS provider (cert #__); Certinel bundles no cryptography of its own and
+> or 10 host, Certheim performs all cryptography through the platform's CMVP-validated
+> OpenSSL FIPS provider (cert #__); Certheim bundles no cryptography of its own and
 > enforces the posture at runtime via the Require-FIPS policy."*

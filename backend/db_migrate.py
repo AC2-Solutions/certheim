@@ -1,4 +1,4 @@
-"""db_migrate.py - copy all data between Certinel database backends.
+"""db_migrate.py - copy all data between Certheim database backends.
 
 Moves an existing deployment's data from SQLite onto PostgreSQL (or back) without
 loss - driven by the CLI `tools/certinel-db-migrate` or the admin Database page.
@@ -112,7 +112,7 @@ def current_source_spec():
 
 
 def ensure_target_schema(target_spec):
-    """Create the Certinel schema on the target by pointing the app's config at
+    """Create the Certheim schema on the target by pointing the app's config at
     it and running init_db(). Restores the prior config afterward."""
     import db as dbx
     import app

@@ -1,5 +1,5 @@
 [Unit]
-Description=Certinel - automatically renew certificates nearing expiry
+Description=Certheim - automatically renew certificates nearing expiry
 After=network-online.target
 
 [Service]

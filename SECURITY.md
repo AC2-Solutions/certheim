@@ -1,6 +1,6 @@
 # Security Policy
 
-Certinel is a certificate-lifecycle-management product that handles signing
+Certheim is a certificate-lifecycle-management product that handles signing
 credentials and issued certificates. We take security reports seriously and aim
 to respond quickly.
 
@@ -13,7 +13,7 @@ message and we will provide one for encrypted follow-up.
 
 Please include, to the extent you can:
 
-- The Certinel **edition and version** (`/api/health` reports the version; the
+- The Certheim **edition and version** (`/api/health` reports the version; the
   admin **Support bundle** — Administration → Overview → *Download support
   bundle* — captures version, edition, and environment with secrets redacted).
 - The deployment shape (VM, container, or Kubernetes; SQLite or Postgres).
@@ -47,7 +47,7 @@ versions and any workarounds.
 We will not pursue or support legal action against researchers who, in good
 faith:
 
-- test only against **their own** installation of Certinel (never a customer's
+- test only against **their own** installation of Certheim (never a customer's
   instance, and never our licensing/download infrastructure without written
   permission),
 - avoid privacy violations, data destruction, and service degradation,
@@ -59,7 +59,7 @@ whether something is in scope, ask first at security@ac2certinel.com.
 
 ## Scope
 
-**In scope** — the Certinel application (all editions), its container images and
+**In scope** — the Certheim application (all editions), its container images and
 release artifacts, the install/upgrade tooling, and the licensing/verification
 mechanisms as shipped.
 
@@ -70,6 +70,6 @@ administrator, and social engineering.
 
 ## Verifying what you run
 
-Every Certinel container image is published with an **SBOM and SLSA provenance
+Every Certheim container image is published with an **SBOM and SLSA provenance
 attestation**, and tarball releases ship with checksums. Before trusting a
 build, verify it — see [`docs/verifying-releases.md`](docs/verifying-releases.md).

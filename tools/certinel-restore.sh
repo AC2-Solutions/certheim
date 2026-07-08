@@ -1,5 +1,5 @@
 #!/bin/bash
-# certinel-restore - restore a Certinel deployment from a certinel-backup archive.
+# certinel-restore - restore a Certheim deployment from a certinel-backup archive.
 #
 # Restores config, systemd units, sudoers, on-disk private keys, and the
 # database from a backup produced by certinel-backup. It does NOT install the

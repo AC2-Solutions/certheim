@@ -14,7 +14,7 @@ Two distribution paths (admin picks per environment):
     it. Works through a one-way firewall and in air-gapped-ish topologies where
     the app can't reach the host.
 
-Crypto posture: like the rest of Certinel this module bundles no crypto. All
+Crypto posture: like the rest of Certheim this module bundles no crypto. All
 certificate parsing/validation is delegated to the system `openssl` (via
 import_certs.parse_cert) and hashing to hashlib - so it inherits the host's
 FIPS-validated module. The bundle is public CA material (no private keys), which
@@ -221,7 +221,7 @@ def bundle_meta(enabled_only=True):
 
 
 # --------------------------------------------------------------------------- #
-# Local install (on the Certinel host itself)                                  #
+# Local install (on the Certheim host itself)                                  #
 # --------------------------------------------------------------------------- #
 def install_local():
     """Install the current bundle into THIS host's OS trust via the helper
@@ -275,7 +275,7 @@ def push_ssh(host):
     try:                                # premium plumbing: absent in Community
         import deliver  # lazy: reuse Vault read + provider plumbing
     except ImportError:
-        raise TrustError("SSH trust-bundle distribution requires a Certinel license")
+        raise TrustError("SSH trust-bundle distribution requires a Certheim license")
     host = (host or "").strip()
     if not _HOST_RE.match(host):
         raise TrustError(f"invalid host: {host!r}")
@@ -458,7 +458,7 @@ def install_script(token, base_url=None):
     snippet = _install_snippet('"$TMP"')
     return (
         "#!/usr/bin/env bash\n"
-        "# Certinel trust-bundle installer. Adds the Certinel CA bundle to this\n"
+        "# Certheim trust-bundle installer. Adds the Certheim CA bundle to this\n"
         "# host's OS trust store. Re-run any time to pick up CA changes.\n"
         "set -euo pipefail\n"
         f'URL="{url}"\n'
@@ -470,4 +470,4 @@ def install_script(token, base_url=None):
         'grep -q "BEGIN CERTIFICATE" "$TMP" || { echo "no certificates fetched from $URL" >&2; exit 1; }\n'
         'SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo -n"\n'
         f'$SUDO bash -c {_shquote(snippet)}\n'
-        'echo "Certinel trust bundle installed."\n')
+        'echo "Certheim trust bundle installed."\n')

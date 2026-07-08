@@ -1,6 +1,6 @@
-# Certinel
+# Certheim
 
-> **Certinel** (formerly *CSR Dashboard*) — a certificate **lifecycle** platform.
+> **Certheim** (formerly *Certinel*, originally *CSR Dashboard*) — a certificate **lifecycle** platform.
 > The repo slug, systemd services, paths, and `CSR_*` environment variables keep
 > their original names for deployment compatibility; only the product brand
 > changed.

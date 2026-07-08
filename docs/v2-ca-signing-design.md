@@ -1,4 +1,4 @@
-# Certinel v2 — In-UI Certificate Signing (OpenBao PKI)
+# Certheim v2 — In-UI Certificate Signing (OpenBao PKI)
 
 Status: **delivered in v2.0.0.** (Original design + Phase 0 spike below, kept for
 context.) Shipped: `sign.py` provider seam (OpenBao live, CyberArk slot),

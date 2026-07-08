@@ -1,4 +1,4 @@
-# Certinel container image (Podman/Buildah/Docker).
+# Certheim container image (Podman/Buildah/Docker).
 #
 # One Containerfile, two bases via the PYBASE build arg:
 #   * default  -> RHEL UBI 9 + Python 3.12  (FIPS-capable, for gov/regulated)

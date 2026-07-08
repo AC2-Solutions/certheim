@@ -733,7 +733,7 @@ async function loadSigningConfig() {
     } else if (f.kernel_fips) {
       fEl.innerHTML = '<span style="color:#fbbf24;font-weight:600">⚠ kernel FIPS on, but the OpenSSL FIPS provider was not detected</span>';
     } else {
-      fEl.textContent = "Host is not in FIPS mode. Certinel bundles no crypto — all hashing, HMAC, TLS and RNG use the stdlib + system OpenSSL, so it runs on the validated module once the host is booted in FIPS mode.";
+      fEl.textContent = "Host is not in FIPS mode. Certheim bundles no crypto — all hashing, HMAC, TLS and RNG use the stdlib + system OpenSSL, so it runs on the validated module once the host is booted in FIPS mode.";
     }
     if (f.required && !f.validated) {
       fEl.innerHTML += ' <strong style="color:#ef4444">— FIPS is required here but not active.</strong>';
@@ -2284,7 +2284,7 @@ refreshAdminView = async function () {
 const TUTORIAL_STEPS = [
   {
     target: null,
-    title: "Welcome to the Certinel",
+    title: "Welcome to the Certheim",
     body: "This quick tour shows you the key parts of the page — creating requests with templates, tracking jobs, and where to get help. Replay it anytime from the Tour link in the header.",
   },
   {

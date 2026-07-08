@@ -1,4 +1,4 @@
-// Certinel frontend - Linux-only flow with jobs DB
+// Certheim frontend - Linux-only flow with jobs DB
 const API = "/csr/api";
 const CSRF = { "X-Requested-With": "certinel", "Content-Type": "application/json" };
 const PAGE_SIZE = 50;

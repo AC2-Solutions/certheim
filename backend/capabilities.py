@@ -128,7 +128,7 @@ def _probe_egress():
 def _openssl_fips_provider():
     """The active OpenSSL FIPS provider (name + version) if loaded, else None.
     This is the real check that the *validated module* is doing the crypto -
-    stronger than the kernel /proc flag alone. Certinel uses only the stdlib +
+    stronger than the kernel /proc flag alone. Certheim uses only the stdlib +
     the system `openssl`, both backed by this provider in FIPS mode."""
     try:
         out = subprocess.run(["openssl", "list", "-providers"],
@@ -218,7 +218,7 @@ def env_caps(refresh=False):
 
 
 def fips_status():
-    """FIPS posture, validated against the platform crypto module (Certinel
+    """FIPS posture, validated against the platform crypto module (Certheim
     bundles no crypto - all hashing/HMAC/TLS/RNG go through the stdlib + system
     openssl). `standard` reflects the host:
       - OpenSSL 3.x (RHEL 9/10): the FIPS *provider* must be active -> 140-3.

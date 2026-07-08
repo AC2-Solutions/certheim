@@ -1,6 +1,6 @@
 apiVersion: v2
 name: certinel
-description: Certinel — certificate lifecycle platform (CSR request → sign → issue → deliver)
+description: Certheim — certificate lifecycle platform (CSR request → sign → issue → deliver)
 type: application
 version: 0.1.0
 # Tracks the app image tag used by default (overridable via image.tag).

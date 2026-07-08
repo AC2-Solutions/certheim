@@ -1,4 +1,4 @@
-"""Endpoint smoke tests for the Certinel.
+"""Endpoint smoke tests for the Certheim.
 
 Purpose: a fast, dependency-light safety net that exercises every route GROUP
 (auth, jobs, admin, integrations, capabilities) so a refactor - especially the
@@ -2023,7 +2023,7 @@ def test_truststore_pull_token_and_public_fetch(client):
     assert tok.status_code == 200
     body = tok.get_json()
     assert body["url"].startswith("https://certinel.example/api/truststore/bundle/")
-    assert "Certinel trust bundle installed" in body["script"]
+    assert "Certheim trust bundle installed" in body["script"]
     token = body["token"]
 
     # public fetch returns the live PEM bundle (reusable within TTL)

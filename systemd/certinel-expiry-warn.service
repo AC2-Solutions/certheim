@@ -1,5 +1,5 @@
 [Unit]
-Description=Certinel - send certificate expiry warnings
+Description=Certheim - send certificate expiry warnings
 After=network-online.target
 
 [Service]

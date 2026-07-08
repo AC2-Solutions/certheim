@@ -1,4 +1,4 @@
-Certinel {{ .Values.image.tag | default .Chart.AppVersion }} deployed as {{ include "certinel.fullname" . }}.
+Certheim {{ .Values.image.tag | default .Chart.AppVersion }} deployed as {{ include "certinel.fullname" . }}.
 
 Backend: {{ .Values.db.backend }}{{ if eq .Values.db.backend "sqlite" }} (single replica + PVC){{ end }}
 {{- if .Values.ingress.enabled }}

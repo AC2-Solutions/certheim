@@ -29,9 +29,9 @@ apply_mtls() {
 
     local tmp; tmp="$(mktemp)"
     case "$mode" in
-        enforce)  printf '# managed by Certinel (Admin -> Authentication)\nssl_client_certificate %s;\nssl_verify_client on;\nssl_verify_depth 3;\n' "$bundle" > "$tmp" ;;
-        optional) printf '# managed by Certinel (Admin -> Authentication)\nssl_verify_client optional_no_ca;\nssl_verify_depth 3;\n' > "$tmp" ;;
-        off)      printf '# managed by Certinel (Admin -> Authentication): client certs disabled\n' > "$tmp" ;;
+        enforce)  printf '# managed by Certheim (Admin -> Authentication)\nssl_client_certificate %s;\nssl_verify_client on;\nssl_verify_depth 3;\n' "$bundle" > "$tmp" ;;
+        optional) printf '# managed by Certheim (Admin -> Authentication)\nssl_verify_client optional_no_ca;\nssl_verify_depth 3;\n' > "$tmp" ;;
+        off)      printf '# managed by Certheim (Admin -> Authentication): client certs disabled\n' > "$tmp" ;;
     esac
 
     # Install, test, reload - restoring the previous fragment if nginx rejects it.
