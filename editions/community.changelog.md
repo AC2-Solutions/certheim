@@ -1,5 +1,31 @@
 # Certheim Community edition — changelog
 
+## 5.0.0 — 2026-07-08
+
+_Released 2026-07-08. 1 change since community-v4.1.1._
+
+### Breaking changes
+
+- publish v5.0.0 under the Certheim image namespace (`9492ea8`)
+  Cuts the first Certheim platform generation (v5.0.0) and redirects the Docker Hub public image
+  from docker.io/ac2solutions/certinel to docker.io/ac2solutions/certheim (HUB_IMAGE + customer-
+  facing verify and licensing docs). Entitled registry registry.ac2certinel.com/certinel is left for
+  Phase 4.
+  ac2solutions/certinel to ac2solutions/certheim; existing pull references must be updated. This
+  stamps the shared v5.0.0 major (the Certinel to Certheim rebrand generation), which propagates
+  upward to Commercial and Government.
+
+### Features
+
+- publish v5.0.0 under the Certheim image namespace (`9492ea8`)
+  Cuts the first Certheim platform generation (v5.0.0) and redirects the Docker Hub public image
+  from docker.io/ac2solutions/certinel to docker.io/ac2solutions/certheim (HUB_IMAGE + customer-
+  facing verify and licensing docs). Entitled registry registry.ac2certinel.com/certinel is left for
+  Phase 4.
+  ac2solutions/certinel to ac2solutions/certheim; existing pull references must be updated. This
+  stamps the shared v5.0.0 major (the Certinel to Certheim rebrand generation), which propagates
+  upward to Commercial and Government.
+
 ## 4.1.1 — 2026-07-08
 
 _Released 2026-07-08. 5 changes since community-v4.1.0._
