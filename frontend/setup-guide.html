@@ -534,10 +534,10 @@ sudo systemctl restart certinel-api</pre></div>
 
   // Plain-text helpers for generated, downloadable files (no HTML markup).
   function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
-  // Per-edition entitled repository: registry.certheim.com/certinel/<edition>.
+  // Per-edition entitled repository: registry.certheim.com/certheim/<edition>.
   // The pull token minted with your license is scoped to your edition (and lower
   // tiers), so the image path must match the edition you selected.
-  function imageRepo(){ return "registry.certheim.com/certinel/" + st.edition; }
+  function imageRepo(){ return "registry.certheim.com/certheim/" + st.edition; }
   function imageRef(){ return imageRepo() + ":latest"; }
   function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 

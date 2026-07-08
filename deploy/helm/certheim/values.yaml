@@ -7,7 +7,7 @@ replicaCount: 1
 
 image:
   # The entitled Certheim registry — pull is gated by your license (see below).
-  repository: registry.certheim.com/certinel
+  repository: registry.certheim.com/certheim
   # Published tags: latest, vX.Y.Z (+ -slim variants). Pin to a vX.Y.Z for prod.
   tag: latest
   pullPolicy: IfNotPresent
