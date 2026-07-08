@@ -88,7 +88,7 @@ auth service:
    is revocable independently and maps 1→1 to a license.
 
 4. **Image sync** — CI keeps pushing the attested image to **private Docker Hub**
-   (`ac2solutions/certinel`, the build source of truth). On each release a
+   (`ac2solutions/certheim`, the build source of truth). On each release a
    `skopeo copy --all` mirrors `:vX.Y.Z` / `:latest` (+ `-slim`) **with their
    attestations** into the entitled registry. (Pull-through caching from a private
    upstream + token auth is fiddly; an explicit mirror is simpler and keeps the

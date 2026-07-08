@@ -216,7 +216,7 @@ release:
       # default PATH. Auth via the instance-level DOCKERHUB_USERNAME/_TOKEN.
       # Non-fatal: a build hiccup must never undo the pushed tag. Falls back to
       # buildah (no attestations) if BuildKit isn't present on the runner.
-      HUB_IMAGE="docker.io/ac2solutions/certinel"
+      HUB_IMAGE="docker.io/ac2solutions/certheim"
       # Compose the edition's tag set: always RELTAG + MOVING + a per-edition
       # "<edition>-latest" alias (an explicit always-latest pointer); community
       # also publishes the bare latest/slim so existing `:latest` pulls track the base.
