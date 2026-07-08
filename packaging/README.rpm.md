@@ -5,10 +5,19 @@ service** — no containers, no Kubernetes.
 
 ## Install
 
+The RPM is GPG-signed. On hosts that enforce `gpgcheck` (DISA STIG, most
+hardened builds), import the Certheim public key once, then install:
+
 ```bash
+sudo rpm --import RPM-GPG-KEY-certheim               # key id A16072AF9F5E7593
+rpm -Kv ./certheim-<version>-1.x86_64.rpm            # expect: Signature … OK
 sudo dnf install ./certheim-<version>-1.x86_64.rpm   # pulls nginx, python3, …
 sudo certheim-setup                                  # configure + start
 ```
+
+`RPM-GPG-KEY-certheim` ships with the release (and at
+`/usr/share/doc/certheim/RPM-GPG-KEY-certheim` after install). Fingerprint:
+`D245 9994 B9DD 0392 9E89 1E2B A160 72AF 9F5E 7593`.
 
 `certheim-setup` is interactive. It picks the FQDN and TLS mode
 (self-signed / bring-your-own / step-ca ACME), provisions nginx, creates the

@@ -368,6 +368,17 @@ release:
           NFPM_VER=2.41.3
           curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_x86_64.tar.gz" \
             | tar xz -C /tmp nfpm
+          # GPG-sign the RPM when the signing key is configured (project CI vars:
+          # CERTHEIM_RPM_SIGN_KEY = File-type var holding the armored private key;
+          # CERTHEIM_RPM_SIGN_PASSPHRASE = masked passphrase). Absent → unsigned
+          # (build-rpm.sh warns). Signed RPMs install on STIG / gpgcheck hosts;
+          # customers import packaging/RPM-GPG-KEY-certheim first.
+          if [ -n "${CERTHEIM_RPM_SIGN_KEY:-}" ]; then
+            export CERTHEIM_RPM_SIGN_KEY_FILE="$CERTHEIM_RPM_SIGN_KEY"
+            export CERTHEIM_RPM_SIGN_PASSPHRASE="${CERTHEIM_RPM_SIGN_PASSPHRASE:-}"
+          else
+            echo "note: CERTHEIM_RPM_SIGN_KEY unset — RPM will be UNSIGNED (won't install on gpgcheck-enforced hosts)."
+          fi
           PKG_VERSION="$ver" PATH="/tmp:$PATH" bash packaging/build-rpm.sh </dev/null
           rpm_file="$(ls packaging/build/certheim-*.x86_64.rpm | head -1)"
           rpm_sha="$(sha256sum "$rpm_file" | cut -d' ' -f1)"

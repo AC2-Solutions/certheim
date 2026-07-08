@@ -46,6 +46,9 @@ contents:
   - src: packaging/build/stage/usr/share/doc/certheim/README.md
     dst: /usr/share/doc/certheim/README.md
     type: doc
+  - src: packaging/build/stage/usr/share/doc/certheim/RPM-GPG-KEY-certheim
+    dst: /usr/share/doc/certheim/RPM-GPG-KEY-certheim
+    type: doc
 
 scripts:
   postinstall: packaging/scripts/postinstall.sh
