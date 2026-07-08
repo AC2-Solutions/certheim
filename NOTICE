@@ -16,3 +16,9 @@ Notable obligations:
 - The container base images (Red Hat UBI9 python-312-minimal, or the Debian
   python:3.12-slim "slim" variant) and the nginx sidecar carry their own
   upstream licenses; see docs/third-party-licenses.md.
+
+---
+
+Certheim Community edition is licensed under the GNU Affero General Public
+License v3.0 (see LICENSE). The Commercial and Government editions are proprietary
+and licensed separately by AC2 Solutions, the sole copyright holder.
