@@ -46,9 +46,31 @@ echo "  wheels: $(ls "$DEST/wheelhouse" | wc -l)"
 
 install -m 0755 packaging/certheim-setup "$STAGE/usr/sbin/certheim-setup"
 install -m 0644 packaging/README.rpm.md  "$STAGE/usr/share/doc/certheim/README.md"
+# Ship the public signing key alongside the app too (for reference / re-import).
+install -m 0644 packaging/RPM-GPG-KEY-certheim "$STAGE/usr/share/doc/certheim/RPM-GPG-KEY-certheim"
+
+# GPG-sign the RPM when a signing key is provided (CI on tagged releases), so it
+# installs on STIG / gpgcheck-enforced hosts. CERTHEIM_RPM_SIGN_KEY_FILE points
+# at the armored private key; CERTHEIM_RPM_SIGN_PASSPHRASE holds its passphrase.
+# Absent (local dev builds) → unsigned, as before. nfpm signs natively (no
+# rpm-sign package needed). The matching public key is packaging/RPM-GPG-KEY-certheim.
+NFPM_CONFIG=packaging/nfpm.yaml
+if [[ -n "${CERTHEIM_RPM_SIGN_KEY_FILE:-}" && -r "${CERTHEIM_RPM_SIGN_KEY_FILE}" ]]; then
+    echo "=== signing enabled (key: $CERTHEIM_RPM_SIGN_KEY_FILE) ==="
+    NFPM_CONFIG=packaging/build/nfpm-signed.yaml
+    awk -v key="$CERTHEIM_RPM_SIGN_KEY_FILE" '
+        {print}
+        /^  compression: gzip$/ { print "  signature:"; print "    key_file: " key }
+    ' packaging/nfpm.yaml > "$NFPM_CONFIG"
+    export NFPM_RPM_PASSPHRASE="${CERTHEIM_RPM_SIGN_PASSPHRASE:-}"
+else
+    echo "=== signing disabled (CERTHEIM_RPM_SIGN_KEY_FILE unset) — building UNSIGNED ==="
+fi
 
 echo "=== nfpm package ==="
 export PKG_VERSION PKG_ARCH
-nfpm package --config packaging/nfpm.yaml --packager rpm --target packaging/build/
+nfpm package --config "$NFPM_CONFIG" --packager rpm --target packaging/build/
 ls -la packaging/build/*.rpm
+# Surface the signature state so CI logs make it obvious.
+rpm -qpi packaging/build/*.rpm 2>/dev/null | grep -i "^Signature" || true
 echo "=== done: $(ls packaging/build/*.rpm) ==="
