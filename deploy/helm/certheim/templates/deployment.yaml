@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "certinel.fullname" . }}
+  name: {{ include "certheim.fullname" . }}
   labels:
-    {{- include "certinel.labels" . | nindent 4 }}
+    {{- include "certheim.labels" . | nindent 4 }}
 spec:
   # SQLite is single-writer: force one replica unless on Postgres.
   replicas: {{ if eq .Values.db.backend "postgres" }}{{ .Values.replicaCount }}{{ else }}1{{ end }}
@@ -11,15 +11,15 @@ spec:
     type: {{ if eq .Values.db.backend "postgres" }}RollingUpdate{{ else }}Recreate{{ end }}
   selector:
     matchLabels:
-      {{- include "certinel.selectorLabels" . | nindent 6 }}
+      {{- include "certheim.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "certinel.selectorLabels" . | nindent 8 }}
+        {{- include "certheim.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: {{ include "certinel.serviceAccountName" . }}
+      serviceAccountName: {{ include "certheim.serviceAccountName" . }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -30,7 +30,7 @@ spec:
         # Stage the static frontend (baked into the app image) into a shared
         # volume the nginx sidecar serves.
         - name: copy-frontend
-          image: {{ include "certinel.image" . }}
+          image: {{ include "certheim.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "mkdir -p /static/csr && cp -r /var/www/csr/. /static/csr/"]
           volumeMounts:
@@ -38,14 +38,14 @@ spec:
               mountPath: /static
       containers:
         - name: app
-          image: {{ include "certinel.image" . }}
+          image: {{ include "certheim.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["web"]
           {{- with .Values.securityContext }}
           securityContext: {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            {{- include "certinel.appEnv" . | nindent 12 }}
+            {{- include "certheim.appEnv" . | nindent 12 }}
           ports:
             - name: http
               containerPort: 5002
@@ -90,11 +90,11 @@ spec:
           emptyDir: {}
         - name: nginx-conf
           configMap:
-            name: {{ include "certinel.fullname" . }}-nginx
+            name: {{ include "certheim.fullname" . }}-nginx
         {{- if or (ne (.Values.license | default "") "") (and .Values.openbao.enabled (ne (.Values.openbao.caCert | default "") "")) }}
         - name: secret-files
           secret:
-            secretName: {{ include "certinel.secretName" . }}
+            secretName: {{ include "certheim.secretName" . }}
             items:
               {{- if ne (.Values.license | default "") "" }}
               - key: license
@@ -108,10 +108,10 @@ spec:
         {{- if .Values.persistence.enabled }}
         - name: db
           persistentVolumeClaim:
-            claimName: {{ include "certinel.fullname" . }}-db
+            claimName: {{ include "certheim.fullname" . }}-db
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "certinel.fullname" . }}-data
+            claimName: {{ include "certheim.fullname" . }}-data
         {{- else }}
         - name: db
           emptyDir: {}
