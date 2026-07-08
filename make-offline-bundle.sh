@@ -1,12 +1,12 @@
 #!/bin/bash
 # make-offline-bundle.sh
 #
-# Builds a self-contained archive for deploying the Certinel to an
+# Builds a self-contained archive for deploying the Certheim to an
 # AIR-GAPPED RHEL host. Run this on a CONNECTED box whose Python version
 # and architecture MATCH THE OFFLINE TARGET (e.g. RHEL 9 / python3.9 /
 # x86_64), because the downloaded wheels are version- and arch-specific.
 #
-# Produces:  certinel-offline-<version>.tar.gz
+# Produces:  certheim-offline-<version>.tar.gz
 # containing: the repo code, a wheelhouse of all Python deps, this repo's
 # requirements.txt, and the offline install script + docs.
 #
@@ -38,7 +38,7 @@ _probe_py() {
 }
 PYBIN="${PYBIN:-$(_probe_py)}" || { echo "ERROR: no suitable python3 (>=3.9) on build host" >&2; exit 1; }
 STAGE="$(mktemp -d)"
-BUNDLE="certinel-offline-${VERSION}"
+BUNDLE="certheim-offline-${VERSION}"
 OUT="${STAGE}/${BUNDLE}"
 
 echo "=== Building offline bundle for v${VERSION} using ${PYBIN} ==="
@@ -166,7 +166,7 @@ STARTHERE
 
 cat > "$OUT/install/offline-install.sh" <<'INSTALL'
 #!/bin/bash
-# offline-install.sh - one-shot offline installer for the Certinel.
+# offline-install.sh - one-shot offline installer for the Certheim.
 #
 # This script lives in the bundle's  install/  directory.
 #
@@ -202,7 +202,7 @@ die()  { echo "  ERROR: $*" >&2; exit 1; }
 
 usage() {
     cat <<USAGE
-Certinel offline installer
+Certheim offline installer
 
 Usage:
   sudo ./offline-install.sh              Guided first-time setup (prompts for
@@ -280,7 +280,7 @@ if $UNATTENDED; then
 else
     echo
     echo "=========================================================="
-    echo "  Certinel - guided first-time setup"
+    echo "  Certheim - guided first-time setup"
     echo "  Answer the prompts below. Press Enter to accept a"
     echo "  [default]. This writes the config and then installs."
     echo "=========================================================="
@@ -413,7 +413,7 @@ if id "$SVC_USER" >/dev/null 2>&1; then
     echo "  exists - leaving as-is"
 else
     useradd --system --no-create-home --shell /sbin/nologin \
-            --comment "Certinel service account" "$SVC_USER"
+            --comment "Certheim service account" "$SVC_USER"
     echo "  created"
 fi
 getent group nginx >/dev/null || warn "group 'nginx' missing - is nginx installed?"
@@ -448,7 +448,7 @@ SUDOERS=/etc/sudoers.d/certinel
 if [[ -f "$SUDOERS" ]]; then
     echo "  exists - leaving as-is"
 else
-    printf '# Certinel: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/certinel_helper.sh\n' \
+    printf '# Certheim: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/certinel_helper.sh\n' \
         "$SVC_USER" > "$SUDOERS"
     chmod 0440 "$SUDOERS"
     visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
@@ -665,9 +665,9 @@ else
 fi
 
 cat > "$OUT/OFFLINE-INSTALL.md" <<DOC
-# Certinel - Offline Install (v${VERSION})
+# Certheim - Offline Install (v${VERSION})
 
-This bundle installs the Certinel on an air-gapped RHEL host with no
+This bundle installs the Certheim on an air-gapped RHEL host with no
 network access. It contains the application code, a wheelhouse of all
 Python dependencies, and this guide.
 

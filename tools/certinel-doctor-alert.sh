@@ -39,7 +39,7 @@ send_mail() {
     fi
     if curl -s --max-time 20 --user "api:${MAILGUN_API_KEY}" \
             "${MAILGUN_BASE}/${MAILGUN_DOMAIN}/messages" \
-            -F from="${MAILGUN_FROM:-Certinel Monitor <certinel@${MAILGUN_DOMAIN}>}" \
+            -F from="${MAILGUN_FROM:-Certheim Monitor <certinel@${MAILGUN_DOMAIN}>}" \
             -F to="${ALERT_EMAIL}" -F subject="$subj" -F text="$body" >/dev/null; then
         log "email sent: $subj"
     else
@@ -49,7 +49,7 @@ send_mail() {
 
 if [[ $rc -ne 0 ]]; then
     if [[ "$prev_status" != fail ]] || (( now - prev_alert >= RENOTIFY_HOURS * 3600 )); then
-        send_mail "[Certinel] UNHEALTHY: ${HOST}" \
+        send_mail "[Certheim] UNHEALTHY: ${HOST}" \
 "certinel-doctor found problems on ${HOST} at $(date).
 
 ${out}
@@ -61,7 +61,7 @@ SSH in and run 'sudo certinel-doctor' for full detail."
     printf 'fail|%s\n' "$prev_alert" > "$STATE"
 else
     if [[ "$prev_status" == fail ]]; then
-        send_mail "[Certinel] RECOVERED: ${HOST}" "certinel-doctor is healthy again on ${HOST} at $(date)."
+        send_mail "[Certheim] RECOVERED: ${HOST}" "certinel-doctor is healthy again on ${HOST} at $(date)."
     fi
     printf 'ok|0\n' > "$STATE"
 fi

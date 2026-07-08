@@ -1,6 +1,6 @@
 # Third-party licenses
 
-Certinel bundles the following third-party open-source components. Each is used
+Certheim bundles the following third-party open-source components. Each is used
 under its own license; this inventory is provided for compliance and due
 diligence. See also the top-level `NOTICE` file.
 
@@ -29,9 +29,9 @@ diligence. See also the top-level `NOTICE` file.
 | asn1crypto | MIT | SCEP / CMP enrollment (`requirements-sealed.txt`) | https://github.com/wbond/asn1crypto |
 
 **LGPL note (psycopg):** the PostgreSQL driver is LGPL-3.0-or-later and is
-included only in Postgres deployments. Certinel uses it **unmodified** as
+included only in Postgres deployments. Certheim uses it **unmodified** as
 published on PyPI and dynamically at runtime; the corresponding source and full
-license text are available at the project URL above. No Certinel source is
+license text are available at the project URL above. No Certheim source is
 subject to the LGPL as a result of this dynamic use.
 
 ## Runtime / base images
@@ -41,7 +41,7 @@ subject to the LGPL as a result of this dynamic use.
 | Red Hat UBI9 `python-312-minimal` (default base) | Red Hat UBI EULA + per-component licenses | Redistributable base image; component licenses inside the image |
 | Debian `python:3.12-slim` (the `-slim` image variant) | PSF (Python) + per-package (Debian) | Alternative base for the slim images |
 | CPython 3.12 | PSF License | Interpreter |
-| OpenSSL 3.x | Apache-2.0 | System crypto (all hashing/HMAC/TLS/RNG + the `openssl` CLI Certinel shells out to) |
+| OpenSSL 3.x | Apache-2.0 | System crypto (all hashing/HMAC/TLS/RNG + the `openssl` CLI Certheim shells out to) |
 | nginx | BSD-2-Clause | Static-asset / reverse-proxy sidecar (container/k8s deployments) |
 
 ## Regenerating this inventory

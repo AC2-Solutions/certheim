@@ -1,5 +1,5 @@
 #!/bin/sh
-# Certinel container entrypoint. The same image runs every role; pick one as the
+# Certheim container entrypoint. The same image runs every role; pick one as the
 # first argument (default: web). The DB schema is created on import (app.py calls
 # init_db()), so `web` and `migrate` both build/upgrade it.
 #

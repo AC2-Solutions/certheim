@@ -1,5 +1,5 @@
 #!/bin/bash
-# certinel-doctor.sh - read-only health check for a deployed Certinel host.
+# certinel-doctor.sh - read-only health check for a deployed Certheim host.
 #
 #   sudo certinel-doctor            run all checks, print PASS/WARN/FAIL
 #   sudo certinel-doctor --quiet    only print WARN/FAIL lines + summary
@@ -31,7 +31,7 @@ W() { printf '  \033[33mWARN\033[0m  %s\n' "$*"; warn=$((warn+1)); }
 F() { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; fail=$((fail+1)); }
 sec() { $QUIET || printf '\n== %s ==\n' "$*"; }
 
-echo "=== Certinel doctor ($(hostname)) - service user: ${SVC_USER} ==="
+echo "=== Certheim doctor ($(hostname)) - service user: ${SVC_USER} ==="
 
 # ---- 1. systemd service ---------------------------------------------------
 sec "service"
@@ -117,4 +117,4 @@ leg="$(ls -d /opt/csr-dashboard /etc/csr-dashboard 2>/dev/null; id csrapi 2>/dev
 
 # ---- summary --------------------------------------------------------------
 printf '\n=== %d pass / %d warn / %d fail ===\n' "$pass" "$warn" "$fail"
-(( fail == 0 )) && { echo "Certinel looks healthy."; exit 0; } || { echo "Problems found above."; exit 1; }
+(( fail == 0 )) && { echo "Certheim looks healthy."; exit 0; } || { echo "Problems found above."; exit 1; }

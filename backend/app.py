@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Certinel API - Linux generation, manual signing, optional cert upload-back."""
+"""Certheim API - Linux generation, manual signing, optional cert upload-back."""
 import json
 import logging
 import logging.handlers
@@ -291,7 +291,7 @@ def _webhook_summary(event, data):
         "job.failed": "CSR request failed",
         "job.expired": "Certificate expiring soon",
         "feedback.submitted": "Feedback submitted",
-        "test": "Test notification from Certinel",
+        "test": "Test notification from Certheim",
     }
     title = titles.get(event, event)
     bits = []
@@ -2288,7 +2288,7 @@ def _startup_license_banner():
             except Exception:
                 pass
 
-        emit(logging.INFO, f"Certinel {APP_VERSION} starting - {build_mode.describe()} build")
+        emit(logging.INFO, f"Certheim {APP_VERSION} starting - {build_mode.describe()} build")
         if info.get("valid"):
             cust = info.get("customer") or "(unnamed)"
             edition = (info.get("edition") or "commercial").capitalize()

@@ -1,6 +1,6 @@
-# Verifying Certinel releases
+# Verifying Certheim releases
 
-Certinel ships two kinds of artifact, and both can be verified before you trust
+Certheim ships two kinds of artifact, and both can be verified before you trust
 them:
 
 - **Container images** — published with an in-toto **SBOM** and a **SLSA
@@ -85,11 +85,11 @@ docker buildx imagetools inspect \
 
 ## Offline tarball bundles (Community)
 
-Each Community download is a `certinel-offline-<version>.tar.gz` whose SHA-256 is
+Each Community download is a `certheim-offline-<version>.tar.gz` whose SHA-256 is
 recorded in the download manifest served alongside it.
 
 ```bash
-sha256sum certinel-offline-<version>.tar.gz
+sha256sum certheim-offline-<version>.tar.gz
 # compare against the "sha256" field shown on the download page / manifest
 ```
 
@@ -101,7 +101,7 @@ security@ac2certinel.com.
 
 ## License blobs
 
-Certinel licenses are **offline-verifiable**: the application checks an RSA
+Certheim licenses are **offline-verifiable**: the application checks an RSA
 signature over the license payload against a bundled public key, with no
 phone-home. A tampered or expired license is rejected at load; see the
 Administration → License page for the active license's status and expiry.

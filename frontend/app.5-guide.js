@@ -177,7 +177,7 @@
 // Self-contained: injects its own launcher button, modal, and scoped styles -
 // no markup edits in index.html, so it never collides with in-flight changes.
 // An admin picks an integration and fills in THEIR values; the wizard generates
-// tailored, copy-pasteable setup steps (external system + Certinel config), so
+// tailored, copy-pasteable setup steps (external system + Certheim config), so
 // nobody has to reverse-engineer which knobs a given connection needs.
 // All defaults below are generic placeholders - no environment specifics.
 (function () {
@@ -204,7 +204,7 @@
       id: "openbao_sign",
       group: "OpenBao / HashiCorp Vault",
       label: "Signing (PKI)",
-      blurb: "Certinel signs approved CSRs by calling an OpenBao/Vault PKI role. Uses an AppRole scoped to only that one sign path.",
+      blurb: "Certheim signs approved CSRs by calling an OpenBao/Vault PKI role. Uses an AppRole scoped to only that one sign path.",
       fields: [
         { key: "addr", label: "OpenBao address", ph: "https://openbao.example.com" },
         { key: "pki", label: "PKI mount", ph: "pki_csr" },
@@ -223,20 +223,20 @@
         const revLine = rev ? `\npath "${pki}/revoke" { capabilities = ["update"] }` : "";
         return [
           { h: "1 - In OpenBao / Vault (run once with an admin token)" },
-          { p: "Enable a PKI engine and load your issuing CA (skip if you already have one), then create the role Certinel calls:" },
+          { p: "Enable a PKI engine and load your issuing CA (skip if you already have one), then create the role Certheim calls:" },
           { code:
 `# PKI engine + your issuing CA (generate or import your CA into this mount)
 bao secrets enable -path=${pki} pki
 bao secrets tune -max-lease-ttl=${ttl}h ${pki}
 
-# Signing role Certinel will use (tune the constraints to your policy)
+# Signing role Certheim will use (tune the constraints to your policy)
 bao write ${pki}/roles/${role} allow_any_name=true allow_subdomains=true max_ttl=${ttl}h` },
-          { p: "Create a least-privilege policy - Certinel needs nothing but the sign path" + (rev ? " (and revoke)" : "") + ":" },
+          { p: "Create a least-privilege policy - Certheim needs nothing but the sign path" + (rev ? " (and revoke)" : "") + ":" },
           { code:
 `bao policy write ${pol} - <<'EOF'
 path "${pki}/sign/${role}" { capabilities = ["update"] }${revLine}
 EOF` },
-          { p: "Create an AppRole bound to that policy. The role_id + secret_id it prints are Certinel's credentials:" },
+          { p: "Create an AppRole bound to that policy. The role_id + secret_id it prints are Certheim's credentials:" },
           { code:
 `bao auth enable approle    # skip if already enabled
 bao write auth/approle/role/${ar} \\
@@ -244,7 +244,7 @@ bao write auth/approle/role/${ar} \\
     secret_id_ttl=0 secret_id_num_uses=0
 bao read  -field=role_id      auth/approle/role/${ar}/role-id
 bao write -f -field=secret_id auth/approle/role/${ar}/secret-id` },
-          { h: "2 - In Certinel: /etc/certinel/certinel.env" },
+          { h: "2 - In Certheim: /etc/certinel/certinel.env" },
           { p: "The AppRole credentials live ONLY in the env file (never in the app database). Paste the role_id/secret_id from step 1, then restart:" },
           { code:
 `CSR_CAP_OPENBAO=1
@@ -254,7 +254,7 @@ CSR_OPENBAO_SECRET_ID=<secret_id from step 1>${ca ? `\nCSR_OPENBAO_CA_FILE=${ca}
 
 # then:
 sudo systemctl restart certinel-api` },
-          { h: "3 - In Certinel: Administration -> Signing / CA" },
+          { h: "3 - In Certheim: Administration -> Signing / CA" },
           { p: "Set the non-secret connection fields and test:" },
           { code:
 `Signing provider : OpenBao
@@ -270,7 +270,7 @@ Default role     : ${role}` },
       id: "openbao_deliver",
       group: "OpenBao / HashiCorp Vault",
       label: "Cert delivery (KV v2)",
-      blurb: "After issuance, Certinel writes the cert (and optionally the key) into an OpenBao KV-v2 path. Reuses the signing AppRole.",
+      blurb: "After issuance, Certheim writes the cert (and optionally the key) into an OpenBao KV-v2 path. Reuses the signing AppRole.",
       fields: [
         { key: "kv", label: "KV v2 mount", ph: "secret" },
         { key: "base", label: "Base path for certs", ph: "csr-certs" },
@@ -286,7 +286,7 @@ Default role     : ${role}` },
 path "${kv}/data/${base}/*"     { capabilities = ["create","update"] }
 path "${kv}/metadata/${base}/*" { capabilities = ["read","delete"] }` },
           { note: "No new credentials - delivery reuses the same OpenBao AppRole/env from the signing setup." },
-          { h: "2 - In Certinel: Administration -> Templates -> (edit a template) -> Delivery" },
+          { h: "2 - In Certheim: Administration -> Templates -> (edit a template) -> Delivery" },
           { code:
 `Delivery backend : OpenBao
 Key handling     : destination (cert only) | ship (cert + key) | vault (store key in OpenBao)
@@ -310,12 +310,12 @@ Destination path : ${base}/<host>      (leave blank to use the base path)` },
         const kv = V(v, this.fields[0]), pol = V(v, this.fields[1]), mode = V(v, this.fields[2]);
         return [
           { h: "1 - In OpenBao: extend the AppRole policy" },
-          { p: "Certinel stores keys under a dedicated path; grant the AppRole full lifecycle there:" },
+          { p: "Certheim stores keys under a dedicated path; grant the AppRole full lifecycle there:" },
           { code:
 `# append to ${pol}, then re-run: bao policy write ${pol} <file>
 path "${kv}/data/certinel-keys/*"     { capabilities = ["create","read","update","delete"] }
 path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
-          { h: "2 - In Certinel: Administration -> Signing / CA -> Key storage" },
+          { h: "2 - In Certheim: Administration -> Signing / CA -> Key storage" },
           { code: `Key storage policy : ${mode}` },
           { p: mode === "return_once"
               ? "return_once: the key is stored in OpenBao, fetched exactly once at delivery, then destroyed."
@@ -328,7 +328,7 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
       id: "cyberark",
       group: "CyberArk",
       label: "Cert delivery (Conjur)",
-      blurb: "Certinel pushes the issued cert (and optionally key) into CyberArk Conjur variables via the Conjur REST API.",
+      blurb: "Certheim pushes the issued cert (and optionally key) into CyberArk Conjur variables via the Conjur REST API.",
       fields: [
         { key: "url", label: "Conjur base URL", ph: "https://conjur.example.com" },
         { key: "account", label: "Conjur account", ph: "my-account" },
@@ -356,20 +356,20 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
     privileges: [ read, update ]
     resources:
     - !variable ${variable}${keyPerm}` },
-          { p: "Then mint the API key Certinel will authenticate with:" },
+          { p: "Then mint the API key Certheim will authenticate with:" },
           { code: `conjur host rotate-api-key -i ${hostId}` },
-          { h: "2 - In Certinel: /etc/certinel/certinel.env (secrets only here)" },
+          { h: "2 - In Certheim: /etc/certinel/certinel.env (secrets only here)" },
           { code:
 `CSR_CYBERARK_API_KEY=<api key from step 1>${ca ? `\nCSR_CYBERARK_CA_CERT=${ca}` : ""}
 
 # then:
 sudo systemctl restart certinel-api` },
-          { h: "3 - In Certinel: Administration -> Signing / CA (CyberArk connection)" },
+          { h: "3 - In Certheim: Administration -> Signing / CA (CyberArk connection)" },
           { code:
 `CyberArk base URL : ${url}
 Conjur account    : ${acct}
 Service login     : ${login}` },
-          { h: "4 - In Certinel: Templates -> (edit a template) -> Delivery" },
+          { h: "4 - In Certheim: Templates -> (edit a template) -> Delivery" },
           { code:
 `Delivery backend : CyberArk
 Destination      : ${variable}${ship ? `\nKey handling     : ship  (key written to ${variable}/key)` : ""}` },

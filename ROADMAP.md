@@ -1,6 +1,6 @@
-# Certinel Roadmap
+# Certheim Roadmap
 
-Forward-looking plan for the paid editions. Certinel ships as three stacked
+Forward-looking plan for the paid editions. Certheim ships as three stacked
 editions — **Community → Commercial → Government** — and this roadmap is delivered
 edition-by-edition: Commercial first, then Government (which reuses the Commercial
 foundations). Each item below lands as a licensed capability gated by build tier +

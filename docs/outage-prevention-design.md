@@ -71,7 +71,7 @@ The routing + enrichment foundation the alerting engine needs.
 ## Increment C2.4 — CT-log / shadow-cert monitoring
 
 - Poll **Certificate Transparency** (e.g. crt.sh / a CT API) for the org's
-  configured domains; surface certs **issued for your domains that Certinel
+  configured domains; surface certs **issued for your domains that Certheim
   didn't issue and isn't tracking** as a new inventory source (`ct`) and an
   alertable finding (possible mis-issuance / shadow IT).
 - Admin config: monitored domains, poll cadence; gated as an

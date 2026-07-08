@@ -1,4 +1,4 @@
-# Certinel — Product Architecture Sketch
+# Certheim — Product Architecture Sketch
 
 Status: **draft / north-star**. Not a commitment to dates or pricing; a frame so
 feature work slots into a deliberate plan.

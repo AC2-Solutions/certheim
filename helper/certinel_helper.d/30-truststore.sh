@@ -1,5 +1,5 @@
 #!/bin/bash
-# 30-truststore.sh - install the Certinel CA trust bundle into THIS host's OS
+# 30-truststore.sh - install the Certheim CA trust bundle into THIS host's OS
 # trust store. Sourced by certinel_helper.sh; never executed directly.
 #
 # install_ca_bundle reads a PEM bundle (one or more CA certs) on stdin and adds

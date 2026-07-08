@@ -178,7 +178,7 @@ if [[ ! -f /etc/certinel/email.conf && -f config/email.conf.example ]]; then
     echo "seeded /etc/certinel/email.conf from example - set the SMG host"
 fi
 
-# Certinel data root (FHS /var/opt for add-on app data). issued/ holds signed
+# Certheim data root (FHS /var/opt for add-on app data). issued/ holds signed
 # certs (written by the app as certinel + chowned by the helper); requests/ holds
 # generated CSRs (written by the helper as root). var_lib_t lets the confined
 # certinel-api service write here, matching the DB dir's context.

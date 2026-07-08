@@ -6,7 +6,7 @@
 # uses the notes file ONLY to populate the GitLab Release page.
 #
 # --- Per-edition versioning -------------------------------------------------
-# Certinel ships as three stacked editions on three branches:
+# Certheim ships as three stacked editions on three branches:
 #     Community (base) -> Commercial -> Government
 # Each edition has its OWN version line in its OWN tag namespace and its OWN
 # files, so a release on one edition never collides with another on propagation:
@@ -235,12 +235,12 @@ summary = (f"_Released {date}. {n_user} change" + ("s" if n_user != 1 else "")
 block = f"## {target} — {date}\n\n{summary}\n\n{sections(3)}".rstrip() + "\n"
 cl = open(cl_file).read().splitlines(keepends=True) if os.path.exists(cl_file) else []
 if not cl:
-    cl = [f"# Certinel {label} edition — changelog\n", "\n"]
+    cl = [f"# Certheim {label} edition — changelog\n", "\n"]
 idx = next((i for i, l in enumerate(cl) if l.startswith("## ")), len(cl))
 open(cl_file, "w").write("".join(cl[:idx]) + block + "\n" + "".join(cl[idx:]))
 
 # Per-release notes file (# title, ## sections).
-notes = f"# Certinel {label} {pfx}-v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
+notes = f"# Certheim {label} {pfx}-v{target}\n\n{summary}\n\n{sections(2)}".rstrip() + "\n"
 open(notes_file, "w").write(notes)
 PYEOF
 

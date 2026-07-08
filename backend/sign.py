@@ -608,7 +608,7 @@ PROVIDERS = {
             {"key": "base_url", "setting": "venafi_base_url", "label": "TPP base URL",
              "placeholder": "https://tpp.example.com"},
             {"key": "policy_dn", "setting": "venafi_policy_dn", "label": "Policy folder (DN)",
-             "placeholder": "\\VED\\Policy\\Certificates\\Certinel"},
+             "placeholder": "\\VED\\Policy\\Certificates\\Certheim"},
         ],
     },
     "aws_pca": {
@@ -719,7 +719,7 @@ def sign_csr(csr_pem, template, actor=None):
         # may be absent from this build — refuse cleanly rather than touch a
         # missing/unlicensed module.
         raise BackendUnavailable(
-            backend + " signing requires a Certinel license (not available in this edition)")
+            backend + " signing requires a Certheim license (not available in this edition)")
     if not csr_pem or "REQUEST" not in csr_pem:
         raise SignError("no CSR to sign")
     _enforce_domain_quota(csr_pem)
@@ -787,7 +787,7 @@ def test_connection(backend="openbao"):
     status dict; raises SignError."""
     import capabilities
     if not capabilities.is_entitled("ca.signing." + backend):
-        raise SignError(backend + " signing requires a Certinel license (not available in this edition)")
+        raise SignError(backend + " signing requires a Certheim license (not available in this edition)")
     if backend == "cyberark":
         raise SignError("CyberArk connection test is not built in this release; "
                         "the configuration has been saved.")

@@ -1,4 +1,4 @@
-# Certinel — Operations Runbook
+# Certheim — Operations Runbook
 
 Flask/SQLite certificate request + lifecycle dashboard for a RHEL fleet.
 Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certinel` service
@@ -53,12 +53,12 @@ boolean, then runs `deploy.sh`.
 On a **connected** box matching the target (RHEL major / python / arch), and
 NOT fapolicyd-enforcing (or as root):
 ```bash
-./make-offline-bundle.sh           # -> certinel-offline-<ver>.tar.gz (+ .sha256)
+./make-offline-bundle.sh           # -> certheim-offline-<ver>.tar.gz (+ .sha256)
 ```
 Carry the tarball across. On the target:
 ```bash
-sha256sum -c certinel-offline-<ver>.tar.gz.sha256
-tar xzf certinel-offline-<ver>.tar.gz && cd certinel-offline-<ver>/install
+sha256sum -c certheim-offline-<ver>.tar.gz.sha256
+tar xzf certheim-offline-<ver>.tar.gz && cd certheim-offline-<ver>/install
 sudo bash ./offline-install.sh     # guided prompts; or --unattended (reads START_HERE)
 ```
 The guided installer asks domain, hostname, optional email relay, **CAC mTLS

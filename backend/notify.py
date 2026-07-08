@@ -1,4 +1,4 @@
-"""Email notifications for the Certinel.
+"""Email notifications for the Certheim.
 
 Plain SMTP over port 25 to an IP-whitelisted relay (e.g., an internal SMTP smarthost).
 No STARTTLS, no SSL, no authentication.
@@ -330,7 +330,7 @@ def send_cert_issued(job, uploader_dn, group_email=None):
     job_id = job.get("id", "(unknown)")
     uploader_cn = _cn_from_dn(uploader_dn)
 
-    subject = f"[Certinel] Certificate issued for {target}"
+    subject = f"[Certheim] Certificate issued for {target}"
     body = (
         "A signed certificate has been uploaded for your CSR request.\n"
         "\n"
@@ -342,7 +342,7 @@ def send_cert_issued(job, uploader_dn, group_email=None):
         "View the job and download the certificate:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
     return _compose_and_send(
@@ -363,7 +363,7 @@ def send_cancelled(job, canceller_dn, reason, group_email=None):
     canceller_cn = _cn_from_dn(canceller_dn)
     reason_text = (reason or "").strip() or "(no reason given)"
 
-    subject = f"[Certinel] Request cancelled for {target}"
+    subject = f"[Certheim] Request cancelled for {target}"
     body = (
         "A CSR request has been cancelled.\n"
         "\n"
@@ -376,7 +376,7 @@ def send_cancelled(job, canceller_dn, reason, group_email=None):
         "View the job in the dashboard:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
     return _compose_and_send(
@@ -397,7 +397,7 @@ def send_failed(job, marker_dn, error, group_email=None):
     marker_cn = _cn_from_dn(marker_dn)
     error_text = (error or "").strip() or "(no error message provided)"
 
-    subject = f"[Certinel] Request failed for {target}"
+    subject = f"[Certheim] Request failed for {target}"
     body = (
         "A CSR request has been marked failed.\n"
         "\n"
@@ -410,7 +410,7 @@ def send_failed(job, marker_dn, error, group_email=None):
         "View the job in the dashboard:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
     return _compose_and_send(
@@ -446,9 +446,9 @@ def send_feedback_received(feedback, admin_emails, submitter_cn, submitter_email
     if submitter_email:
         from_line = f"{submitter_cn} <{submitter_email}>"
 
-    subject = f"[Certinel] New {category} feedback from {submitter_cn}"
+    subject = f"[Certheim] New {category} feedback from {submitter_cn}"
     body = (
-        "A user has submitted feedback in the Certinel.\n"
+        "A user has submitted feedback in the Certheim.\n"
         "\n"
         f"From:        {from_line}\n"
         f"Category:    {category}\n"
@@ -463,7 +463,7 @@ def send_feedback_received(feedback, admin_emails, submitter_cn, submitter_email
         "Review and respond in the admin dashboard:\n"
         f"  {_dashboard_url()}#admin\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
 
@@ -511,7 +511,7 @@ def send_csrs_created(targets, cert_type, creator_cn, creator_email, recipients)
     target_lines = "\n".join(f"  - {t}" for t in targets)
     plural = "s" if n != 1 else ""
 
-    subject = f"[Certinel] {n} new CSR{plural} awaiting signing"
+    subject = f"[Certheim] {n} new CSR{plural} awaiting signing"
     body = (
         f"{n} new certificate signing request{plural} ha{'ve' if n != 1 else 's'} "
         "been created and are awaiting signing.\n"
@@ -526,7 +526,7 @@ def send_csrs_created(targets, cert_type, creator_cn, creator_email, recipients)
         "Review and download the CSRs for signing:\n"
         f"  {_dashboard_url()}\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
 
@@ -684,7 +684,7 @@ def send_expiry_warning(job, days_left, group_email=None):
         return False, f"config read error: {e}"
 
     exp_str = time.strftime("%Y-%m-%d", time.gmtime(job.get("expires_at") or 0))
-    subject = (f"[Certinel] Certificate for {job['target_host']} "
+    subject = (f"[Certheim] Certificate for {job['target_host']} "
                f"expires in {days_left} day{'s' if days_left != 1 else ''}")
     locations = job.get("locations") or []
     loc_block = ""
@@ -706,7 +706,7 @@ def send_expiry_warning(job, days_left, group_email=None):
         "\n"
         f"Job ID: {job['id']}\n"
         "\n"
-        "This is an automated message from the Certinel.\n"
+        "This is an automated message from the Certheim.\n"
         "Do not reply to this address.\n"
     )
 

@@ -1,7 +1,7 @@
 # C3.3 — Enterprise SSO (OIDC + SAML)
 
 Design for Phase C3.3. Lets an enterprise IdP (Keycloak, Entra ID, Okta, Ping…)
-be the login authority for Certinel, mapping IdP identity to Certinel's roles
+be the login authority for Certheim, mapping IdP identity to Certheim's roles
 (C3.1) and tenants (C3.2). Coexists with the existing local + CAC/mTLS auth — SSO
 is one more `auth_mode`.
 
@@ -10,12 +10,12 @@ is one more `auth_mode`.
 The earlier call was "use a vetted library rather than hand-roll." Reviewing the
 codebase refines it by protocol:
 
-- **OIDC → dependency-free.** Certinel already verifies RS256/ES256 **JWS** for
+- **OIDC → dependency-free.** Certheim already verifies RS256/ES256 **JWS** for
   the ACME server (`acme_server.jwk_to_pem()` + `openssl dgst -verify`), and does
   HTTP with the stdlib. OIDC is exactly that: discovery + an HTTP token exchange +
   an ID-token JWS verified against the IdP's JWKS. So OIDC reuses what's here — no
   `authlib`, no `cryptography` wheel — keeping the air-gapped/no-crypto-lib
-  posture the rest of Certinel is built on.
+  posture the rest of Certheim is built on.
 - **SAML → vetted library.** XML-dsig (canonicalization + enveloped signatures)
   is genuinely risky to hand-roll; this is the part the "vetted library" decision
   was really about. Use **python3-saml** (OneLogin) → depends on **xmlsec** +
@@ -37,9 +37,9 @@ codebase refines it by protocol:
    (JWS via `jwk_to_pem` against the JWKS, kid-matched), `iss`, `aud` (==
    client_id), `exp`/`iat` skew, and `nonce`. Reject on any failure (this is the
    security boundary).
-4. **Map → identity**: derive the Certinel user from configured claims
+4. **Map → identity**: derive the Certheim user from configured claims
    (`username` ← `preferred_username`/`email`, plus `email`, display name), then
-   map IdP group/role claims → Certinel **role** (C3.1) and **tenant** (C3.2) via
+   map IdP group/role claims → Certheim **role** (C3.1) and **tenant** (C3.2) via
    admin-defined rules. Upsert the user and mint a **local session** (reusing the
    existing `local_sessions` flow), so the rest of the app is unchanged.
 

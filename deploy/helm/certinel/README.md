@@ -1,6 +1,6 @@
-# Certinel Helm chart
+# Certheim Helm chart
 
-Deploy Certinel (certificate lifecycle platform) on any Kubernetes cluster.
+Deploy Certheim (certificate lifecycle platform) on any Kubernetes cluster.
 
 ```bash
 helm install certinel ./deploy/helm/certinel \
@@ -16,7 +16,7 @@ external PostgreSQL for HA.
 
 ## Reverse-proxy / ingress path requirements
 
-If you front Certinel with **your own** reverse proxy or ingress (instead of the
+If you front Certheim with **your own** reverse proxy or ingress (instead of the
 bundled nginx sidecar), it must forward these paths to the app container
 (gunicorn on `:5002`) — not just `/csr/`:
 

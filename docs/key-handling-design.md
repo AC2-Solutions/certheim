@@ -1,8 +1,8 @@
-# Certinel — Private-Key Handling (design)
+# Certheim — Private-Key Handling (design)
 
 ## Principle
 
-Certinel should hold a private key for the **minimum time, in the minimum number
+Certheim should hold a private key for the **minimum time, in the minimum number
 of places**. The default is to **never persist a server-generated key on the
 host**; when a server-side key must outlive the request, the **credential
 manager (OpenBao / CyberArk) is the system of record — not the host
@@ -13,11 +13,11 @@ deployment (SaaS, on-prem, air-gapped).
 
 ## The hierarchy (best → worst)
 
-1. **Key never reaches Certinel** — the destination generates its own keypair
+1. **Key never reaches Certheim** — the destination generates its own keypair
    and submits only a CSR, or uses ACME (cert-manager / certbot hold the key).
-   Certinel is a pure signing/registration authority over *public* material.
+   Certheim is a pure signing/registration authority over *public* material.
    Already supported: external CSR upload + the built-in ACME server.
-2. **Certinel generates, key never at rest on host** — born in `tmpfs`, pushed
+2. **Certheim generates, key never at rest on host** — born in `tmpfs`, pushed
    straight to the credential manager (or returned to the requester once), host
    working copy shredded.
 3. **(legacy)** key generated to the host keystore (`/root/sslcerts/private`)

@@ -1,6 +1,6 @@
 """build_mode.py - development build vs. hardened release build.
 
-Certinel ships as source the customer runs on a box they control, so no license
+Certheim ships as source the customer runs on a box they control, so no license
 check can ever be made tamper-PROOF (root can edit the bytes). What we CAN do is
 keep the *convenience bypasses* out of release artifacts, so a downstream
 operator can't unlock paid editions just by exporting an environment variable.

@@ -1,7 +1,19 @@
 # Changelog
 
-All notable changes to the CSR Dashboard. Versions track the `VERSION` file
+All notable changes to Certheim (formerly Certinel; originally CSR Dashboard). Versions track the `VERSION` file
 (the app reports it at `/api/health` and on the admin Overview tile).
+
+## 5.0.0 — 2026-07-08
+
+_Rebrand release: the product is now **Certheim** (formerly Certinel). Major
+version bump marks the name change — there are **no breaking API or data
+changes**. Deployment internals (install paths, systemd unit names, and `CSR_*`
+environment variables) are unchanged for upgrade compatibility; only the product
+brand, UI, emails, documentation, and offline-bundle name changed._
+
+### Changed
+- Renamed Certinel → Certheim across the UI, emails, docs, and README.
+- Offline bundle `certinel-offline-*.tar.gz` → `certheim-offline-*.tar.gz`.
 
 ## 3.20.0 — 2026-06-23
 
@@ -181,7 +193,7 @@ _Released 2026-06-22. 1 change since v3.14.0._
 ### Features
 
 - point chart/compose/setup-guide at the entitled registry (`d937229`)
-  Customer-facing image refs now resolve to the entitled Certinel registry
+  Customer-facing image refs now resolve to the entitled Certheim registry
   (registry.ac2certinel.com/certinel), where pull is gated by the customer's license (the final step
   of entitled-pull). Updates:
   - helm values: image.repository -> registry.ac2certinel.com/certinel; tag default 'latest' (the
@@ -199,7 +211,7 @@ _Released 2026-06-22. 1 change since v3.13.2._
 
 ### Features
 
-- **ci:** mirror attested images into the entitled Certinel registry (`1699be3`)
+- **ci:** mirror attested images into the entitled Certheim registry (`1699be3`)
   After publishing to Docker Hub, the release job now also pushes the same attested UBI9 + slim
   images into the entitled registry on the license-server origin (192.168.201.19:5000), over the LAN
   — bypassing Cloudflare's 100MB request-body cap (customer pulls go through the tunnel; the mirror
@@ -308,7 +320,7 @@ _Released 2026-06-22. 1 change since v3.12.0._
   limit, so its push silently failed with HTTP 413 on every release (the build block is non-fatal) —
   only the Debian-slim variant ever published. The default/FIPS-gov image was never actually
   available to pull.
-  Switch the release job's image publish to Docker Hub, the canonical public registry for Certinel
+  Switch the release job's image publish to Docker Hub, the canonical public registry for Certheim
   (anonymous customer pull, no body cap), matching the AethonLog docker.io/ac2solutions convention:
   - build UBI9 + slim, push :vX.Y.Z / :latest / :vX.Y.Z-slim / :slim to
     docker.io/ac2solutions/certinel, authenticating with the instance-level DOCKERHUB_USERNAME /
@@ -329,7 +341,7 @@ _Released 2026-06-22. 1 change since v3.11.0._
 ### Features
 
 - setup-guide deployment generator for VM / container / k8s (`13269ad`)
-  Phase 5 of the Deploy Anywhere release. The setup guide gains a 'How do you want to run Certinel?'
+  Phase 5 of the Deploy Anywhere release. The setup guide gains a 'How do you want to run Certheim?'
   selector (single-server VM / container / Kubernetes) plus a database-backend selector (built-in
   SQLite / external PostgreSQL, with a DSN field).
   The Install step now re-tailors itself to the chosen target and emits ready-to-run, fully-filled-
@@ -354,7 +366,7 @@ _Released 2026-06-22. 1 change since v3.10.0._
 ### Features
 
 - **helm:** generic Helm chart for any Kubernetes cluster (Phase 4) (`d362538`)
-  deploy/helm/certinel — one `helm install` stands up Certinel on any cluster.
+  deploy/helm/certinel — one `helm install` stands up Certheim on any cluster.
   - Deployment (container-mode app + nginx sidecar serving the static frontend + an initContainer
     staging it from the image) + Service + Ingress.
   - TLS + CAC/client-cert terminated at the ingress (ingress-nginx auth-tls-* annotations forward
@@ -525,7 +537,7 @@ _Released 2026-06-21. 2 changes since v3.3.0._
     failure).
   - actor threaded from all call sites: manual approve-&-sign (approver DN), auto-sign (auto-
     sign:<requester>), ACME server (acme-server), auto-renew.
-  - Works for every Certinel auth mode (CAC + local) — no Keycloak dependency.
+  - Works for every Certheim auth mode (CAC + local) — no Keycloak dependency.
   - Requires the AppRole policy to allow auth/token/create (the default policy grants it unless
     token_no_default_policy is set).
   - tests: _obo_token stamps actor + fails safe; updated two ACME mocks for the new kwarg. Full
@@ -752,7 +764,7 @@ _Released 2026-06-20. 4 changes since v2.32.0._
 ### Breaking changes
 
 - rename csr-dashboard slug to certinel across all internal identifiers (`1acda00`)
-  Full Tier-3 rebrand so a deployed system shows only Certinel naming — no legacy csr-dashboard
+  Full Tier-3 rebrand so a deployed system shows only Certheim naming — no legacy csr-dashboard
   remnants in services, accounts, or paths customers can see while it runs.
   Renamed: /opt/csr-dashboard   -> /opt/certinel /etc/csr-dashboard   -> /etc/certinel       (+
   certinel.env) /etc/pki/csr-dashboard -> /etc/pki/certinel /etc/nginx/csr-dashboard.d ->
@@ -769,7 +781,7 @@ _Released 2026-06-20. 4 changes since v2.32.0._
 ### Fixes & improvements
 
 - rename csr-dashboard slug to certinel across all internal identifiers (`1acda00`)
-  Full Tier-3 rebrand so a deployed system shows only Certinel naming — no legacy csr-dashboard
+  Full Tier-3 rebrand so a deployed system shows only Certheim naming — no legacy csr-dashboard
   remnants in services, accounts, or paths customers can see while it runs.
   Renamed: /opt/csr-dashboard   -> /opt/certinel /etc/csr-dashboard   -> /etc/certinel       (+
   certinel.env) /etc/pki/csr-dashboard -> /etc/pki/certinel /etc/nginx/csr-dashboard.d ->
@@ -785,9 +797,9 @@ _Released 2026-06-20. 4 changes since v2.32.0._
 
 ### Other changes
 
-- finish Certinel rebrand of remaining visible CSR Dashboard text (`37de649`)
+- finish Certheim rebrand of remaining visible CSR Dashboard text (`37de649`)
 - **readme:** clone example uses the renamed certinel repo path (`8db2183`)
-- **brand:** user-visible text -> Certinel; genericize DoD tooling language (`d75b6f7`)
+- **brand:** user-visible text -> Certheim; genericize DoD tooling language (`d75b6f7`)
 
 ## 2.32.0 — 2026-06-20
 
@@ -919,11 +931,11 @@ _Released 2026-06-20. 1 change since v2.28.1._
 ### Features
 
 - **truststore:** in-app CA trust store with build + fleet distribution (`163babb`)
-  Admins upload root/intermediate CAs in the UI (Admin -> Trust store), Certinel parses/validates
+  Admins upload root/intermediate CAs in the UI (Admin -> Trust store), Certheim parses/validates
   them via the system openssl (FIPS-clean, no bundled crypto), assembles one CA bundle, and
   distributes it three ways so a whole fleet trusts the same CAs without anyone SSHing in to hand-
   edit anchors:
-  - install on the Certinel host itself (helper install-ca-bundle subcommand -> update-ca-trust /
+  - install on the Certheim host itself (helper install-ca-bundle subcommand -> update-ca-trust /
     update-ca-certificates, auto-detected)
   - push over SSH to fleet targets, reusing the delivery SSH credential convention (secret/csr-
     delivery-ssh/<host>) and running the host trust tool
@@ -971,7 +983,7 @@ _Released 2026-06-19. 2 changes since v2.26.0._
 ### Features
 
 - FIPS 140-3 self-check, status visibility + require-FIPS policy (`09a755f`)
-  Certinel bundles no crypto (stdlib + system openssl only), so it runs on the platform FIPS-
+  Certheim bundles no crypto (stdlib + system openssl only), so it runs on the platform FIPS-
   validated module in FIPS mode. Add capabilities.fips_status() (kernel /proc flag + the active
   OpenSSL FIPS provider name/version = real validated-module check), expose it via
   /api/admin/capabilities + signing-config, a 'Require FIPS' admin toggle that flags drift, and a
@@ -1087,7 +1099,7 @@ _Released 2026-06-19. 9 changes since v2.22.0._
 
 - rename systemd services + timers csr-* -> certinel-* (`068e562`)
 - private-key handling design — vault-first, zero at rest, admin-configurable (`0c6744f`)
-- CSR Dashboard -> Certinel across UI, emails, chat, docs (`bf78d4c`)
+- CSR Dashboard -> Certheim across UI, emails, chat, docs (`bf78d4c`)
 
 ## 2.22.0 — 2026-06-19
 

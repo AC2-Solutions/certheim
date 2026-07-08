@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the Certinel health check every 15 minutes
+Description=Run the Certheim health check every 15 minutes
 
 [Timer]
 OnBootSec=5min

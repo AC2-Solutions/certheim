@@ -1,6 +1,6 @@
 # Certificate Delivery — Deployment Runbook (per client)
 
-Turnkey steps to enable **automated certificate delivery** on a new Certinel
+Turnkey steps to enable **automated certificate delivery** on a new Certheim
 deployment. Design rationale lives in `cert-delivery-design.md`; this is the
 hands-on checklist. Do the OpenBao grants **once per client**, then configure
 delivery per certificate template in the admin UI.

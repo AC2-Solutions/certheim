@@ -2,7 +2,7 @@
 # Homelab-only Slack Socket Mode listener. Outbound-only (no inbound exposure).
 # NOT installed by deploy.sh - deploy + enable manually where wanted. Air-gapped
 # prod has no path to Slack, so leave it off there.
-Description=Certinel Slack Socket Mode listener
+Description=Certheim Slack Socket Mode listener
 After=network-online.target certinel-api.service
 Wants=network-online.target
 

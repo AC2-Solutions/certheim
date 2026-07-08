@@ -1,6 +1,6 @@
 # Per-edition release accounting.
 #
-# Certinel ships three stacked editions on three branches:
+# Certheim ships three stacked editions on three branches:
 #     Community (base) -> Commercial -> Government
 # Changes flow UP via bottom-up propagation MRs. To keep those MRs from choking
 # on mechanical release files, each edition writes ONLY its own files:

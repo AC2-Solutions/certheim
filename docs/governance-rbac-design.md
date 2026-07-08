@@ -1,7 +1,7 @@
 # C3 — Governance core: RBAC, multi-tenancy, SSO, SCIM
 
 Design for Phase C3 of the Commercial roadmap. Where C1/C2 gave visibility and
-outage prevention, C3 makes Certinel safe to hand to many teams: real roles,
+outage prevention, C3 makes Certheim safe to hand to many teams: real roles,
 tenant isolation, enterprise sign-on, and automated provisioning.
 
 This is the most cross-cutting phase — it touches authorization app-wide — so it
@@ -78,7 +78,7 @@ audited code instead of bespoke crypto.
   has zero network dependency at deploy time (the dependency is in the artifact,
   not fetched). Vetting note: review the lib's own deps for the air-gapped SBOM.
 - **Claim → role/tenant mapping**: admin-configured rules map IdP groups/claims to
-  Certinel roles (C3.1) and tenants (C3.2), so access is governed centrally.
+  Certheim roles (C3.1) and tenants (C3.2), so access is governed centrally.
 - Coexists with local + CAC auth; SSO is one more `auth_mode`.
 - Open sub-item to confirm at build time: exact library + version, and that its
   transitive deps are acceptable for the regulated/air-gapped SBOM.
@@ -88,7 +88,7 @@ audited code instead of bespoke crypto.
 - A **SCIM 2.0** endpoint (`/scim/v2/Users`, `/Groups`) so an IdP (Okta/Entra/etc.)
   can create/deactivate users and sync group membership automatically — closing
   the joiner/mover/leaver loop instead of manual user admin.
-- Bearer-token auth for the SCIM client; maps SCIM groups → Certinel teams/roles
+- Bearer-token auth for the SCIM client; maps SCIM groups → Certheim teams/roles
   using the same mapping rules as C3.3.
 
 ## Packaging (every increment)

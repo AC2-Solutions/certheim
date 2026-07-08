@@ -1,5 +1,5 @@
 #!/bin/bash
-# certinel-backup - snapshot the recoverable state of a Certinel deployment.
+# certinel-backup - snapshot the recoverable state of a Certheim deployment.
 #
 # Backs up the things that CANNOT be regenerated from a release artifact:
 #   - the database (all jobs, settings, sealed-keystore ciphertext, ACME state)
@@ -27,7 +27,7 @@ set -euo pipefail
 
 case "${1:-}" in
     -l|--list)
-        echo "Existing Certinel backups in /root/:"
+        echo "Existing Certheim backups in /root/:"
         ls -lhd /root/certinel-backup-* 2>/dev/null || echo "  (none)"
         exit 0
         ;;

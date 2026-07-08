@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""import_certs.py - import fleet-scanned certificates into the Certinel.
+"""import_certs.py - import fleet-scanned certificates into the Certheim.
 
 Reads a JSON file produced by the fleet-cert-scan playbook:
     [{"host": "web01.example.com",
@@ -121,7 +121,7 @@ def parse_cert(pem):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Import fleet certs into the Certinel")
+    ap = argparse.ArgumentParser(description="Import fleet certs into the Certheim")
     ap.add_argument("json_file", help="JSON array of {host, path, pem}")
     ap.add_argument("--db", default=DB_PATH)
     ap.add_argument("--default-notify-email", default="",

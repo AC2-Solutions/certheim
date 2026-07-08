@@ -1,6 +1,6 @@
 """support_bundle.py - a redacted diagnostic bundle for support tickets.
 
-Certinel is frequently deployed air-gapped, where support can't see anything.
+Certheim is frequently deployed air-gapped, where support can't see anything.
 This assembles a small ZIP an admin can attach to a ticket: versions, capability
 + FIPS posture, environment, DB/schema shape, a recent-audit tail, and the app
 settings WITH ALL SECRETS REDACTED. It never includes private keys, the sealed
@@ -73,7 +73,7 @@ def build(get_setting, db, app_version, edition, log_event=None):
     import capabilities
     info = {
         "generated_at": stamp,
-        "product": "Certinel",
+        "product": "Certheim",
         "version": app_version,
         "edition": edition,
         "python": platform.python_version(),
@@ -172,7 +172,7 @@ def build(get_setting, db, app_version, edition, log_event=None):
     return buf.getvalue(), fname
 
 
-_README = """Certinel support bundle
+_README = """Certheim support bundle
 Generated: %s
 Version:   %s
 Edition:   %s

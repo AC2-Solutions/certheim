@@ -1,5 +1,5 @@
 #!/bin/bash
-# certinel-uninstall.sh - cleanly remove the Certinel from this host.
+# certinel-uninstall.sh - cleanly remove the Certheim from this host.
 #
 #   sudo ./certinel-uninstall.sh            Guided uninstall (prompts before each
 #                                      destructive choice; safe defaults).
@@ -64,7 +64,7 @@ do_or_show() {
 }
 
 echo "=============================================================="
-echo "  Certinel uninstall"
+echo "  Certheim uninstall"
 $DRY && echo "  *** DRY RUN - nothing will be changed ***"
 echo "=============================================================="
 echo

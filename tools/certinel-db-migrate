@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""certinel-db-migrate - copy the Certinel database between backends.
+"""certinel-db-migrate - copy the Certheim database between backends.
 
 Move an existing SQLite deployment onto PostgreSQL (or back) without losing data.
 The schema is created on the target, then all rows are copied.
@@ -31,7 +31,7 @@ import db_migrate  # noqa: E402
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Migrate the Certinel DB between backends.")
+    ap = argparse.ArgumentParser(description="Migrate the Certheim DB between backends.")
     ap.add_argument("--to", required=True,
                     help="target: a postgres DSN (postgresql://...) or sqlite:/path")
     ap.add_argument("--from", dest="source", default=None,

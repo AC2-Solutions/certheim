@@ -1,4 +1,4 @@
-# Certinel Helm chart values. A generic, vendor-neutral deployment for any
+# Certheim Helm chart values. A generic, vendor-neutral deployment for any
 # Kubernetes cluster. The app runs container-mode (no sudo helper, TLS + CAC
 # terminated at the ingress). SQLite (single replica + PVC) by default; point at
 # an external PostgreSQL for HA.
@@ -6,7 +6,7 @@
 replicaCount: 1
 
 image:
-  # The entitled Certinel registry — pull is gated by your license (see below).
+  # The entitled Certheim registry — pull is gated by your license (see below).
   repository: registry.ac2certinel.com/certinel
   # Published tags: latest, vX.Y.Z (+ -slim variants). Pin to a vX.Y.Z for prod.
   tag: latest

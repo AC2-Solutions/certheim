@@ -1,6 +1,6 @@
 # Backup, restore, upgrade & disaster recovery
 
-Certinel holds two kinds of state that must survive an incident:
+Certheim holds two kinds of state that must survive an incident:
 
 1. **The database** — jobs, users, groups, templates, all `app_settings` (auth
    mode, signing config, license, the *encrypted* sealed-keystore blobs), and the
@@ -29,7 +29,7 @@ reproducible or captured in the database.
 | Item | Where | How |
 |---|---|---|
 | Database | `CSR_DB_PATH` (SQLite) or Postgres | `certinel-backup` (SQLite) / `pg_dump` (Postgres) |
-| Sealed-keystore escrow (**CA key survival**) | in-app | Admin → **Encrypted keystore → Export backup** (choose a passphrase) — a self-contained bundle restorable on *any* Certinel |
+| Sealed-keystore escrow (**CA key survival**) | in-app | Admin → **Encrypted keystore → Export backup** (choose a passphrase) — a self-contained bundle restorable on *any* Certheim |
 | Unseal material | admin-held | recorded at keystore init; keep offline |
 | License | `app_settings` (in the DB) or `CSR_LICENSE_FILE` | captured by the DB backup; re-mintable from the licenses portal |
 | Issued cert files | `CSR_ISSUED_DIR` | optional — certs are also stored per-job in the DB |
@@ -107,7 +107,7 @@ CA shows *key present* under Signing / CA.
 
 ## Upgrade (version N → N+1)
 
-Certinel **self-migrates**: on startup it runs an idempotent schema pass
+Certheim **self-migrates**: on startup it runs an idempotent schema pass
 (`CREATE TABLE IF NOT EXISTS` for new tables, guarded `ALTER TABLE ADD COLUMN`
 for new columns). Upgrading is deploy-new-code + restart; existing data is
 preserved and never rewritten destructively.
@@ -134,7 +134,7 @@ preserved and never rewritten destructively.
 Host lost, no running instance — you have a database backup + the sealed-keystore
 escrow (or unseal material).
 
-1. **Fresh install** of the *same or newer* Certinel version (newer is fine —
+1. **Fresh install** of the *same or newer* Certheim version (newer is fine —
    it migrates the restored DB forward).
 2. **Restore the database** into the new instance's `CSR_DB_PATH` / Postgres
    (above). This brings back every setting, template, user, group, job, and the

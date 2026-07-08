@@ -1,4 +1,4 @@
-# Certinel Community edition — changelog
+# Certheim Community edition — changelog
 
 ## 4.1.0 — 2026-07-06
 

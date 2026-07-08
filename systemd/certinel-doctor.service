@@ -1,8 +1,8 @@
 [Unit]
-# Periodic Certinel health check (certinel-doctor) that emails on failure via
+# Periodic Certheim health check (certinel-doctor) that emails on failure via
 # Mailgun. Config: /etc/certinel/doctor-alert.conf. Runs as root because the
 # doctor probes service-account traversal + SELinux labels. Driven by the timer.
-Description=Certinel health check + alert on failure
+Description=Certheim health check + alert on failure
 After=certinel-api.service network-online.target
 Wants=network-online.target
 

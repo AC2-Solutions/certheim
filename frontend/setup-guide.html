@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Certinel — Setup Guide</title>
+<title>Certheim — Setup Guide</title>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --ink:#e8ebf0; --muted:#9aa3b2;
@@ -87,20 +87,20 @@
 <div class="wrap">
 
   <header class="hero">
-    <span class="badge">Certinel · Start-to-Finish Setup</span>
-    <h1>Get Certinel up and running</h1>
+    <span class="badge">Certheim · Start-to-Finish Setup</span>
+    <h1>Get Certheim up and running</h1>
     <p>A plain-English checklist. Fill in your details below and every step &amp; command on this page
        updates to match — then just follow them top to bottom. No technical background needed.</p>
   </header>
 
   <div class="tip">
-    <b>Two kinds of steps.</b> 🖥️ <b>Web steps</b> happen in the Certinel website (point &amp; click).
+    <b>Two kinds of steps.</b> 🖥️ <b>Web steps</b> happen in the Certheim website (point &amp; click).
     ⌨️ <b>Terminal steps</b> happen once, in a black command window on your server — copy the box exactly
     and paste it in. We fill in your details for you, so you can&rsquo;t get them wrong.
   </div>
 
   <div class="note"><b>Where to find this guide:</b> open this file (<code>setup-guide.html</code>) in any browser to
-    begin — even <i>before</i> Certinel is installed. Once it&rsquo;s installed, the same guide is linked inside the app as
+    begin — even <i>before</i> Certheim is installed. Once it&rsquo;s installed, the same guide is linked inside the app as
     <b>Setup&nbsp;Guide</b> in the top bar. Stuck on a field? Click the little <b>?</b> next to it for help.</div>
 
   <!-- ─────────────  YOUR DETAILS  ───────────── -->
@@ -141,7 +141,7 @@
       </div>
     </div>
 
-    <label>Do you want Certinel to issue certificates automatically in the app?<button type="button" class="help" data-help="ob" aria-label="How to find this">?</button></label>
+    <label>Do you want Certheim to issue certificates automatically in the app?<button type="button" class="help" data-help="ob" aria-label="How to find this">?</button></label>
     <div class="choices" id="ob">
       <button data-val="yes" aria-pressed="true"><span class="t">Yes</span><span class="d">Auto-issue in the web app.</span></button>
       <button data-val="no"><span class="t">Not yet</span><span class="d">I&rsquo;ll upload signed certs by hand.</span></button>
@@ -169,7 +169,7 @@
       <option value="mailgun">Mailgun (cloud)</option>
     </select>
 
-    <label style="margin-top:18px">How do you want to run Certinel?<button type="button" class="help" data-help="method" aria-label="How to find this">?</button></label>
+    <label style="margin-top:18px">How do you want to run Certheim?<button type="button" class="help" data-help="method" aria-label="How to find this">?</button></label>
     <div class="choices" id="method">
       <button data-val="vm" aria-pressed="true"><span class="t">Single server (VM)</span><span class="d">One Linux box. Simplest — the installer does it all.</span></button>
       <button data-val="container"><span class="t">Container</span><span class="d">Docker / Podman on one host. Good for evaluation.</span></button>
@@ -197,9 +197,9 @@
   <!-- ─────────────  STEP 0  ───────────── -->
   <div class="card" id="s0">
     <h2><span class="num">0</span>What you need first</h2>
-    <p class="sub">Gather these before you start. If you don&rsquo;t have one, ask the person who gave you Certinel.</p>
+    <p class="sub">Gather these before you start. If you don&rsquo;t have one, ask the person who gave you Certheim.</p>
     <div class="do">✅ A <b>Linux server</b> (RHEL or AlmaLinux 9) that you can sign into, with <b>administrator (sudo)</b> rights.</div>
-    <div class="do">✅ The <b>Certinel installer files</b> (a folder, or an <code>certinel-offline-*.tar.gz</code> file for sealed/offline networks).</div>
+    <div class="do">✅ The <b>Certheim installer files</b> (a folder, or an <code>certheim-offline-*.tar.gz</code> file for sealed/offline networks).</div>
     <div class="do">✅ Your <b>license file</b> — a short text blob you received after purchase (issued from your vendor&rsquo;s License portal). <span class="when-community" hidden>Community edition needs no license — skip the license step.</span></div>
     <div class="do when-acme-free">✅ For automatic signing: the <b>directory URL</b> of an ACME CA (Let&rsquo;s Encrypt, ZeroSSL, or your internal step-ca) — that&rsquo;s all Community needs, entered in the app.</div>
     <div class="do when-ob-vault">✅ For OpenBao/Vault signing (Commercial): your <b>Vault details</b> (address + an AppRole <i>role_id</i> and <i>secret_id</i>) from whoever runs your Vault. Or just use <b>ACME</b> — no Vault required.</div>
@@ -209,14 +209,14 @@
 
   <!-- ─────────────  STEP 1  ───────────── -->
   <div class="card" id="s1">
-    <h2><span class="num">1</span>Install Certinel ⌨️</h2>
+    <h2><span class="num">1</span>Install Certheim ⌨️</h2>
     <p class="sub">You chose <b data-tpl="methodName">Single server (VM)</b>, storing data in <b data-tpl="dbName">Built-in (SQLite)</b>.
-       The boxes below are written for exactly that — change <i>How do you want to run Certinel?</i> above and they re-tailor instantly.</p>
+       The boxes below are written for exactly that — change <i>How do you want to run Certheim?</i> above and they re-tailor instantly.</p>
 
     <!-- ===== VM ===== -->
     <div class="when-vm">
       <h3 style="font-size:15px;margin:10px 0 2px">A · Normal (internet-connected) server</h3>
-      <p class="sub">Run this from inside the Certinel files folder. It asks a few simple questions and does the rest.</p>
+      <p class="sub">Run this from inside the Certheim files folder. It asks a few simple questions and does the rest.</p>
       <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
 <pre>sudo bash install/online-install.sh</pre></div>
       <p class="sub">Prefer no questions? This pre-answers everything from <i>your details</i> above:</p>
@@ -234,12 +234,12 @@
       <h3 style="font-size:15px;margin:16px 0 2px">B · Sealed / offline network</h3>
       <p class="sub">On a connected machine, build a self-contained bundle, copy it across, then run its installer.</p>
       <div class="term"><div class="bar"><span>on a connected machine</span><button class="copy">Copy</button></div>
-<pre>./make-offline-bundle.sh        # makes certinel-offline-&lt;version&gt;.tar.gz</pre></div>
+<pre>./make-offline-bundle.sh        # makes certheim-offline-&lt;version&gt;.tar.gz</pre></div>
       <div class="term"><div class="bar"><span>on the offline server</span><button class="copy">Copy</button></div>
-<pre>tar xzf certinel-offline-*.tar.gz
-cd certinel-offline-*
+<pre>tar xzf certheim-offline-*.tar.gz
+cd certheim-offline-*
 sudo bash install/online-install.sh   # the bundle carries everything it needs</pre></div>
-      <div class="tip">When it finishes, Certinel is running at
+      <div class="tip">When it finishes, Certheim is running at
         <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b>. Open that in a browser to continue.</div>
     </div>
 
@@ -271,7 +271,7 @@ sudo bash install/online-install.sh   # the bundle carries everything it needs</
 kubectl -n certinel create secret tls certinel-tls --cert=tls.crt --key=tls.key
 <span class="when-cac" hidden># CAC / client-CA bundle (mTLS):
 kubectl -n certinel create secret generic certinel-client-ca --from-file=ca.crt=client-ca.pem
-</span># Pull credential — your Certinel license. Username = your license id,
+</span># Pull credential — your Certheim license. Username = your license id,
 # password = the pull token, both from your License portal:
 kubectl -n certinel create secret docker-registry regcred \
   --docker-server=registry.ac2certinel.com \
@@ -333,7 +333,7 @@ sudo systemctl restart certinel-api</pre></div>
     <div class="when-community" hidden><p class="sub">You chose <b>Community</b> — it&rsquo;s free and needs no license. Skip to the next step.</p></div>
     <div class="when-licensed">
       <p class="sub">Your license unlocks your edition&rsquo;s features. It&rsquo;s verified right on your server — nothing phones home.</p>
-      <div class="do">🖥️ In Certinel, open <span class="where">Admin → License</span>, paste your license blob into the box, and click <b>Save</b>.</div>
+      <div class="do">🖥️ In Certheim, open <span class="where">Admin → License</span>, paste your license blob into the box, and click <b>Save</b>.</div>
       <div class="tip">It should immediately show <b data-tpl="editionName">Commercial</b> Edition with a green check. If it says
         &ldquo;invalid,&rdquo; you probably copied an extra space — paste it again cleanly.</div>
       <div class="note">Prefer a file instead of pasting? Put the blob in <code>/etc/certinel/license.txt</code>, add
@@ -363,10 +363,10 @@ sudo systemctl restart certinel-api</pre></div>
         new accounts, or restrict sign-ups to your email domain.</div>
     </div>
     <div class="when-cac">
-      <p class="sub">You chose <b>CAC / smart card</b>. Two parts: the web server must check the card, then Certinel switches to card mode.</p>
+      <p class="sub">You chose <b>CAC / smart card</b>. Two parts: the web server must check the card, then Certheim switches to card mode.</p>
       <div class="do">⌨️ <b>One-time:</b> point the web server at your card-issuer CA bundle (the DoD chain). Your IT admin sets the
-        client-certificate CA bundle on the Certinel web server (nginx).</div>
-      <div class="do">🖥️ In Certinel, open <span class="where">Admin → Authentication</span>, set <b>Sign-in method</b> to
+        client-certificate CA bundle on the Certheim web server (nginx).</div>
+      <div class="do">🖥️ In Certheim, open <span class="where">Admin → Authentication</span>, set <b>Sign-in method</b> to
         <b>CAC / smart card (mTLS)</b>, confirm, and Save.</div>
       <div class="note">CAC sign-in is included in <b>Government</b>. On <b>Commercial</b> it needs a CAC add-on on your license.</div>
     </div>
@@ -378,11 +378,11 @@ sudo systemctl restart certinel-api</pre></div>
   <!-- ─────────────  STEP 6 (OpenBao)  ───────────── -->
   <div class="card when-openbao" id="s6">
     <h2><span class="num">6</span>Turn on automatic signing</h2>
-    <p class="sub">This lets Certinel issue certificates itself in the web app, instead of you uploading signed files by hand. Pick <b>one</b> signing backend and set it as the default.</p>
+    <p class="sub">This lets Certheim issue certificates itself in the web app, instead of you uploading signed files by hand. Pick <b>one</b> signing backend and set it as the default.</p>
 
     <!-- Option A: ACME — the free path, works on every edition (incl. Community) -->
     <p style="font-weight:700;margin:16px 0 4px">Option A — ACME <span class="hint" style="font-weight:400">(free; Let&rsquo;s Encrypt, step-ca, or any RFC&nbsp;8555 CA)</span></p>
-    <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>ACME</b>, paste your CA&rsquo;s
+    <div class="do">🖥️ In Certheim, open <span class="where">Admin → Signing / CA</span>, choose provider <b>ACME</b>, paste your CA&rsquo;s
       <b>directory URL</b> (e.g. <code>https://acme-v02.api.letsencrypt.org/directory</code>, or your internal step-ca&rsquo;s
       <code>/acme/&lt;provisioner&gt;/directory</code>), pick the <b>challenge type</b> (DNS-01 or HTTP-01), set it as the
       <b>default</b>, and click <b>Save &amp; Test</b>.</div>
@@ -410,14 +410,14 @@ sudo systemctl restart certinel-api</pre></div>
       environment variables — nothing to add here. Just confirm them in the next step.</div>
     <div class="do when-k8s" hidden>✅ <b>Already wired.</b> The <code>openbao:</code> block in your values file from Step&nbsp;1 puts the
       address/mount/role in the pod and the role_id/secret_id in a Secret — nothing to add here. Confirm in the next step.</div>
-    <div class="do">🖥️ In Certinel, open <span class="where">Admin → Signing / CA</span>, choose provider <b>OpenBao PKI</b>,
+    <div class="do">🖥️ In Certheim, open <span class="where">Admin → Signing / CA</span>, choose provider <b>OpenBao PKI</b>,
       confirm the address / mount / role, set it as the <b>default</b>, and click <b>Save &amp; Test</b>.</div>
     <div class="note">Need the Vault side built (the PKI role + AppRole)? That&rsquo;s a one-time job for your Vault admin:
       a policy allowing <code>&lt;mount&gt;/sign/&lt;role&gt;</code> (and, for per-user audit, <code>auth/token/create</code>),
       an AppRole, and its role_id/secret_id.</div>
     </div>
 
-    <div class="tip"><b>Save &amp; Test</b> does a real test sign. A green &ldquo;OK&rdquo; means you&rsquo;re fully wired — Certinel can
+    <div class="tip"><b>Save &amp; Test</b> does a real test sign. A green &ldquo;OK&rdquo; means you&rsquo;re fully wired — Certheim can
       now issue certificates on its own.</div>
     <div class="do">🖥️ <b>Hands-off issuing (optional):</b> on a certificate template, turn on <b>Auto-sign</b> so matching requests
       are issued instantly with no approval click.</div>
@@ -430,7 +430,7 @@ sudo systemctl restart certinel-api</pre></div>
       <b data-tpl="emailName">Company mail relay (SMTP)</b>.</div>
     <div class="do when-email-smtp">Enter your relay <b>host</b> and <b>port</b> (often 25) and a <b>From</b> address your relay accepts. Save, then send a test.</div>
     <div class="do when-email-mailgun">Enter your Mailgun <b>domain</b> and <b>API key</b> and a <b>From</b> address. Save, then send a test. (Needs outbound internet.)</div>
-    <div class="tip">No mail server? Choose <b>None</b> — Certinel works perfectly without email; you just won&rsquo;t get notices.</div>
+    <div class="tip">No mail server? Choose <b>None</b> — Certheim works perfectly without email; you just won&rsquo;t get notices.</div>
   </div>
 
   <!-- ─────────────  STEP 8  ───────────── -->
@@ -438,7 +438,7 @@ sudo systemctl restart certinel-api</pre></div>
     <h2><span class="num">8</span>Issue your first certificate 🎉</h2>
     <div class="do">🖥️ <span class="where">Create requests</span> → fill in the host name(s) you need a certificate for → submit.
       It appears as a <b>pending</b> request.</div>
-    <div class="do when-openbao">🖥️ Open the request and click <b>Approve &amp; sign</b>. Certinel signs it through your configured CA (ACME or OpenBao) and it flips to
+    <div class="do when-openbao">🖥️ Open the request and click <b>Approve &amp; sign</b>. Certheim signs it through your configured CA (ACME or OpenBao) and it flips to
       <b>issued</b> — download the certificate and chain right there.</div>
     <div class="do when-manual" hidden>🖥️ Send the request to your certificate authority, then come back and <b>upload</b> the signed certificate to finish it.</div>
     <div class="tip">That&rsquo;s the everyday loop your team will use. You&rsquo;re done setting up!</div>
@@ -467,7 +467,7 @@ sudo systemctl restart certinel-api</pre></div>
     <div class="do">📲 <b>Device enrollment (EST &amp; SCEP).</b> Auto-enroll MDM fleets (Intune, Jamf) and network gear. In
       <span class="where">Admin → Enrollment &amp; signing</span> enable <b>EST</b> (set a shared secret) and/or <b>SCEP</b> (click
       <b>Generate RA</b>, optional challenge password). ⚠️ Your reverse proxy must forward <code>/.well-known/est/</code> and
-      <code>/scep</code> to Certinel.</div>
+      <code>/scep</code> to Certheim.</div>
     <div class="do">🖋️ <b>Code-signing &amp; timestamping.</b> In <span class="where">Admin → Enrollment &amp; signing</span> enable
       <b>code-signing</b> (upload a signer cert with the <code>codeSigning</code> EKU) to CMS-sign software artifacts, and the
       <b>RFC 3161</b> timestamp authority (cert with the <code>timeStamping</code> EKU) so signatures stay verifiable after the cert
@@ -479,7 +479,7 @@ sudo systemctl restart certinel-api</pre></div>
   <!-- ─────────────  edition extras  ───────────── -->
   <div class="card when-commercial">
     <h2>Good to know — Commercial</h2>
-    <p class="sub">Commercial covers <b>one</b> managed domain. If you try to sign for a second different domain, Certinel
+    <p class="sub">Commercial covers <b>one</b> managed domain. If you try to sign for a second different domain, Certheim
       will stop and tell you. Need more? Ask your vendor for additional domains (or the <b>Unlimited</b> edition), then
       paste the new license in <span class="where">Admin → License</span> — the new limit applies right away.</p>
   </div>
@@ -507,13 +507,13 @@ sudo systemctl restart certinel-api</pre></div>
     <dl class="glossary">
       <dt>CSR</dt><dd>&ldquo;Certificate Signing Request&rdquo; — a request asking a Certificate Authority to issue a certificate.</dd>
       <dt>OpenBao / Vault</dt><dd>A secure system that holds the signing key and actually issues the certificates for you.</dd>
-      <dt>AppRole (role_id / secret_id)</dt><dd>A username/password pair Certinel uses to talk to OpenBao. Keep the secret_id private.</dd>
+      <dt>AppRole (role_id / secret_id)</dt><dd>A username/password pair Certheim uses to talk to OpenBao. Keep the secret_id private.</dd>
       <dt>CAC / mTLS</dt><dd>Signing in with a smart card / client certificate instead of a password.</dd>
       <dt>FQDN</dt><dd>Your server&rsquo;s full web address, like <code>certinel.example.com</code>.</dd>
     </dl>
   </div>
 
-  <footer>Certinel setup guide · this page tailors itself to your details · safe to print or save</footer>
+  <footer>Certheim setup guide · this page tailors itself to your details · safe to print or save</footer>
 </div>
 
 <div id="popover" hidden role="dialog" aria-label="Field help">
@@ -597,7 +597,7 @@ sudo systemctl restart certinel-api</pre></div>
     var pg = st.db==="postgres";
     var bundledPg = pg && !(st.dburl && st.dburl.trim());   // spin up a local PG only if no external DSN
     var L=[];
-    L.push("# Certinel — Docker Compose (also runs with: podman compose).");
+    L.push("# Certheim — Docker Compose (also runs with: podman compose).");
     L.push("# Generated by the setup guide. Serves plain HTTP on :8080 for evaluation;");
     L.push("# put a TLS-terminating reverse proxy in front for production (and CAC/mTLS).");
     L.push("services:");
@@ -687,7 +687,7 @@ sudo systemctl restart certinel-api</pre></div>
   function genValues(){
     var pg = st.db==="postgres";
     var L=[];
-    L.push("# Certinel Helm values — generated by the setup guide.");
+    L.push("# Certheim Helm values — generated by the setup guide.");
     L.push("# Deploy with:  helm upgrade --install certinel deploy/helm/certinel \\");
     L.push("#                 -n certinel --create-namespace -f certinel-values.yaml");
     L.push("");
@@ -750,12 +750,12 @@ sudo systemctl restart certinel-api</pre></div>
   function genPlaybook(){
     var L=[];
     L.push("---");
-    L.push("# Certinel deployment — generated by the setup guide.");
+    L.push("# Certheim deployment — generated by the setup guide.");
     L.push("# Pre-set for: "+({vm:"single-server VM",container:"container",k8s:"Kubernetes"})[st.method]+".");
-    L.push("# Run from the folder holding the Certinel product files:");
+    L.push("# Run from the folder holding the Certheim product files:");
     L.push("#   ansible-playbook -i <host>, -u <user> --become certinel-deploy.yml");
     L.push("# (container/k8s run from a control host — add  -c local  and drop --become.)");
-    L.push("- name: Deploy Certinel");
+    L.push("- name: Deploy Certheim");
     L.push("  hosts: all");
     L.push("  gather_facts: false");
     L.push("  vars:");
@@ -874,21 +874,21 @@ sudo systemctl restart certinel-api</pre></div>
 
   // ---- help popovers (the "?" next to every field) ----
   var HELP = {
-    edition: ["Which edition?", "Your edition is printed in your license file (the &ldquo;edition&rdquo; field) and on your purchase confirmation. Not sure? Ask whoever bought Certinel, or your vendor. <b>Community</b> is the free tier and needs no license."],
-    fqdn: ["Server web address (FQDN)", "The full address people type to reach Certinel, e.g. <code>certinel.example.com</code>. Your network / IT admin assigns it. It must (1) point to your server in DNS and (2) match the name on the server&rsquo;s TLS certificate."],
+    edition: ["Which edition?", "Your edition is printed in your license file (the &ldquo;edition&rdquo; field) and on your purchase confirmation. Not sure? Ask whoever bought Certheim, or your vendor. <b>Community</b> is the free tier and needs no license."],
+    fqdn: ["Server web address (FQDN)", "The full address people type to reach Certheim, e.g. <code>certinel.example.com</code>. Your network / IT admin assigns it. It must (1) point to your server in DNS and (2) match the name on the server&rsquo;s TLS certificate."],
     org: ["Organization name", "Your organization&rsquo;s name exactly as it should appear inside issued certificates (the &ldquo;O&rdquo; field) — e.g. <code>Acme Corporation</code> or <code>U.S. Government</code>. Use your official / legal name."],
     auth: ["How people sign in", "<b>Username &amp; password</b> — simplest; people sign in with an account. <b>CAC / smart card</b> — people authenticate with a client certificate (e.g. a DoD CAC). CAC is included in <b>Government</b>; on <b>Commercial</b> it needs a CAC add-on, and your web server must be given the card-issuer CA bundle."],
-    svc: ["Service account name", "The Linux user account Certinel runs as. Leave it as <code>certinel</code> unless your security policy requires a specific service-account name — the installer creates it for you."],
-    ob: ["Auto-sign with OpenBao?", "OpenBao (or HashiCorp Vault) is the secure system that holds your signing key and issues certificates. Choose <b>Yes</b> if you have one and want Certinel to issue certs automatically in the web app. Choose <b>Not yet</b> to start by uploading certificates signed elsewhere — you can switch this on later."],
-    ob_addr: ["OpenBao address", "The HTTPS address of your OpenBao / Vault, e.g. <code>https://openbao.example.com</code> (sometimes with a port like <code>:8200</code>). Ask your Vault administrator. Your Certinel server must be able to reach this URL and trust its TLS certificate."],
+    svc: ["Service account name", "The Linux user account Certheim runs as. Leave it as <code>certinel</code> unless your security policy requires a specific service-account name — the installer creates it for you."],
+    ob: ["Auto-sign with OpenBao?", "OpenBao (or HashiCorp Vault) is the secure system that holds your signing key and issues certificates. Choose <b>Yes</b> if you have one and want Certheim to issue certs automatically in the web app. Choose <b>Not yet</b> to start by uploading certificates signed elsewhere — you can switch this on later."],
+    ob_addr: ["OpenBao address", "The HTTPS address of your OpenBao / Vault, e.g. <code>https://openbao.example.com</code> (sometimes with a port like <code>:8200</code>). Ask your Vault administrator. Your Certheim server must be able to reach this URL and trust its TLS certificate."],
     ob_mount: ["PKI mount", "The name of the PKI &ldquo;secrets engine&rdquo; in OpenBao that issues your certificates — often <code>pki_csr</code>. Your Vault admin set this up; they can list it with:<br><code>bao secrets list</code> (look for the type <code>pki</code>)."],
     ob_role: ["Signing role", "A named policy inside the PKI mount that controls what may be issued (allowed domains, lifetime, key type) — often <code>certinel</code>. Your Vault admin lists them with:<br><code>bao list pki_csr/roles</code>"],
-    ob_rid: ["AppRole role_id", "The &ldquo;username&rdquo; half of the credential Certinel uses to talk to OpenBao. It is <b>not secret</b> and does not change. Your Vault admin creates an AppRole and reads it with:<br><code>bao read auth/approle/role/&lt;name&gt;/role-id</code>"],
+    ob_rid: ["AppRole role_id", "The &ldquo;username&rdquo; half of the credential Certheim uses to talk to OpenBao. It is <b>not secret</b> and does not change. Your Vault admin creates an AppRole and reads it with:<br><code>bao read auth/approle/role/&lt;name&gt;/role-id</code>"],
     ob_sid: ["AppRole secret_id", "The &ldquo;password&rdquo; half — <b>keep it private.</b> Your Vault admin generates one with:<br><code>bao write -f auth/approle/role/&lt;name&gt;/secret-id</code><br>It can be set to expire, so it may need rotating. If signing suddenly stops working, a fresh secret_id is the first thing to check."],
     email: ["Email notifications", "Optional notices (certificate issued / expiring soon). <b>None</b> — no email; everything else still works. <b>SMTP</b> — your company mail relay; you&rsquo;ll need its host and port. <b>Mailgun</b> — cloud email; you&rsquo;ll need a Mailgun domain + API key and outbound internet."],
-    method: ["How to run Certinel", "Pick where it runs and the <b>Install</b> step tailors itself. <b>Single server (VM)</b> — one Linux box; the installer sets up everything (best for most people). <b>Container</b> — Docker or Podman on one host; great for a quick evaluation. <b>Kubernetes</b> — a cluster, installed with our Helm chart; scales to multiple replicas and self-heals. All three are generated for you from the answers above — copy or download and run."],
+    method: ["How to run Certheim", "Pick where it runs and the <b>Install</b> step tailors itself. <b>Single server (VM)</b> — one Linux box; the installer sets up everything (best for most people). <b>Container</b> — Docker or Podman on one host; great for a quick evaluation. <b>Kubernetes</b> — a cluster, installed with our Helm chart; scales to multiple replicas and self-heals. All three are generated for you from the answers above — copy or download and run."],
     db: ["Where data lives", "<b>Built-in (SQLite)</b> — a single self-contained file on the server; nothing to set up, perfect to start, but one node only. <b>PostgreSQL</b> — an external database; required if you want multiple replicas / high availability (Kubernetes), and recommended for larger teams. You can switch from SQLite to PostgreSQL later without losing data — see <code>tools/certinel-db-migrate</code>."],
-    dburl: ["PostgreSQL connection URL", "A standard libpq connection string for your database, e.g. <code>postgresql://certinel:PASSWORD@db.example.com:5432/certinel</code>. Your DBA creates an empty database + a user that owns it; Certinel builds its own tables on first start. Leave blank in the container path and the generated Compose file will spin up a throwaway PostgreSQL for you to evaluate with."]
+    dburl: ["PostgreSQL connection URL", "A standard libpq connection string for your database, e.g. <code>postgresql://certinel:PASSWORD@db.example.com:5432/certinel</code>. Your DBA creates an empty database + a user that owns it; Certheim builds its own tables on first start. Leave blank in the container path and the generated Compose file will spin up a throwaway PostgreSQL for you to evaluate with."]
   };
   var pop = $("#popover"), popBody = $("#popover-body");
   function showHelp(btn){

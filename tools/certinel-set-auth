@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""certinel-set-auth - set authentication settings in the Certinel database.
+"""certinel-set-auth - set authentication settings in the Certheim database.
 
 Sets rows in the app_settings table (the same store the app reads via
 get_setting). Used by the installer to configure password-auth mode on a box

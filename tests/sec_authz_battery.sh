@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sec_authz_battery.sh — black-box security regression battery for Certinel.
+# sec_authz_battery.sh — black-box security regression battery for Certheim.
 #
 # Exercises the authorization model end-to-end against a running instance:
 #   1. Horizontal IDOR / broken object-level auth on the job read/list surface
@@ -46,7 +46,7 @@ login(){ # <user> <pass> <cookie-name>
   $CURL -c "$TMP/$3" -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" \
     --data "{\"username\":\"$1\",\"password\":\"$2\"}" -o /dev/null -w '%{http_code}'; }
 
-echo "== Certinel security authz battery =="
+echo "== Certheim security authz battery =="
 echo "target: $BASE   suffix: $SFX"
 
 # ---- 0. admin session ----
