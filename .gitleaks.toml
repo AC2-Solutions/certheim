@@ -5,7 +5,7 @@
 [extend]
 useDefault = true
 
-[[allowlist]]
+[allowlist]
 description = "Test fixtures + doc placeholders (no real secrets; verified)"
 paths = [
   '''tests/test_sealed_keystore\.py''',
