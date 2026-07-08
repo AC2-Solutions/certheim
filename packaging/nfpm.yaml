@@ -1,0 +1,57 @@
+# nfpm spec for the Certheim RPM (built by packaging/build-rpm.sh, which stages
+# the app tree + offline wheelhouse under packaging/build/stage first).
+# PKG_VERSION / PKG_ARCH are supplied via the environment by build-rpm.sh.
+name: certheim
+arch: "${PKG_ARCH}"
+platform: linux
+version: "${PKG_VERSION}"
+version_schema: semver
+release: "1"
+maintainer: "AC2 Solutions <support@certheim.com>"
+vendor: "AC2 Solutions"
+homepage: "https://www.certheim.com"
+license: "Proprietary"
+description: |
+  Certheim certificate lifecycle management — self-hosted as a native Linux
+  service (no containers).
+
+  Installs the Certheim application, an offline Python wheelhouse, and the
+  `certheim-setup` first-run configurator. After `dnf install`, run
+  `sudo certheim-setup` to choose the FQDN/TLS mode, provision nginx, build the
+  service venv, and start the certinel-api systemd service. certheim-setup is
+  interactive, or fully unattended with ASSUME_DEFAULTS=yes and env overrides.
+
+# dnf resolves these; the nginx package also creates the `nginx` group the
+# installer requires. psycopg (postgres backend) is not bundled — the installer
+# fetches it on demand when DB_BACKEND=postgres.
+depends:
+  - nginx
+  - python3
+  - openssl
+  - sqlite
+  - policycoreutils
+  - sudo
+
+contents:
+  # Full application + installer + offline wheelhouse. certheim-setup runs the
+  # installer out of here; the live paths (/opt/certinel, …) are populated at
+  # setup time, not owned by the package.
+  - src: packaging/build/stage/usr/share/certheim
+    dst: /usr/share/certheim
+    type: tree
+  - src: packaging/build/stage/usr/sbin/certheim-setup
+    dst: /usr/sbin/certheim-setup
+    file_info:
+      mode: 0755
+  - src: packaging/build/stage/usr/share/doc/certheim/README.md
+    dst: /usr/share/doc/certheim/README.md
+    type: doc
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
+
+rpm:
+  group: Applications/System
+  compression: gzip
