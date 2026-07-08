@@ -7,12 +7,12 @@ replicaCount: 1
 
 image:
   # The entitled Certheim registry — pull is gated by your license (see below).
-  repository: registry.ac2certinel.com/certinel
+  repository: registry.certheim.com/certinel
   # Published tags: latest, vX.Y.Z (+ -slim variants). Pin to a vX.Y.Z for prod.
   tag: latest
   pullPolicy: IfNotPresent
   # The registry requires your license as the pull credential. Create a secret
-  # (kubectl create secret docker-registry regcred --docker-server=registry.ac2certinel.com
+  # (kubectl create secret docker-registry regcred --docker-server=registry.certheim.com
   # --docker-username=<license-id> --docker-password=<pull-token>) and reference it:
   pullSecrets: [{ name: regcred }]
 
