@@ -1,4 +1,4 @@
-Certheim {{ .Values.image.tag | default .Chart.AppVersion }} deployed as {{ include "certinel.fullname" . }}.
+Certheim {{ .Values.image.tag | default .Chart.AppVersion }} deployed as {{ include "certheim.fullname" . }}.
 
 Backend: {{ .Values.db.backend }}{{ if eq .Values.db.backend "sqlite" }} (single replica + PVC){{ end }}
 {{- if .Values.ingress.enabled }}
@@ -10,13 +10,13 @@ Sign-in: username / password.
 {{- end }}
 {{- else }}
 No ingress: port-forward to try it —
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "certinel.fullname" . }} 8080:{{ .Values.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "certheim.fullname" . }} 8080:{{ .Values.service.port }}
   open http://127.0.0.1:8080/csr/
 {{- end }}
 
 First-run setup:
   1. Make yourself admin (one-time): set CERTINEL_BOOTSTRAP via env, or run
-       kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "certinel.fullname" . }} -c app -- \
+       kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "certheim.fullname" . }} -c app -- \
          env CSR_BOOTSTRAP_FIRST_ADMIN=1 true   # see the Setup Guide for details
   2. Open the app and finish setup in Admin (license, org identity, signing).
 {{- if eq (.Values.license | default "") "" }}

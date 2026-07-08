@@ -3,9 +3,9 @@
 Deploy Certheim (certificate lifecycle platform) on any Kubernetes cluster.
 
 ```bash
-helm install certinel ./deploy/helm/certinel \
-  --namespace certinel --create-namespace \
-  --set ingress.host=certinel.example.com
+helm install certheim ./deploy/helm/certheim \
+  --namespace certheim --create-namespace \
+  --set ingress.host=certheim.example.com
 ```
 
 The app runs **container-mode**: no sudo helper, and TLS + CAC/client-cert auth
@@ -42,8 +42,8 @@ so proxying the paths is safe on every edition.
 | `image.tag` | chart appVersion | use `<ver>-slim` for the Debian-slim image |
 | `db.backend` | `sqlite` | or `postgres` (+ `db.postgres.url`/`existingSecret`) |
 | `license` | `""` | signed license blob (mounted, `CSR_LICENSE_FILE`) |
-| `ingress.host` | `certinel.example.com` | required |
-| `ingress.tls.secretName` | `certinel-tls` | TLS cert (cert-manager or pre-created) |
+| `ingress.host` | `certheim.example.com` | required |
+| `ingress.tls.secretName` | `certheim-tls` | TLS cert (cert-manager or pre-created) |
 | `ingress.clientCert.enabled` | `false` | CAC/mTLS at the ingress; `caSecret` = client-CA bundle |
 | `openbao.enabled` | `false` | in-UI OpenBao signing (`addr`,`role`,`roleId`,`secretId`) |
 | `persistence.size` | `5Gi` | SQLite DB volume; `dataSize` for issued certs/keys |
@@ -51,10 +51,10 @@ so proxying the paths is safe on every edition.
 PostgreSQL example:
 
 ```bash
-helm install certinel ./deploy/helm/certinel \
+helm install certheim ./deploy/helm/certheim \
   --set db.backend=postgres \
   --set db.postgres.url='postgresql://certinel:PW@pg:5432/certinel' \
-  --set replicaCount=2 --set ingress.host=certinel.example.com
+  --set replicaCount=2 --set ingress.host=certheim.example.com
 ```
 
 Migrate an existing SQLite deployment onto Postgres first with

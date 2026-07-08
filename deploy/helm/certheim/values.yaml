@@ -67,11 +67,11 @@ service:
 ingress:
   enabled: true
   className: nginx
-  host: certinel.example.com
+  host: certheim.example.com
   path: /
   tls:
     enabled: true
-    secretName: certinel-tls   # cert-manager or a pre-created TLS secret
+    secretName: certheim-tls   # cert-manager or a pre-created TLS secret
   # CAC / client-cert (mTLS) terminated at the ingress; the verified identity is
   # passed to the app as X-Client-DN / X-Client-Verify / X-Client-Serial.
   clientCert:

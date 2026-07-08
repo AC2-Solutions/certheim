@@ -1,53 +1,53 @@
-{{- define "certinel.name" -}}
+{{- define "certheim.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "certinel.fullname" -}}
+{{- define "certheim.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- printf "%s-%s" .Release.Name (include "certinel.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-%s" .Release.Name (include "certheim.name" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "certinel.chart" -}}
+{{- define "certheim.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "certinel.labels" -}}
-helm.sh/chart: {{ include "certinel.chart" . }}
-{{ include "certinel.selectorLabels" . }}
+{{- define "certheim.labels" -}}
+helm.sh/chart: {{ include "certheim.chart" . }}
+{{ include "certheim.selectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
-{{- define "certinel.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "certinel.name" . }}
+{{- define "certheim.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "certheim.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "certinel.image" -}}
+{{- define "certheim.image" -}}
 {{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
 {{- end -}}
 
-{{- define "certinel.serviceAccountName" -}}
+{{- define "certheim.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-{{- default (include "certinel.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "certheim.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "certinel.secretName" -}}{{ include "certinel.fullname" . }}-secret{{- end -}}
+{{- define "certheim.secretName" -}}{{ include "certheim.fullname" . }}-secret{{- end -}}
 
 {{- /* The environment shared by the app Deployment and the CronJob tasks. */ -}}
-{{- define "certinel.appEnv" -}}
+{{- define "certheim.appEnv" -}}
 - name: CERTINEL_CONTAINER
   value: "1"
 {{- if eq .Values.db.backend "postgres" }}
 - name: CSR_DB_URL
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.db.postgres.existingSecret | default (include "certinel.secretName" .) }}
+      name: {{ .Values.db.postgres.existingSecret | default (include "certheim.secretName" .) }}
       key: CSR_DB_URL
 {{- else }}
 - name: CSR_DB_PATH
@@ -69,12 +69,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 - name: CSR_OPENBAO_ROLE_ID
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.openbao.existingSecret | default (include "certinel.secretName" .) }}
+      name: {{ .Values.openbao.existingSecret | default (include "certheim.secretName" .) }}
       key: CSR_OPENBAO_ROLE_ID
 - name: CSR_OPENBAO_SECRET_ID
   valueFrom:
     secretKeyRef:
-      name: {{ .Values.openbao.existingSecret | default (include "certinel.secretName" .) }}
+      name: {{ .Values.openbao.existingSecret | default (include "certheim.secretName" .) }}
       key: CSR_OPENBAO_SECRET_ID
 {{- if ne (.Values.openbao.caCert | default "") "" }}
 - name: CSR_OPENBAO_CA_FILE
@@ -88,7 +88,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- /* True when the secret-files volume (license and/or openbao CA) is needed. */ -}}
-{{- define "certinel.needSecretFiles" -}}
+{{- define "certheim.needSecretFiles" -}}
 {{- if or (ne (.Values.license | default "") "") (and .Values.openbao.enabled (ne (.Values.openbao.caCert | default "") "")) -}}true{{- end -}}
 {{- end -}}
 

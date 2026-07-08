@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "certinel.fullname" . }}
+  name: {{ include "certheim.fullname" . }}
   labels:
-    {{- include "certinel.labels" . | nindent 4 }}
+    {{- include "certheim.labels" . | nindent 4 }}
   annotations:
     {{- if .Values.ingress.clientCert.enabled }}
     # CAC / client-cert auth terminated here; the verified identity is forwarded
@@ -36,7 +36,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "certinel.fullname" . }}
+                name: {{ include "certheim.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
 {{- end -}}
