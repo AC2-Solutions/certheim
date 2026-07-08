@@ -1,5 +1,24 @@
 # Certheim Community edition — changelog
 
+## 4.1.1 — 2026-07-08
+
+_Released 2026-07-08. 5 changes since community-v4.1.0._
+
+### Fixes & improvements
+
+- **gitleaks:** global allowlist is [allowlist] not [[allowlist]] (`2d3728d`)
+  gitleaks v8 expects the top-level allowlist as a single table; the array form failed config load
+  ('Allowlist expected a map, got slice'), which made the mirror-github gate error out before
+  pushing (fail-safe — nothing was published). Verified: config loads and reports 0 leaks over full
+  history.
+
+### Other changes
+
+- AGPLv3 Community + gated GitHub mirror (`24c4e75`)
+- Certinel → Certheim (brand-facing surfaces), v5.0.0 (`2a48527`)
+- point pull paths at the per-edition entitled repos (certinel/<edition>) (`990d606`)
+- publish per-edition repos to the entitled registry (certinel/<edition>) (`3756862`)
+
 ## 4.1.0 — 2026-07-06
 
 _Released 2026-07-06. 1 change since community-v4.0.1._
