@@ -64,6 +64,7 @@ bash-syntax:
     - bash -n helper/certinel_helper.sh
     - for f in helper/certinel_helper.d/*.sh; do bash -n "$f"; done
     - bash -n deploy.sh gather.sh tools/certinel-backup.sh tools/release.sh install/online-install.sh
+    - bash -n packaging/build-rpm.sh packaging/certheim-setup packaging/scripts/postinstall.sh packaging/scripts/preremove.sh packaging/scripts/postremove.sh
     - echo "bash OK"
 
 js-syntax:
@@ -354,6 +355,30 @@ release:
         echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping offline-bundle publish for $RELTAG."
       else
         echo "note: offline bundle is published from Community only — skipping for $RELTAG."
+      fi
+      # Build + publish the RPM (native Linux-service install, no containers).
+      # Like the offline tarball it is the Community/base build — one artifact;
+      # the per-customer license is applied at setup time via LICENSE_FILE, not
+      # injected — so only Community publishes it. Gated on the upload secret,
+      # non-fatal. nfpm is fetched as a pinned static binary; build-rpm.sh stages
+      # the app tree + an offline wheelhouse (same pip-download tooling the
+      # offline bundle already relies on).
+      if [ "$PFX" = community ] && [ -n "${CERTINEL_RELEASE_UPLOAD_SECRET:-}" ]; then
+        ( set -e
+          NFPM_VER=2.41.3
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_x86_64.tar.gz" \
+            | tar xz -C /tmp nfpm
+          PKG_VERSION="$ver" PATH="/tmp:$PATH" bash packaging/build-rpm.sh </dev/null
+          rpm_file="$(ls packaging/build/certheim-*.x86_64.rpm | head -1)"
+          rpm_sha="$(sha256sum "$rpm_file" | cut -d' ' -f1)"
+          curl -fsS -X POST "https://licenses.ac2.lan/api/v1/certinel/releases/rpm" \
+            -H "Authorization: Bearer $CERTINEL_RELEASE_UPLOAD_SECRET" \
+            -F "version=$ver" -F "sha256=$rpm_sha" -F "rpm=@$rpm_file"
+          echo "Published RPM $(basename "$rpm_file") ($rpm_sha) to the licenses portal" ) \
+          || echo "warn: RPM publish failed (release $RELTAG still cut)"
+        rm -rf packaging/build 2>/dev/null || true
+      elif [ "$PFX" = community ]; then
+        echo "note: CERTINEL_RELEASE_UPLOAD_SECRET unset — skipping RPM publish for $RELTAG."
       fi
       # Fail LOUD (red pipeline) if the entitled-registry mirror never landed —
       # done last, so Docker Hub, the GitLab release/tag, and the offline bundle

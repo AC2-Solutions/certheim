@@ -47,3 +47,6 @@ secrets/
 # the GitLab Release page, but it is NOT committed (CHANGELOG.md is the durable
 # history). Keep them out of the tree.
 RELEASE-NOTES-v*.md
+
+# RPM build staging (packaging/build-rpm.sh)
+packaging/build/

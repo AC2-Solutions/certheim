@@ -249,19 +249,46 @@ visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
 echo "  ok"
 
 # ---------------------------------------------------------------------------
-log "5/9  Python venv from PyPI"
+log "5/9  Python venv"
 # ---------------------------------------------------------------------------
 VENV=/opt/certinel/venv
 [[ -x "$VENV/bin/python3" ]] || "$PYBIN" -m venv "$VENV"
-"$VENV/bin/pip" install --upgrade pip setuptools wheel
-if ! "$VENV/bin/pip" install -r requirements.txt; then
+# Prefer an offline wheelhouse when one ships alongside the repo (the RPM/offline
+# bundle drop a wheelhouse/ dir here); this lets the install run air-gapped with
+# no PyPI reach. CERTINEL_WHEELHOUSE overrides the location. When absent we fall
+# back to installing from PyPI as before. PIP_OFFLINE holds the shared flags so
+# the base and postgres installs stay consistent.
+WHEELHOUSE="${CERTINEL_WHEELHOUSE:-$(pwd)/wheelhouse}"
+PIP_OFFLINE=()
+if [[ -d "$WHEELHOUSE" ]] && compgen -G "$WHEELHOUSE/*.whl" >/dev/null 2>&1; then
+    PIP_OFFLINE=(--no-index --find-links "$WHEELHOUSE")
+    echo "  using offline wheelhouse: $WHEELHOUSE"
+    "$VENV/bin/pip" install "${PIP_OFFLINE[@]}" --upgrade pip setuptools wheel 2>/dev/null || true
+else
+    "$VENV/bin/pip" install --upgrade pip setuptools wheel
+fi
+# pip_reqs: install a requirements file, preferring the offline wheelhouse but
+# falling back to PyPI if the offline pass fails. A wheelhouse carries some
+# compiled, CPython-version-specific wheels (e.g. markupsafe), so a wheelhouse
+# built for a different python than this host's needs the online fallback (or,
+# for a true air-gap, a wheelhouse built to match the target python — as the
+# offline bundle documents). Returns pip's exit status of the last attempt.
+pip_reqs() {
+    if [[ ${#PIP_OFFLINE[@]} -gt 0 ]]; then
+        "$VENV/bin/pip" install "${PIP_OFFLINE[@]}" -r "$1" && return 0
+        warn "offline wheelhouse install of $1 failed (python/arch mismatch?) - retrying from PyPI"
+    fi
+    "$VENV/bin/pip" install -r "$1"
+}
+if ! pip_reqs requirements.txt; then
     warn "pinned requirements.txt failed on $PYBIN - retrying with core deps unpinned"
     "$VENV/bin/pip" install flask gunicorn
 fi
 # The Postgres backend needs psycopg (kept out of the base wheelhouse so SQLite
-# installs stay slim). requirements-postgres.txt pins it.
+# installs stay slim). requirements-postgres.txt pins it; pip_reqs pulls it from
+# PyPI (the wheelhouse omits it).
 if [[ "$DB_BACKEND" == "postgres" ]]; then
-    "$VENV/bin/pip" install -r requirements-postgres.txt \
+    pip_reqs requirements-postgres.txt \
         || die "psycopg install failed - cannot use the postgres backend"
 fi
 # The service group must read/traverse the whole venv to exec gunicorn/python

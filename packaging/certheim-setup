@@ -1,0 +1,32 @@
+#!/bin/bash
+# certheim-setup — configure Certheim on this host and start it as a native
+# systemd service (no containers).
+#
+# Interactive by default. Fully UNATTENDED when stdin is not a TTY or
+# ASSUME_DEFAULTS=yes is set: every prompt has an env-var override — see the
+# table at the top of /usr/share/certheim/install/online-install.sh. Common
+# unattended invocation:
+#
+#   sudo FQDN=cert.example.com ASSUME_DEFAULTS=yes certheim-setup
+#
+# Apply a Commercial/Government license with LICENSE_FILE=/path/to/license.
+#
+# Idempotent: safe to re-run after `dnf upgrade certheim` to roll the new code
+# onto the live paths (the venv/user/dirs are reused; deploy.sh no-ops for
+# unchanged files and restarts certinel-api when the backend changed).
+set -euo pipefail
+
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    echo "certheim-setup must run as root (try: sudo certheim-setup)" >&2
+    exit 1
+fi
+
+SRC=/usr/share/certheim
+if [[ ! -x "$SRC/install/online-install.sh" ]]; then
+    echo "Certheim source tree not found at $SRC — reinstall the certheim package." >&2
+    exit 1
+fi
+
+# online-install.sh cds to its REPO_ROOT ($SRC) and auto-detects $SRC/wheelhouse
+# for an offline (air-gapped) venv build. Hand off with all args/env intact.
+exec bash "$SRC/install/online-install.sh" "$@"
