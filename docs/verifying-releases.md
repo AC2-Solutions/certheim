@@ -15,7 +15,7 @@ regulated deployment.
 
 ## Container images
 
-Public images live at `docker.io/ac2solutions/certinel`. Licensed customers pull
+Public images live at `docker.io/ac2solutions/certheim`. Licensed customers pull
 the same attested images from the entitled registry `registry.ac2certinel.com`,
 where each edition has its **own repository** so a pull token only reaches the
 edition (and lower tiers) its license entitles:
@@ -25,7 +25,7 @@ edition (and lower tiers) its license entitles:
   `:latest` (+ `:vX.Y.Z-slim` / `:slim`). Auth: `docker login
   registry.ac2certinel.com` with your **license id** as the username and **pull
   token** as the password.
-- **Docker Hub mirror** — `docker.io/ac2solutions/certinel`, single repo with the
+- **Docker Hub mirror** — `docker.io/ac2solutions/certheim`, single repo with the
   edition in the tag: `:<edition>-vX.Y.Z` (immutable), `:<edition>-latest`
   (moving), and `:latest` / `:slim` (newest Community).
 
@@ -39,11 +39,11 @@ With Docker Buildx (no extra tooling):
 
 ```bash
 docker buildx imagetools inspect \
-  docker.io/ac2solutions/certinel:commercial-v3.72.0 \
+  docker.io/ac2solutions/certheim:commercial-v3.72.0 \
   --format '{{ json .SBOM }}'          # software bill of materials
 
 docker buildx imagetools inspect \
-  docker.io/ac2solutions/certinel:commercial-v3.72.0 \
+  docker.io/ac2solutions/certheim:commercial-v3.72.0 \
   --format '{{ json .Provenance }}'    # SLSA build provenance (source, builder)
 ```
 
@@ -56,11 +56,11 @@ you can diff it against your CVE feed.
 ```bash
 # the SBOM attestation
 cosign verify-attestation --type spdxjson \
-  docker.io/ac2solutions/certinel:commercial-v3.72.0
+  docker.io/ac2solutions/certheim:commercial-v3.72.0
 
 # the SLSA provenance attestation
 cosign verify-attestation --type slsaprovenance \
-  docker.io/ac2solutions/certinel:commercial-v3.72.0
+  docker.io/ac2solutions/certheim:commercial-v3.72.0
 ```
 
 ### 3. Pin by digest
@@ -70,7 +70,7 @@ never silently change:
 
 ```bash
 docker buildx imagetools inspect \
-  docker.io/ac2solutions/certinel:commercial-v3.72.0 --format '{{ .Manifest.Digest }}'
+  docker.io/ac2solutions/certheim:commercial-v3.72.0 --format '{{ .Manifest.Digest }}'
 # -> sha256:...
 
 # then deploy   ...certinel@sha256:...
