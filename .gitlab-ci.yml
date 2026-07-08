@@ -436,7 +436,15 @@ mirror-github:
         echo "GITHUB_DEPLOY_KEY_B64 unset — skipping public GitHub mirror."
         exit 0
       fi
-      # --- secret gate: never publish a leak ---
+      # --- publish the TRUE current tip of Community, not the stale checkout ---
+      # The `release` job earlier in THIS pipeline may have pushed a
+      # `release: <ver> [skip ci]` version-bump commit to origin/Community AFTER
+      # this job's checkout. `[skip ci]` means no follow-up pipeline, so if we
+      # mirrored the checkout HEAD, GitHub main would lag one commit behind the
+      # release tag forever. Re-sync to the branch tip so main == the release.
+      git fetch --quiet origin "$CI_COMMIT_BRANCH"
+      git checkout --quiet --detach FETCH_HEAD
+      # --- secret gate: never publish a leak (scans exactly what we publish) ---
       GL=/tmp/gitleaks
       curl -fsSL -o /tmp/gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz"
       tar -xzf /tmp/gl.tgz -C /tmp gitleaks && chmod +x "$GL"
