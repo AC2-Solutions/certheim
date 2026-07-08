@@ -198,8 +198,8 @@
   <div class="card" id="s0">
     <h2><span class="num">0</span>What you need first</h2>
     <p class="sub">Gather these before you start. If you don&rsquo;t have one, ask the person who gave you Certheim.</p>
-    <div class="do">✅ A <b>Linux server</b> (RHEL or AlmaLinux 9) that you can sign into, with <b>administrator (sudo)</b> rights.</div>
-    <div class="do">✅ The <b>Certheim installer files</b> (a folder, or an <code>certheim-offline-*.tar.gz</code> file for sealed/offline networks).</div>
+    <div class="do">✅ A <b>Linux server</b> (RHEL or AlmaLinux 9 or 10) that you can sign into, with <b>administrator (sudo)</b> rights.</div>
+    <div class="do">✅ The <b>Certheim installer files</b> — the signed <code>.rpm</code> (simplest, incl. DISA STIG), a folder, or an <code>certheim-offline-*.tar.gz</code> file for sealed/offline networks.</div>
     <div class="do">✅ Your <b>license file</b> — a short text blob you received after purchase (issued from your vendor&rsquo;s License portal). <span class="when-community" hidden>Community edition needs no license — skip the license step.</span></div>
     <div class="do when-acme-free">✅ For automatic signing: the <b>directory URL</b> of an ACME CA (Let&rsquo;s Encrypt, ZeroSSL, or your internal step-ca) — that&rsquo;s all Community needs, entered in the app.</div>
     <div class="do when-ob-vault">✅ For OpenBao/Vault signing (Commercial): your <b>Vault details</b> (address + an AppRole <i>role_id</i> and <i>secret_id</i>) from whoever runs your Vault. Or just use <b>ACME</b> — no Vault required.</div>
@@ -239,6 +239,19 @@
 <pre>tar xzf certheim-offline-*.tar.gz
 cd certheim-offline-*
 sudo bash install/online-install.sh   # the bundle carries everything it needs</pre></div>
+
+      <h3 style="font-size:15px;margin:16px 0 2px">C · Package install (RPM) — RHEL / Alma, incl. DISA STIG</h3>
+      <p class="sub">The signed <code>.rpm</code> installs Certheim as a managed system service and pulls its dependencies with <code>dnf</code>. Hardened / STIG hosts enforce <code>gpgcheck</code>, so import the Certheim signing key first — then it installs with no exceptions.</p>
+      <div class="term"><div class="bar"><span>on your server</span><button class="copy">Copy</button></div>
+<pre>sudo rpm --import RPM-GPG-KEY-certheim          # trust the Certheim signing key
+sudo dnf install ./certheim-<span class="var">&lt;version&gt;</span>-1.x86_64.rpm   # pulls nginx, python3, …
+sudo certheim-setup                             # asks a few questions, then starts</pre></div>
+      <p class="sub">Prefer no questions? Pre-answer with environment variables (works unattended, e.g. under automation):</p>
+      <div class="term"><div class="bar"><span>unattended</span><button class="copy">Copy</button></div>
+<pre>sudo FQDN=<span class="var">your.server.fqdn</span> ASSUME_DEFAULTS=yes certheim-setup</pre></div>
+      <div class="note">Licensed edition? Add <code>LICENSE_FILE=<span class="var">/path/to/license</span></code> to the <code>certheim-setup</code> line.
+        Upgrade later with <code>sudo dnf upgrade ./certheim-*.rpm &amp;&amp; sudo certheim-setup</code>; remove with <code>sudo dnf remove certheim</code> (keeps your data).</div>
+
       <div class="tip">When it finishes, Certheim is running at
         <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b>. Open that in a browser to continue.</div>
     </div>

@@ -3,10 +3,11 @@
 Flask/SQLite certificate request + lifecycle dashboard for a RHEL fleet.
 Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certinel` service
 account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/certinel/jobs.db`.
-Hardened RHEL 9 target: FIPS, SELinux enforcing, fapolicyd enforcing.
+Hardened RHEL 9/10 target: FIPS, SELinux enforcing, fapolicyd enforcing.
 
-This runbook reflects the proven installs on `certinel-host` (production)
-and a fresh STIG offline VM.
+This runbook reflects the proven installs on `certinel-host` (production), a
+fresh STIG offline VM, and a DISA-STIG RHEL 10.2 box (SELinux + fapolicyd
+enforcing) validated via the signed RPM.
 
 ---
 
@@ -38,6 +39,41 @@ certinel ALL=(root) NOPASSWD: /opt/certinel/helper/certinel_helper.sh
 ---
 
 ## 2. Install
+
+### RPM (dnf-native) — RHEL 9/10, incl. DISA STIG  ← recommended
+
+The signed RPM installs Certheim as a native systemd service and pulls its OS
+deps (`nginx`, `python3`, `openssl`, `sqlite`, `policycoreutils`, `sudo`) via
+dnf. It bundles the app, an offline wheelhouse, and the `certheim-setup`
+configurator (which runs the same `online-install.sh` under the hood, so all the
+fapolicyd/SELinux/nginx handling in §6 applies).
+
+**STIG hosts enforce `gpgcheck`** — import the Certheim public key first or dnf
+rejects the package (`GPG check FAILED`). Do **not** use `--nogpgcheck`.
+
+```bash
+# 1. Import + verify the signature (key id A16072AF9F5E7593)
+sudo rpm --import RPM-GPG-KEY-certheim
+rpm -Kv ./certheim-<ver>-1.x86_64.rpm          # expect: Header/Payload … Signature … OK
+
+# 2. Install (resolves nginx/python3/… from the RHEL repos)
+sudo dnf install ./certheim-<ver>-1.x86_64.rpm
+
+# 3. Configure + start (interactive) …
+sudo certheim-setup
+#    … or unattended (every prompt has an env override):
+sudo FQDN=host.example.mil TLS_MODE=selfsigned ASSUME_DEFAULTS=yes certheim-setup
+#    Government/Commercial license: add LICENSE_FILE=/path/to/license
+#    CAC/mTLS (if the license entitles it): add ENABLE_MTLS=yes CLIENT_CA_BUNDLE=/etc/pki/dod/dod-cas.pem
+```
+
+The public key ships with the release and, post-install, at
+`/usr/share/doc/certheim/RPM-GPG-KEY-certheim`
+(fpr `D245 9994 B9DD 0392 9E89 1E2B A160 72AF 9F5E 7593`). Verify the running
+service: `curl -sk https://localhost/csr/api/health` → `{"ok":true,…}`.
+Upgrade: `sudo dnf upgrade ./certheim-<newer>.rpm && sudo certheim-setup`.
+Remove: `sudo dnf remove certheim` (keeps data/config) then optional
+`sudo certinel-uninstall`.
 
 ### Connected / non-STIG (e.g. a dev box)
 ```bash
@@ -122,6 +158,19 @@ email" verifies wiring.
 
 ## 6. STIG specifics that bite
 
+- **Package signing / `gpgcheck`**: STIG enforces `gpgcheck` (and
+  `localpkg_gpgcheck`), so the RPM **must** be signed and its key imported
+  (`sudo rpm --import RPM-GPG-KEY-certheim`) before `dnf install`, or it fails
+  `GPG check FAILED`. The RPM is signed with the Certheim release key
+  (id `A16072AF9F5E7593`); `rpm -Kv <rpm>` must report `Signature … OK`. Never
+  fall back to `--nogpgcheck` on a STIG host.
+- **RHEL 10 / python 3.12 wheelhouse**: the RPM's (and offline bundle's)
+  wheelhouse is built for the release CI's python (3.9 on RHEL 9), and carries
+  one compiled wheel (`markupsafe`) that is CPython-version specific. On a
+  **connected** RHEL 10 box the installer detects the mismatch and falls back to
+  PyPI automatically (no action needed). For an **air-gapped RHEL 10** target,
+  build the offline bundle/RPM **on a RHEL 10 box** so the wheelhouse matches
+  python 3.12 — the same "match the target's python" rule as any offline bundle.
 - **fapolicyd**: new files under `/opt/certinel` need
   `fapolicyd-cli --file add <f> && --update` once (the installer trusts the
   venv; `deploy.sh` updates trust for existing files). Untrusted bundle
