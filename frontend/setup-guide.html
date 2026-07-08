@@ -251,7 +251,7 @@ sudo bash install/online-install.sh   # the bundle carries everything it needs</
 <pre data-tpl="compose"></pre></div>
       <div class="do">⌨️ <b>Sign in to the image registry with your license</b> (username = your license id, password = your pull token, from your License portal):</div>
       <div class="term"><div class="bar"><span>one-time login</span><button class="copy">Copy</button></div>
-<pre>docker login registry.ac2certinel.com -u <span class="var">YOUR-LICENSE-ID</span> -p <span class="var">YOUR-PULL-TOKEN</span></pre></div>
+<pre>docker login registry.certheim.com -u <span class="var">YOUR-LICENSE-ID</span> -p <span class="var">YOUR-PULL-TOKEN</span></pre></div>
       <div class="term"><div class="bar"><span>start it (Docker — or: podman compose …)</span><button class="copy">Copy</button></div>
 <pre>docker compose -f certinel-compose.yaml up -d</pre></div>
       <div class="tip">Open <b>http://localhost:8080/csr/</b> (or your host&rsquo;s address). This evaluation front is plain HTTP —
@@ -274,7 +274,7 @@ kubectl -n certinel create secret generic certinel-client-ca --from-file=ca.crt=
 </span># Pull credential — your Certheim license. Username = your license id,
 # password = the pull token, both from your License portal:
 kubectl -n certinel create secret docker-registry regcred \
-  --docker-server=registry.ac2certinel.com \
+  --docker-server=registry.certheim.com \
   --docker-username=<span class="var">YOUR-LICENSE-ID</span> --docker-password=<span class="var">YOUR-PULL-TOKEN</span></pre></div>
       <div class="term"><div class="bar"><span>certinel-values.yaml</span><button class="dl" data-file="certinel-values.yaml">Download</button><button class="copy">Copy</button></div>
 <pre data-tpl="k8svalues"></pre></div>
@@ -534,10 +534,10 @@ sudo systemctl restart certinel-api</pre></div>
 
   // Plain-text helpers for generated, downloadable files (no HTML markup).
   function val(v, placeholder){ return v && v.trim() ? v.trim() : placeholder; }
-  // Per-edition entitled repository: registry.ac2certinel.com/certinel/<edition>.
+  // Per-edition entitled repository: registry.certheim.com/certinel/<edition>.
   // The pull token minted with your license is scoped to your edition (and lower
   // tiers), so the image path must match the edition you selected.
-  function imageRepo(){ return "registry.ac2certinel.com/certinel/" + st.edition; }
+  function imageRepo(){ return "registry.certheim.com/certinel/" + st.edition; }
   function imageRef(){ return imageRepo() + ":latest"; }
   function dbUrlPlain(){ return val(st.dburl, "postgresql://certinel:CHANGE_ME@db.example.com:5432/certinel"); }
 

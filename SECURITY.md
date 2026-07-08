@@ -6,7 +6,7 @@ to respond quickly.
 
 ## Reporting a vulnerability
 
-**Email:** security@ac2certinel.com
+**Email:** security@certheim.com
 
 If you believe the report is sensitive, request our PGP key in your first
 message and we will provide one for encrypted follow-up.
@@ -55,7 +55,7 @@ faith:
 - give us a reasonable time to remediate before public disclosure.
 
 Activity consistent with this policy is considered authorized. If in doubt about
-whether something is in scope, ask first at security@ac2certinel.com.
+whether something is in scope, ask first at security@certheim.com.
 
 ## Scope
 

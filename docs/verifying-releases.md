@@ -16,14 +16,14 @@ regulated deployment.
 ## Container images
 
 Public images live at `docker.io/ac2solutions/certheim`. Licensed customers pull
-the same attested images from the entitled registry `registry.ac2certinel.com`,
+the same attested images from the entitled registry `registry.certheim.com`,
 where each edition has its **own repository** so a pull token only reaches the
 edition (and lower tiers) its license entitles:
 
-- **Entitled registry** — `registry.ac2certinel.com/certinel/<edition>`
+- **Entitled registry** — `registry.certheim.com/certinel/<edition>`
   (`community` / `commercial` / `government`), tags `:vX.Y.Z` (immutable) and
   `:latest` (+ `:vX.Y.Z-slim` / `:slim`). Auth: `docker login
-  registry.ac2certinel.com` with your **license id** as the username and **pull
+  registry.certheim.com` with your **license id** as the username and **pull
   token** as the password.
 - **Docker Hub mirror** — `docker.io/ac2solutions/certheim`, single repo with the
   edition in the tag: `:<edition>-vX.Y.Z` (immutable), `:<edition>-latest`
@@ -79,7 +79,7 @@ docker buildx imagetools inspect \
 > **Note:** if `imagetools inspect` reports no SBOM/provenance, the image was
 > built by the buildah fallback path (BuildKit unavailable on the runner at
 > build time) rather than the attested path. Prefer a tag whose attestations are
-> present, or contact support@ac2certinel.com.
+> present, or contact sales@certheim.com.
 
 ---
 
@@ -95,7 +95,7 @@ sha256sum certheim-offline-<version>.tar.gz
 
 A mismatch means the file was truncated, tampered with, or corrupted in
 transit — do not install it; re-download and report a persistent mismatch to
-security@ac2certinel.com.
+security@certheim.com.
 
 ---
 
