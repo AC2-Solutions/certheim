@@ -27,3 +27,7 @@ CHANGELOG.md              merge=union
 # if a Community change to build_mode.py ever conflicts on the EDITION line,
 # resolve it by KEEPING THE TARGET BRANCH'S edition value (commercial stays
 # "commercial", government stays "government"). See RELEASING.md.
+
+# Each edition keeps its OWN LICENSE on bottom-up propagation (Community=AGPL,
+# Commercial/Government=proprietary). AC2 Solutions owns all copyright (dual-license).
+/LICENSE merge=ours

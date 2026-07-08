@@ -1,0 +1,16 @@
+# Certheim gitleaks config. Extends the default ruleset with an allowlist for
+# known-safe test fixtures and documentation placeholders — verified 2026-07-08
+# to contain NO real secrets. The CI GitHub-mirror job runs gitleaks with this
+# config as a hard gate before publishing Community source publicly.
+[extend]
+useDefault = true
+
+[[allowlist]]
+description = "Test fixtures + doc placeholders (no real secrets; verified)"
+paths = [
+  '''tests/test_sealed_keystore\.py''',
+  '''tests/test_sealed_store\.py''',
+  '''tests/test_smoke\.py''',
+  '''tests/test_support_bundle\.py''',
+  '''frontend/index\.html''',   # EST doc example: `curl -u est:SECRET` (literal placeholder)
+]
