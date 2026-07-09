@@ -1,5 +1,30 @@
 # Certheim Community edition — changelog
 
+## 5.1.0 — 2026-07-09
+
+_Released 2026-07-09. 1 change since community-v5.0.1._
+
+### Features
+
+- **rename-p1:** dual-read CERTHEIM_* env vars alongside legacy CSR_*/CERTINEL_* (`fce4366c`)
+  Phase 1 of the certinel->certheim internal rename (docs/certheim-rename-design.md section 2): the
+  app now reads every configuration variable under BOTH its canonical new spelling (CERTHEIM_*) and
+  its legacy spelling (CSR_*/CERTINEL_*), canonical winning when both are set — so Phase 2's renamed
+  code and Phase 3's migrated env files can land in any order without breaking a running install.
+  - backend/envcompat.py: stdlib-only getenv() shim; maps CSR_X/CERTINEL_X <-> CERTHEIM_X (the two
+    legacy namespaces never cross-consult). Removed in Phase 5.
+  - all 41 direct os.environ.get("CSR_*"/"CERTINEL_*") call sites across 8 backend modules ->
+    envcompat.getenv(); sign.py _cfg() (the ~20 indirect signing/ACME vars) and
+    capabilities._flag() (CSR_CAP_* concat) covered too.
+  - app.py _load_env_file(): the merged env-file dict gains the same overlay, so a CERTHEIM_-
+    spelled key in certinel.env or the environment satisfies its legacy twin.
+  - deploy.sh MANIFEST + verify.sh manifest ship the new module (a deploy without it would
+    ImportError).
+  - tests/test_envcompat.py (priority, fallback, namespace isolation, CAP concat) added to both CI
+    smoke jobs.
+  Verified: full smoke suite 83 passed locally; call-site equivalence proven for capabilities._flag
+  and the db path expression under legacy vs canonical env.
+
 ## 5.0.1 — 2026-07-09
 
 _Released 2026-07-09. 12 changes since community-v5.0.0._
