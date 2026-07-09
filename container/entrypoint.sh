@@ -22,12 +22,12 @@ export CERTHEIM_CONTAINER="${CERTHEIM_CONTAINER:-${CERTINEL_CONTAINER:-1}}"
 # keep reading the mounted data rather than starting empty at the new default.
 if [ -e /var/lib/certinel/jobs.db ] && [ ! -e /var/lib/certheim/jobs.db ] \
    && [ -z "${CERTHEIM_DB_PATH:-}" ]; then
-    export CSR_DB_PATH="/var/lib/certinel/jobs.db"
+    export CERTHEIM_DB_PATH="/var/lib/certinel/jobs.db"
     echo "certheim: legacy volume detected - using /var/lib/certinel/jobs.db (remount at /var/lib/certheim when convenient)"
 fi
 if [ -d /var/opt/certinel/issued ] && [ ! -d /var/opt/certheim/issued ] \
    && [ -z "${CERTHEIM_ISSUED_DIR:-}" ]; then
-    export CSR_ISSUED_DIR="/var/opt/certinel/issued"
+    export CERTHEIM_ISSUED_DIR="/var/opt/certinel/issued"
 fi
 cd /opt/certheim
 
