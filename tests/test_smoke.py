@@ -272,9 +272,9 @@ def test_keystore_vault_store_shreds_host(client, monkeypatch):
     assert "host.example.key" in deleted           # host copy shredded
     assert store.get("ks-job-1") == "PEMKEY"        # now in the vault
     last = dict(sets[-1][1])
-    assert last["key_vault_path"] == "certinel-keys/ks-job-1" and last["key_storage"] == "vault"
+    assert last["key_vault_path"] == "certheim/_shared/keys/ks-job-1" and last["key_storage"] == "vault"
     with appmod.app.app_context():
-        pem = keystore.fetch_for_job({"id": "ks-job-1", "key_vault_path": "certinel-keys/ks-job-1",
+        pem = keystore.fetch_for_job({"id": "ks-job-1", "key_vault_path": "certheim/_shared/keys/ks-job-1",
                                       "key_storage": "vault"})
     assert pem == "PEMKEY"                           # retrieval comes from the vault
 
@@ -288,7 +288,7 @@ def test_keystore_return_once_destroys_on_read(client, monkeypatch):
     monkeypatch.setattr(keystore, "_destroy", lambda jid: destroyed.append(jid))
     monkeypatch.setattr(keystore, "_set_job", lambda jid, **c: sets.append((jid, c)))
     with appmod.app.app_context():
-        pem = keystore.fetch_for_job({"id": "ks-job-2", "key_vault_path": "certinel-keys/ks-job-2",
+        pem = keystore.fetch_for_job({"id": "ks-job-2", "key_vault_path": "certheim/_shared/keys/ks-job-2",
                                       "key_storage": "return_once"})
     assert pem == "PEM1" and destroyed == ["ks-job-2"]
     assert any(c.get("key_vault_path") is None for _, c in sets)
@@ -385,7 +385,7 @@ def test_keystore_migrate_host_keys(client, monkeypatch):
     with appmod.app.app_context(), appmod.db() as conn:
         vp = conn.execute("SELECT key_vault_path FROM jobs WHERE id=?", ("mig-job-1",)).fetchone()[0]
         conn.execute("DELETE FROM jobs WHERE id=?", ("mig-job-1",))
-    assert vp == "certinel-keys/mig-job-1"
+    assert vp == "certheim/_shared/keys/mig-job-1"
 
 
 def test_fips_status_and_required(client):
