@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""certinel-set-auth - set authentication settings in the Certheim database.
+"""certheim-set-auth - set authentication settings in the Certheim database.
 
 Sets rows in the app_settings table (the same store the app reads via
 get_setting). Used by the installer to configure password-auth mode on a box
 without CAC mTLS, and usable by an admin from the CLI.
 
 Usage:
-  certinel-set-auth --mode local --domain example.com [--require-approval]
-  certinel-set-auth --mode mtls
-  certinel-set-auth --show
+  certheim-set-auth --mode local --domain example.com [--require-approval]
+  certheim-set-auth --mode mtls
+  certheim-set-auth --show
 
-The DB must already exist (start certinel-api once so the schema is created).
+The DB must already exist (start certheim-api once so the schema is created).
 """
 import argparse
 import os
@@ -20,20 +20,20 @@ import sys
 
 
 def _db_path():
-    val = os.environ.get("CSR_DB_PATH")
+    val = os.environ.get("CERTHEIM_DB_PATH")
     if not val:
-        env = os.environ.get("CERTINEL_ENV",
-                             "/etc/certinel/certinel.env")
+        env = os.environ.get("CERTHEIM_ENV",
+                             "/etc/certheim/certheim.env")
         try:
             with open(env) as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith("CSR_DB_PATH="):
+                    if line.startswith("CERTHEIM_DB_PATH="):
                         val = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
         except OSError:
             pass
-    return val or "/var/lib/certinel/jobs.db"
+    return val or "/var/lib/certheim/jobs.db"
 
 
 def _set(conn, key, value):
@@ -59,7 +59,7 @@ def main():
     db = _db_path()
     if not os.path.exists(db):
         print(f"ERROR: database not found at {db}", file=sys.stderr)
-        print("Start certinel-api once so the schema is created, then re-run.",
+        print("Start certheim-api once so the schema is created, then re-run.",
               file=sys.stderr)
         return 1
 

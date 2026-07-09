@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""certinel-issue-license - mint a signed Certheim license (VENDOR-side tool).
+"""certheim-issue-license - mint a signed Certheim license (VENDOR-side tool).
 
 Run ONLY on the machine that holds the vendor RSA private signing key - never on
 a customer/product box. The matching public key is embedded in the app
 (backend/licensing.py), which verifies the license offline.
 
-  ./tools/certinel-issue-license --key vendor-private.pem \
+  ./tools/certheim-issue-license --key vendor-private.pem \
       --customer "Acme Gov Agency" --edition government \
       --entitlements profiles.public_sector --days 365
 
 Prints the license blob (base64url(payload).base64url(signature)) to stdout.
 Deliver that string to the customer; they install it via Admin -> License (or
-drop it at the path named by CSR_LICENSE_FILE).
+drop it at the path named by CERTHEIM_LICENSE_FILE).
 """
 import argparse
 import base64

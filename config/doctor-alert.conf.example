@@ -1,7 +1,7 @@
-# Certheim doctor email alerts (Mailgun) - copy to /etc/certinel/doctor-alert.conf
+# Certheim doctor email alerts (Mailgun) - copy to /etc/certheim/doctor-alert.conf
 # and chmod 0600 root:root (it holds an API key).
 #
-# The certinel-doctor.timer runs the health check every ~15 min regardless; this
+# The certheim-doctor.timer runs the health check every ~15 min regardless; this
 # file only adds EMAIL on failure. Leave the three required values blank to keep
 # checks journal-only (no email). State-based: alerts on a healthy->FAIL change,
 # re-sends every RENOTIFY_HOURS while still failing, and sends a RECOVERED notice.
@@ -22,8 +22,8 @@ MAILGUN_DOMAIN=
 #MAILGUN_DOMAIN_FIELD=domain
 
 # --- optional ---
-# From header (default: "Certheim Monitor <certinel@$MAILGUN_DOMAIN>")
-#MAILGUN_FROM=Certheim Monitor <certinel@mg.example.com>
+# From header (default: "Certheim Monitor <certheim@$MAILGUN_DOMAIN>")
+#MAILGUN_FROM=Certheim Monitor <certheim@mg.example.com>
 # Mailgun region base URL (default US). EU accounts:
 #MAILGUN_BASE=https://api.eu.mailgun.net/v3
 # Hours between repeat alerts while a host stays unhealthy (default 24)

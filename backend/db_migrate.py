@@ -1,14 +1,14 @@
 """db_migrate.py - copy all data between Certheim database backends.
 
 Moves an existing deployment's data from SQLite onto PostgreSQL (or back) without
-loss - driven by the CLI `tools/certinel-db-migrate` or the admin Database page.
+loss - driven by the CLI `tools/certheim-db-migrate` or the admin Database page.
 The target SCHEMA is created by app.init_db() (run against the target first);
 this module copies the ROWS. The schema declares no foreign-key constraints, so
 a straight table-by-table copy is safe (no dependency ordering needed).
 
 A backend is named by a spec string:
-  * SQLite   : "sqlite:/var/lib/certinel/jobs.db"
-  * Postgres : a libpq DSN, e.g. "postgresql://user:pw@host:5432/certinel"
+  * SQLite   : "sqlite:/var/lib/certheim/jobs.db"
+  * Postgres : a libpq DSN, e.g. "postgresql://user:pw@host:5432/certheim"
 """
 import sqlite3
 

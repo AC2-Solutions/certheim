@@ -20,7 +20,7 @@ set -uo pipefail
 BASE="${BASE:?set BASE, e.g. https://clm.ac2.lan/csr}"
 ADMIN_USER="${ADMIN_USER:?set ADMIN_USER}"
 ADMIN_PASS="${ADMIN_PASS:?set ADMIN_PASS}"
-CURL="curl -sk --max-time 30 -H X-Requested-With:certinel"
+CURL="curl -sk --max-time 30 -H X-Requested-With:certheim"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0
 # unique, charset-safe suffixes (no Date/RANDOM dependency). NAME_RE is

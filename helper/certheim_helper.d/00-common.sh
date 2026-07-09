@@ -1,16 +1,16 @@
 #!/bin/bash
 # 00-common.sh - paths, audit logging, generic file operations.
-# Sourced by certinel_helper.sh; never executed directly.
+# Sourced by certheim_helper.sh; never executed directly.
 
 # Certheim paths. The helper + its transient key scratch live off /root now
 # (Phase 4b) so the systemd sandbox can mask /home + /root. Data under /var/opt,
 # the helper under /opt; KEYDIR is a brief scratch (keys go to the vault).
-CERTLIST_RHEL="/var/opt/certinel/certlist-rhel"
-GEN_RHEL="/opt/certinel/helper/csr-rhel.sh"      # legacy generate-rhel (unused)
-# Certheim data root (FHS /var/opt). Must match the app's CSR_ISSUED_DIR.
-CSRDIR="/var/opt/certinel/requests"
-KEYDIR="/var/opt/certinel/private"
-ISSUED_DIR="/var/opt/certinel/issued"
+CERTLIST_RHEL="/var/opt/certheim/certlist-rhel"
+GEN_RHEL="/opt/certheim/helper/csr-rhel.sh"      # legacy generate-rhel (unused)
+# Certheim data root (FHS /var/opt). Must match the app's CERTHEIM_ISSUED_DIR.
+CSRDIR="/var/opt/certheim/requests"
+KEYDIR="/var/opt/certheim/private"
+ISSUED_DIR="/var/opt/certheim/issued"
 
 # ----- Subject DN applied to every generated CSR -----
 # Rendered in this order (C, ST, L, O, OUs...), then CN last. These are
@@ -36,7 +36,7 @@ SUBJECT_DOMAIN_ALTS=()
 SUBJECT_XDN=()
 SUBJECT_XSANS=()
 
-audit() { /usr/bin/logger -p authpriv.notice -t certinel-helper -- "$@"; }
+audit() { /usr/bin/logger -p authpriv.notice -t certheim-helper -- "$@"; }
 
 # Admin-configured subject override, written by the dashboard via the
 # `write-subject` subcommand. PARSED as simple KEY=VALUE (NOT sourced - this
@@ -101,7 +101,7 @@ apply_domain_choice() {
     else audit "domain_override deny value=$choice"; fi
 }
 # Env path kept for tests / non-sudo callers (sudo strips it in production).
-[[ -n "${CERTINEL_DOMAIN_SUFFIX:-}" ]] && apply_domain_choice "$CERTINEL_DOMAIN_SUFFIX"
+[[ -n "${CERTHEIM_DOMAIN_SUFFIX:-}" ]] && apply_domain_choice "$CERTHEIM_DOMAIN_SUFFIX"
 
 # --- container-safe ownership -------------------------------------------------
 # On a VM the helper runs as root (sudo) and installs files root:root. In

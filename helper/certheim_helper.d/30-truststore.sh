@@ -1,6 +1,6 @@
 #!/bin/bash
 # 30-truststore.sh - install the Certheim CA trust bundle into THIS host's OS
-# trust store. Sourced by certinel_helper.sh; never executed directly.
+# trust store. Sourced by certheim_helper.sh; never executed directly.
 #
 # install_ca_bundle reads a PEM bundle (one or more CA certs) on stdin and adds
 # it to the host trust anchors, auto-detecting the platform tool:
@@ -9,11 +9,11 @@
 #                  update-ca-certificates
 # Only CA certificates belong here; the app validates that before calling us.
 
-TRUST_ANCHOR_NAME="certinel-trust-bundle.crt"
+TRUST_ANCHOR_NAME="certheim-trust-bundle.crt"
 
 install_ca_bundle() {
     local tmp
-    tmp="$(mktemp /tmp/certinel-trust.XXXXXX)"
+    tmp="$(mktemp /tmp/certheim-trust.XXXXXX)"
     # Cap the input and require at least one PEM cert block.
     head -c 1048576 > "$tmp"
     if ! grep -q "BEGIN CERTIFICATE" "$tmp"; then
@@ -30,8 +30,8 @@ install_ca_bundle() {
         audit "install_ca_bundle ok tool=update-ca-trust"
         echo "installed via update-ca-trust"
     elif command -v update-ca-certificates >/dev/null 2>&1; then
-        rm -f /usr/local/share/ca-certificates/certinel-trust-*.crt
-        awk '/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certinel-trust-" n ".crt")}' "$tmp"
+        rm -f /usr/local/share/ca-certificates/certheim-trust-*.crt
+        awk '/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certheim-trust-" n ".crt")}' "$tmp"
         rm -f "$tmp"
         update-ca-certificates
         audit "install_ca_bundle ok tool=update-ca-certificates"

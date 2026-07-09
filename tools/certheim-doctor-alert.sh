@@ -1,18 +1,18 @@
 #!/bin/bash
-# certinel-doctor-alert.sh - run certinel-doctor and email on failure (Mailgun).
+# certheim-doctor-alert.sh - run certheim-doctor and email on failure (Mailgun).
 #
-# Driven by the certinel-doctor.timer (every ~15m). State-based so it doesn't
+# Driven by the certheim-doctor.timer (every ~15m). State-based so it doesn't
 # spam: it emails on a healthy->FAIL transition, re-sends every RENOTIFY_HOURS
 # while still failing, and sends a one-shot RECOVERED notice on FAIL->healthy.
-# Config in /etc/certinel/doctor-alert.conf (see config/doctor-alert.conf.example).
+# Config in /etc/certheim/doctor-alert.conf (see config/doctor-alert.conf.example).
 # With no Mailgun config it still runs the check and logs to the journal - the
 # email is purely additive, so the timer is safe to enable everywhere.
 set -uo pipefail
 
-CONF=/etc/certinel/doctor-alert.conf
-STATE=/var/lib/certinel/.doctor-alert-state
-DOCTOR=/usr/local/sbin/certinel-doctor
-[[ -x "$DOCTOR" ]] || DOCTOR="$(cd "$(dirname "$0")" && pwd)/certinel-doctor.sh"
+CONF=/etc/certheim/doctor-alert.conf
+STATE=/var/lib/certheim/.doctor-alert-state
+DOCTOR=/usr/local/sbin/certheim-doctor
+[[ -x "$DOCTOR" ]] || DOCTOR="$(cd "$(dirname "$0")" && pwd)/certheim-doctor.sh"
 [[ -r "$CONF" ]] && . "$CONF"
 # Optionally pull the Mailgun key/domain from OpenBao/Vault at RUNTIME so rotating
 # the secret is a single 'bao kv put' with no redeploy. Set MAILGUN_OPENBAO_PATH
@@ -25,7 +25,7 @@ fi
 RENOTIFY_HOURS="${RENOTIFY_HOURS:-24}"
 MAILGUN_BASE="${MAILGUN_BASE:-https://api.mailgun.net/v3}"
 HOST="$(hostname -f 2>/dev/null || hostname)"
-log() { logger -t certinel-doctor-alert -- "$*"; }
+log() { logger -t certheim-doctor-alert -- "$*"; }
 
 out="$("$DOCTOR" --quiet 2>&1)"; rc=$?
 now="$(date +%s)"
@@ -39,7 +39,7 @@ send_mail() {
     fi
     if curl -s --max-time 20 --user "api:${MAILGUN_API_KEY}" \
             "${MAILGUN_BASE}/${MAILGUN_DOMAIN}/messages" \
-            -F from="${MAILGUN_FROM:-Certheim Monitor <certinel@${MAILGUN_DOMAIN}>}" \
+            -F from="${MAILGUN_FROM:-Certheim Monitor <certheim@${MAILGUN_DOMAIN}>}" \
             -F to="${ALERT_EMAIL}" -F subject="$subj" -F text="$body" >/dev/null; then
         log "email sent: $subj"
     else
@@ -50,18 +50,18 @@ send_mail() {
 if [[ $rc -ne 0 ]]; then
     if [[ "$prev_status" != fail ]] || (( now - prev_alert >= RENOTIFY_HOURS * 3600 )); then
         send_mail "[Certheim] UNHEALTHY: ${HOST}" \
-"certinel-doctor found problems on ${HOST} at $(date).
+"certheim-doctor found problems on ${HOST} at $(date).
 
 ${out}
 
-SSH in and run 'sudo certinel-doctor' for full detail."
+SSH in and run 'sudo certheim-doctor' for full detail."
         prev_alert="$now"
     fi
     log "health=FAIL (rc=$rc)"
     printf 'fail|%s\n' "$prev_alert" > "$STATE"
 else
     if [[ "$prev_status" == fail ]]; then
-        send_mail "[Certheim] RECOVERED: ${HOST}" "certinel-doctor is healthy again on ${HOST} at $(date)."
+        send_mail "[Certheim] RECOVERED: ${HOST}" "certheim-doctor is healthy again on ${HOST} at $(date)."
     fi
     printf 'ok|0\n' > "$STATE"
 fi

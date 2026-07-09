@@ -1,7 +1,7 @@
 #!/bin/bash
 # 20-generate.sh - the generate_typed pipeline: read certlist, validate each
 # CN against the requested type combo, build per-entry openssl config,
-# generate key+CSR. Sourced by certinel_helper.sh.
+# generate key+CSR. Sourced by certheim_helper.sh.
 
 generate_typed() {
     local types_input="${1:-}"

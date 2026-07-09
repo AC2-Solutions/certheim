@@ -32,7 +32,7 @@ import import_certs
 
 # Where update-ca-trust extracts anchors from on RHEL-family hosts; the Debian
 # equivalent dir + tool are auto-detected at install time (see _INSTALL_SNIPPET).
-ANCHOR_NAME = "certinel-trust-bundle.crt"
+ANCHOR_NAME = "certheim-trust-bundle.crt"
 
 # A target hostname is interpolated into an SSH command, so it must be a plain
 # host/FQDN with no shell-significant characters.
@@ -252,8 +252,8 @@ def _install_body(src):
         '  install -m0644 ' + src + ' "/etc/pki/ca-trust/source/anchors/' + ANCHOR_NAME + '"; '
         '  update-ca-trust extract; '
         'elif command -v update-ca-certificates >/dev/null 2>&1; then '
-        '  rm -f /usr/local/share/ca-certificates/certinel-trust-*.crt; '
-        '  awk \'/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certinel-trust-" n ".crt")}\' ' + src + '; '
+        '  rm -f /usr/local/share/ca-certificates/certheim-trust-*.crt; '
+        '  awk \'/BEGIN CERT/{n++} {print > ("/usr/local/share/ca-certificates/certheim-trust-" n ".crt")}\' ' + src + '; '
         '  update-ca-certificates; '
         'else echo "no supported trust tool (update-ca-trust/update-ca-certificates)" >&2; exit 1; fi; '
         'rm -f ' + src)
@@ -299,7 +299,7 @@ def push_ssh(host):
         kf.write(key if key.endswith("\n") else key + "\n")
         kf.close()
         os.chmod(kf.name, 0o600)
-        # UserKnownHostsFile=/dev/null: the certinel-api unit runs ProtectHome=true,
+        # UserKnownHostsFile=/dev/null: the certheim-api unit runs ProtectHome=true,
         # so the service user's ~/.ssh is masked and ssh can't persist known_hosts
         # anyway. Pair it with accept-new so a fresh host key is taken on first use.
         ssh = ["ssh", "-i", kf.name, "-p", port,
@@ -311,7 +311,7 @@ def push_ssh(host):
         # mktemp's its own file, installs, and cleans up - all in a single shell
         # so the temp path is consistent (an earlier two-call form let $$ differ
         # between the write and the install).
-        remote = ('set -e; T="$(mktemp /tmp/certinel-trust.XXXXXX)"; '
+        remote = ('set -e; T="$(mktemp /tmp/certheim-trust.XXXXXX)"; '
                   'umask 077; cat > "$T"; ' + _install_body('"$T"'))
         p = subprocess.run(
             ssh + [sudo + "bash -c " + _shquote(remote)],

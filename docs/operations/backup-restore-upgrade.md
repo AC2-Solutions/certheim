@@ -4,15 +4,15 @@ Certheim holds two kinds of state that must survive an incident:
 
 1. **The database** — jobs, users, groups, templates, all `app_settings` (auth
    mode, signing config, license, the *encrypted* sealed-keystore blobs), and the
-   audit log. SQLite (`CSR_DB_PATH`, default `/var/lib/certinel/jobs.db`) or
-   PostgreSQL (`CSR_DB_URL`).
+   audit log. SQLite (`CERTHEIM_DB_PATH`, default `/var/lib/certheim/jobs.db`) or
+   PostgreSQL (`CERTHEIM_DB_URL`).
 2. **The sealed-keystore unseal material** — the passphrase / recovery code /
    Shamir shares that unlock the encrypted keystore. **This is NOT in the
    database** (that's the whole point). Without it, a restored database's sealed
    secrets — the Local CA key, SCEP RA key, code-signing/TSA keys — cannot be
    decrypted. Store it separately, offline.
 
-Everything else (issued cert files under `CSR_ISSUED_DIR`, the license) is either
+Everything else (issued cert files under `CERTHEIM_ISSUED_DIR`, the license) is either
 reproducible or captured in the database.
 
 > **The one rule:** a database backup + the unseal material = full recovery.
@@ -28,20 +28,20 @@ reproducible or captured in the database.
 
 | Item | Where | How |
 |---|---|---|
-| Database | `CSR_DB_PATH` (SQLite) or Postgres | `certinel-backup` (SQLite) / `pg_dump` (Postgres) |
+| Database | `CERTHEIM_DB_PATH` (SQLite) or Postgres | `certheim-backup` (SQLite) / `pg_dump` (Postgres) |
 | Sealed-keystore escrow (**CA key survival**) | in-app | Admin → **Encrypted keystore → Export backup** (choose a passphrase) — a self-contained bundle restorable on *any* Certheim |
 | Unseal material | admin-held | recorded at keystore init; keep offline |
-| License | `app_settings` (in the DB) or `CSR_LICENSE_FILE` | captured by the DB backup; re-mintable from the licenses portal |
-| Issued cert files | `CSR_ISSUED_DIR` | optional — certs are also stored per-job in the DB |
+| License | `app_settings` (in the DB) or `CERTHEIM_LICENSE_FILE` | captured by the DB backup; re-mintable from the licenses portal |
+| Issued cert files | `CERTHEIM_ISSUED_DIR` | optional — certs are also stored per-job in the DB |
 
 ### VM / systemd (SQLite)
 
 ```bash
-sudo certinel-backup            # snapshot -> /root/certinel-backup-<ts>/
-sudo certinel-backup --list
+sudo certheim-backup            # snapshot -> /root/certheim-backup-<ts>/
+sudo certheim-backup --list
 ```
 
-`certinel-backup` uses SQLite's online `.backup` (WAL-consistent, no downtime),
+`certheim-backup` uses SQLite's online `.backup` (WAL-consistent, no downtime),
 captures the deployment config files + license, and prints the exact restore
 commands. **Also export the sealed-keystore escrow** from the admin UI and store
 it with (but not next to) the backup.
@@ -49,19 +49,19 @@ it with (but not next to) the backup.
 ### PostgreSQL
 
 ```bash
-pg_dump "$CSR_DB_URL" -Fc -f certinel-$(date +%F).dump      # custom format
-# restore: pg_restore --clean --if-exists -d "$CSR_DB_URL" certinel-<date>.dump
+pg_dump "$CERTHEIM_DB_URL" -Fc -f certheim-$(date +%F).dump      # custom format
+# restore: pg_restore --clean --if-exists -d "$CERTHEIM_DB_URL" certheim-<date>.dump
 ```
 
 ### Container / Kubernetes
 
-State lives on the PVC (`certinel-<edition>-db`). Back it up with your cluster's
+State lives on the PVC (`certheim-<edition>-db`). Back it up with your cluster's
 volume-snapshot tooling, **or** exec the same logic:
 
 ```bash
-kubectl -n certinel-app exec deploy/certinel-app -c app -- \
-  sqlite3 /var/lib/certinel/jobs.db ".backup '/tmp/jobs.db.bak'"
-kubectl -n certinel-app cp certinel-app/<pod>:/tmp/jobs.db.bak ./jobs.db.bak -c app
+kubectl -n certheim-app exec deploy/certheim-app -c app -- \
+  sqlite3 /var/lib/certheim/jobs.db ".backup '/tmp/jobs.db.bak'"
+kubectl -n certheim-app cp certheim-app/<pod>:/tmp/jobs.db.bak ./jobs.db.bak -c app
 ```
 
 The license + registry pull cred are ExternalSecrets synced from OpenBao — they
@@ -80,16 +80,16 @@ recover from OpenBao, not from the PVC (see the gitops repo).
 ### VM / systemd
 
 ```bash
-sudo certinel-restore /root/certinel-backup-<ts>.tar.gz
+sudo certheim-restore /root/certheim-backup-<ts>.tar.gz
 ```
 
-`certinel-restore` stops the service, puts back config + systemd units + sudoers
+`certheim-restore` stops the service, puts back config + systemd units + sudoers
 + on-disk keys, restores the database (SQLite copy or `pg_restore` — it reads the
 backup to decide which), fixes ownership/SELinux, and starts the service. It does
 **not** reinstall application code — install the matching release first (the
 backup's `BACKUP-MANIFEST.txt` records the version). To restore the DB by hand
-instead: stop `certinel-api`, copy `db/jobs.db` from the backup tree over
-`$CSR_DB_PATH`, remove the stale `-wal`/`-shm` sidecars, `chown certinel:` +
+instead: stop `certheim-api`, copy `db/jobs.db` from the backup tree over
+`$CERTHEIM_DB_PATH`, remove the stale `-wal`/`-shm` sidecars, `chown certheim:` +
 `chmod 0640`, restart.
 
 Then in the admin UI: **Encrypted keystore → Unseal** with your material (or
@@ -114,7 +114,7 @@ preserved and never rewritten destructively.
 
 1. **Back up first** (above). Non-negotiable.
 2. Deploy the new version:
-   - **VM:** sync the new files / package, `sudo systemctl restart certinel-api`.
+   - **VM:** sync the new files / package, `sudo systemctl restart certheim-api`.
    - **Container/k8s:** roll to the new image tag (pin the immutable
      `<edition>-vX.Y.Z` for a verified deploy — see `docs/verifying-releases.md`)
      and `kubectl rollout restart deploy/<name>`.
@@ -136,7 +136,7 @@ escrow (or unseal material).
 
 1. **Fresh install** of the *same or newer* Certheim version (newer is fine —
    it migrates the restored DB forward).
-2. **Restore the database** into the new instance's `CSR_DB_PATH` / Postgres
+2. **Restore the database** into the new instance's `CERTHEIM_DB_PATH` / Postgres
    (above). This brings back every setting, template, user, group, job, and the
    *encrypted* sealed blobs.
 3. **Recover the keystore:**

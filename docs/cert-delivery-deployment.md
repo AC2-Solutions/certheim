@@ -17,15 +17,15 @@ Providers covered: **`openbao`** (write the cert bundle to Vault KV) and **`ssh`
   token:
   ```bash
   # on the dashboard host, using its env creds:
-  source /etc/certinel/certinel.env
-  TOK=$(curl -s --cacert "$CSR_OPENBAO_CA_FILE" -X POST \
-    "$CSR_OPENBAO_ADDR/v1/auth/approle/login" \
-    -d "{\"role_id\":\"$CSR_OPENBAO_ROLE_ID\",\"secret_id\":\"$CSR_OPENBAO_SECRET_ID\"}" \
+  source /etc/certheim/certheim.env
+  TOK=$(curl -s --cacert "$CERTHEIM_OPENBAO_CA_FILE" -X POST \
+    "$CERTHEIM_OPENBAO_ADDR/v1/auth/approle/login" \
+    -d "{\"role_id\":\"$CERTHEIM_OPENBAO_ROLE_ID\",\"secret_id\":\"$CERTHEIM_OPENBAO_SECRET_ID\"}" \
     | python3 -c 'import json,sys;print(json.load(sys.stdin)["auth"]["client_token"])')
-  curl -s --cacert "$CSR_OPENBAO_CA_FILE" -H "X-Vault-Token: $TOK" \
-    "$CSR_OPENBAO_ADDR/v1/auth/token/lookup-self" | python3 -m json.tool | grep -E 'role_name|policies'
+  curl -s --cacert "$CERTHEIM_OPENBAO_CA_FILE" -H "X-Vault-Token: $TOK" \
+    "$CERTHEIM_OPENBAO_ADDR/v1/auth/token/lookup-self" | python3 -m json.tool | grep -E 'role_name|policies'
   ```
-  In the AC2 reference deployment the role is **`certinel`**; substitute
+  In the AC2 reference deployment the role is **`certheim`**; substitute
   `<ROLE>` below.
 - A KV **v2** secrets engine (default mount `secret`). The provider writes to
   `secret/csr-certs/<host>` and (for ssh) reads `secret/csr-delivery-ssh/<host>`.
@@ -137,7 +137,7 @@ un-revoked** (they don't auto-expire).
 ## 5. Dashboard configuration
 
 1. **Env (optional)** — override the KV mount/base if not the defaults
-   (`secret` / `csr-certs`) in `/etc/certinel/certinel.env`:
+   (`secret` / `csr-certs`) in `/etc/certheim/certheim.env`:
    ```
    # delivery_openbao_kv_mount and delivery_openbao_base are app_settings,
    # set in the admin UI or seeded here; defaults are secret / csr-certs.
@@ -150,7 +150,7 @@ un-revoked** (they don't auto-expire).
      `ssh`, the remote directory (blank = a sensible default; host = the cert's
      CN/`target_host`).
 3. The **`delivery.openbao` / `delivery.ssh` / `delivery.pull` / `delivery.k8s`**
-   capabilities are Commercial — a licensed (or `CSR_ENTITLEMENTS`-overridden)
+   capabilities are Commercial — a licensed (or `CERTHEIM_ENTITLEMENTS`-overridden)
    deployment.
 
 ---
@@ -220,12 +220,12 @@ Writes the cert to the Conjur variable named by **target**, and the key (when
 env-only:
 
 ```
-# /etc/certinel/certinel.env
-CSR_CYBERARK_URL=https://conjur.example.com
-CSR_CYBERARK_ACCOUNT=myConjurAccount
-CSR_CYBERARK_LOGIN=host/certinel
-CSR_CYBERARK_API_KEY=<api-key>
-# CSR_CYBERARK_CA_CERT=<pem>   # optional, pin Conjur's TLS
+# /etc/certheim/certheim.env
+CERTHEIM_CYBERARK_URL=https://conjur.example.com
+CERTHEIM_CYBERARK_ACCOUNT=myConjurAccount
+CERTHEIM_CYBERARK_LOGIN=host/certheim
+CERTHEIM_CYBERARK_API_KEY=<api-key>
+# CERTHEIM_CYBERARK_CA_CERT=<pem>   # optional, pin Conjur's TLS
 ```
 
 The Conjur host/identity needs `update` on those variables.
@@ -234,7 +234,7 @@ The Conjur host/identity needs `update` on those variables.
 
 ## 5d. Retry, backoff & alerting
 
-Delivery runs inline on issue and is retried by the **`certinel-deliver` timer**.
+Delivery runs inline on issue and is retried by the **`certheim-deliver` timer**.
 Failures back off exponentially (2 min → capped at 1 h) up to
 `delivery_max_attempts` (default 8); after that the job is **`abandoned`** and a
 **`job.delivery_failed`** event fires (wire it to chat/email/a webhook so a
@@ -246,7 +246,7 @@ short-lived cert can't lapse unnoticed). A successful delivery fires
 ## 6. Verify
 
 - Issue (or re-deliver) a cert under a delivery-enabled template. Delivery runs
-  inline on issue; the **`certinel-deliver` timer** (every 2 min) retries
+  inline on issue; the **`certheim-deliver` timer** (every 2 min) retries
   pending/failed.
 - **openbao:** `bao kv get secret/csr-certs/<host>` shows `certificate` (+
   `private_key` per key_mode).

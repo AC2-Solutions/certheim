@@ -1,0 +1,12 @@
+[Unit]
+Description=Certheim - deliver issued certificates to their destinations (retry pass)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=certheim
+Group=certheim
+WorkingDirectory=/opt/certheim
+EnvironmentFile=-/etc/certheim/certheim.env
+ExecStart=/opt/certheim/venv/bin/python3 -c 'import app; r = app.run_deliveries(); print(f"delivery: {r}")'
+Environment=PYTHONUNBUFFERED=1

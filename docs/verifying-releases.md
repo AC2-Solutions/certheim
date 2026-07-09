@@ -20,7 +20,7 @@ the same attested images from the entitled registry `registry.certheim.com`,
 where each edition has its **own repository** so a pull token only reaches the
 edition (and lower tiers) its license entitles:
 
-- **Entitled registry** — `registry.certheim.com/certinel/<edition>`
+- **Entitled registry** — `registry.certheim.com/certheim/<edition>`
   (`community` / `commercial` / `government`), tags `:vX.Y.Z` (immutable) and
   `:latest` (+ `:vX.Y.Z-slim` / `:slim`). Auth: `docker login
   registry.certheim.com` with your **license id** as the username and **pull
@@ -29,7 +29,7 @@ edition (and lower tiers) its license entitles:
   edition in the tag: `:<edition>-vX.Y.Z` (immutable), `:<edition>-latest`
   (moving), and `:latest` / `:slim` (newest Community).
 
-**Always pin an immutable tag for a verified deployment** — `certinel/<edition>:vX.Y.Z`
+**Always pin an immutable tag for a verified deployment** — `certheim/<edition>:vX.Y.Z`
 on the entitled registry, or `:<edition>-vX.Y.Z` on Docker Hub — a moving tag can
 advance under you between the check and the pull.
 
@@ -73,7 +73,7 @@ docker buildx imagetools inspect \
   docker.io/ac2solutions/certheim:commercial-v3.72.0 --format '{{ .Manifest.Digest }}'
 # -> sha256:...
 
-# then deploy   ...certinel@sha256:...
+# then deploy   ...certheim@sha256:...
 ```
 
 > **Note:** if `imagetools inspect` reports no SBOM/provenance, the image was

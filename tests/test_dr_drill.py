@@ -34,7 +34,7 @@ def test_sqlite_backup_restore_preserves_rows(tmp_path):
     c.executemany("INSERT INTO jobs VALUES (?,?,?)",
                   [(f"job{i}", f"h{i}.example.com", "pending") for i in range(50)])
     c.commit()
-    # online .backup (what certinel-backup uses) — WAL-consistent, no downtime
+    # online .backup (what certheim-backup uses) — WAL-consistent, no downtime
     dst = sqlite3.connect(bak)
     with dst:
         c.backup(dst)
@@ -71,11 +71,11 @@ def test_schema_migration_is_forward_and_nondestructive(tmp_path):
     # the service migrates on boot) AND keeps `app`/`db` out of this test
     # session — importing them here would bind the app's cached DB globals to
     # this temp file and poison a later session-scoped fixture (e.g. smoke).
-    env = dict(os.environ, CSR_DB_PATH=dbfile,
-               CERTINEL_ENV=str(tmp_path / "absent.env"))
+    env = dict(os.environ, CERTHEIM_DB_PATH=dbfile,
+               CERTHEIM_ENV=str(tmp_path / "absent.env"))
     r = subprocess.run(
         [sys.executable, "-c",
-         "import db_migrate; db_migrate.ensure_target_schema('sqlite://' + __import__('os').environ['CSR_DB_PATH'])"],
+         "import db_migrate; db_migrate.ensure_target_schema('sqlite://' + __import__('os').environ['CERTHEIM_DB_PATH'])"],
         cwd=BACKEND, env=env, capture_output=True, text=True)
     assert r.returncode == 0, f"migration failed: {r.stderr}"
 
@@ -112,7 +112,7 @@ def test_sealed_keystore_escrow_roundtrip(tmp_path, monkeypatch):
     settings_a, settings_b = {}, {}
     runtime = str(tmp_path / "rt")
     os.makedirs(runtime, exist_ok=True)
-    monkeypatch.setenv("CERTINEL_RUNTIME_DIR", runtime)
+    monkeypatch.setenv("CERTHEIM_RUNTIME_DIR", runtime)
 
     def mk(store_db, settings):
         @contextmanager

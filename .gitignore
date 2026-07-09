@@ -15,7 +15,7 @@ venv/
 
 # --- Local config (real values stay out of repo; templates with .example go in) ---
 config/email.conf
-config/certinel.env
+config/certheim.env
 config/*.local.*
 
 # --- Database snapshots and WAL files ---

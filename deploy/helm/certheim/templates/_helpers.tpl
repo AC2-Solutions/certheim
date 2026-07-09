@@ -41,44 +41,44 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- /* The environment shared by the app Deployment and the CronJob tasks. */ -}}
 {{- define "certheim.appEnv" -}}
-- name: CERTINEL_CONTAINER
+- name: CERTHEIM_CONTAINER
   value: "1"
 {{- if eq .Values.db.backend "postgres" }}
-- name: CSR_DB_URL
+- name: CERTHEIM_DB_URL
   valueFrom:
     secretKeyRef:
       name: {{ .Values.db.postgres.existingSecret | default (include "certheim.secretName" .) }}
-      key: CSR_DB_URL
+      key: CERTHEIM_DB_URL
 {{- else }}
-- name: CSR_DB_PATH
-  value: /var/lib/certinel/jobs.db
+- name: CERTHEIM_DB_PATH
+  value: /var/lib/certheim/jobs.db
 {{- end }}
 {{- if ne (.Values.license | default "") "" }}
-- name: CSR_LICENSE_FILE
-  value: /etc/certinel/secret/license
+- name: CERTHEIM_LICENSE_FILE
+  value: /etc/certheim/secret/license
 {{- end }}
 {{- if .Values.openbao.enabled }}
-- name: CSR_CAP_OPENBAO
+- name: CERTHEIM_CAP_OPENBAO
   value: "1"
-- name: CSR_OPENBAO_ADDR
+- name: CERTHEIM_OPENBAO_ADDR
   value: {{ .Values.openbao.addr | quote }}
-- name: CSR_OPENBAO_PKI_MOUNT
+- name: CERTHEIM_OPENBAO_PKI_MOUNT
   value: {{ .Values.openbao.pkiMount | quote }}
-- name: CSR_OPENBAO_ROLE
+- name: CERTHEIM_OPENBAO_ROLE
   value: {{ .Values.openbao.role | quote }}
-- name: CSR_OPENBAO_ROLE_ID
+- name: CERTHEIM_OPENBAO_ROLE_ID
   valueFrom:
     secretKeyRef:
       name: {{ .Values.openbao.existingSecret | default (include "certheim.secretName" .) }}
-      key: CSR_OPENBAO_ROLE_ID
-- name: CSR_OPENBAO_SECRET_ID
+      key: CERTHEIM_OPENBAO_ROLE_ID
+- name: CERTHEIM_OPENBAO_SECRET_ID
   valueFrom:
     secretKeyRef:
       name: {{ .Values.openbao.existingSecret | default (include "certheim.secretName" .) }}
-      key: CSR_OPENBAO_SECRET_ID
+      key: CERTHEIM_OPENBAO_SECRET_ID
 {{- if ne (.Values.openbao.caCert | default "") "" }}
-- name: CSR_OPENBAO_CA_FILE
-  value: /etc/certinel/secret/openbao-ca.pem
+- name: CERTHEIM_OPENBAO_CA_FILE
+  value: /etc/certheim/secret/openbao-ca.pem
 {{- end }}
 {{- end }}
 {{- range $k, $v := .Values.extraEnv }}

@@ -1,0 +1,11 @@
+[Unit]
+# Periodic Certheim health check (certheim-doctor) that emails on failure via
+# Mailgun. Config: /etc/certheim/doctor-alert.conf. Runs as root because the
+# doctor probes service-account traversal + SELinux labels. Driven by the timer.
+Description=Certheim health check + alert on failure
+After=certheim-api.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/certheim-doctor-alert

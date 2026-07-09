@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
-"""certinel-db-migrate - copy the Certheim database between backends.
+"""certheim-db-migrate - copy the Certheim database between backends.
 
 Move an existing SQLite deployment onto PostgreSQL (or back) without losing data.
 The schema is created on the target, then all rows are copied.
 
   # current DB (SQLite) -> PostgreSQL:
-  sudo -u certinel certinel-db-migrate --to "postgresql://certinel:PW@dbhost:5432/certinel"
+  sudo -u certheim certheim-db-migrate --to "postgresql://certheim:PW@dbhost:5432/certheim"
 
   # explicit source + target:
-  certinel-db-migrate --from sqlite:/var/lib/certinel/jobs.db \
-                      --to postgresql://certinel@dbhost/certinel
+  certheim-db-migrate --from sqlite:/var/lib/certheim/jobs.db \
+                      --to postgresql://certheim@dbhost/certheim
 
   # mirror exactly (DELETE target rows first), and dry-run a count:
-  certinel-db-migrate --to "postgresql://..." --wipe-target
-  certinel-db-migrate --to "postgresql://..." --check
+  certheim-db-migrate --to "postgresql://..." --wipe-target
+  certheim-db-migrate --to "postgresql://..." --check
 
---from defaults to the deployment's CURRENT database (CSR_DB_URL / CSR_DB_PATH).
-Run with the app STOPPED (`systemctl stop certinel-api`) so nothing writes during
+--from defaults to the deployment's CURRENT database (CERTHEIM_DB_URL / CERTHEIM_DB_PATH).
+Run with the app STOPPED (`systemctl stop certheim-api`) so nothing writes during
 the copy. After it succeeds, switch the running app by setting
-CSR_DB_URL=<target> in /etc/certinel/certinel.env and restarting certinel-api.
+CERTHEIM_DB_URL=<target> in /etc/certheim/certheim.env and restarting certheim-api.
 """
 import argparse
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend"))
-sys.path.insert(0, "/opt/certinel")  # installed location
+sys.path.insert(0, "/opt/certheim")  # installed location
 
 import db_migrate  # noqa: E402
 
@@ -62,8 +62,8 @@ def main():
     print("copying rows...")
     counts = db_migrate.copy_database(source, target, wipe_target=a.wipe_target)
     print(f"done: {sum(counts.values())} rows across {len(counts)} tables.")
-    print("Next: set CSR_DB_URL in /etc/certinel/certinel.env and "
-          "`systemctl restart certinel-api`.")
+    print("Next: set CERTHEIM_DB_URL in /etc/certheim/certheim.env and "
+          "`systemctl restart certheim-api`.")
 
 
 def _print_counts(spec):

@@ -18,7 +18,7 @@ description: |
   Installs the Certheim application, an offline Python wheelhouse, and the
   `certheim-setup` first-run configurator. After `dnf install`, run
   `sudo certheim-setup` to choose the FQDN/TLS mode, provision nginx, build the
-  service venv, and start the certinel-api systemd service. certheim-setup is
+  service venv, and start the certheim-api systemd service. certheim-setup is
   interactive, or fully unattended with ASSUME_DEFAULTS=yes and env overrides.
 
 # dnf resolves these; the nginx package also creates the `nginx` group the
@@ -34,7 +34,7 @@ depends:
 
 contents:
   # Full application + installer + offline wheelhouse. certheim-setup runs the
-  # installer out of here; the live paths (/opt/certinel, …) are populated at
+  # installer out of here; the live paths (/opt/certheim, …) are populated at
   # setup time, not owned by the package.
   - src: packaging/build/stage/usr/share/certheim
     dst: /usr/share/certheim

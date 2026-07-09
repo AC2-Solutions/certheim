@@ -1,8 +1,8 @@
 # Certheim — Operations Runbook
 
 Flask/SQLite certificate request + lifecycle dashboard for a RHEL fleet.
-Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certinel` service
-account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/certinel/jobs.db`.
+Request flow: **nginx (CAC mTLS)** → **gunicorn** as the `certheim` service
+account on `127.0.0.1:5002` → **SQLite (WAL)** at `/var/lib/certheim/jobs.db`.
 Hardened RHEL 9/10 target: FIPS, SELinux enforcing, fapolicyd enforcing.
 
 This runbook reflects the proven installs on `certinel-host` (production), a
@@ -15,25 +15,25 @@ enforcing) validated via the signed RPM.
 
 | Path | Owner / mode | Purpose |
 |---|---|---|
-| `/opt/certinel/` | root:certinel 0750 | app code + `venv/` |
-| `/opt/certinel/{app,notify,gitlab_integration,import_certs}.py` | root:certinel 0640 | backend |
+| `/opt/certheim/` | root:certheim 0750 | app code + `venv/` |
+| `/opt/certheim/{app,notify,gitlab_integration,import_certs}.py` | root:certheim 0640 | backend |
 | `/var/www/csr/{index.html,app.js}` | root:nginx 0640 | frontend |
-| `/var/lib/certinel/jobs.db` | certinel:certinel 0640 | SQLite (WAL) |
-| `/var/lib/certinel/trust/` | certinel:certinel | published CA certs (trust portal) |
-| `/etc/certinel/email.conf` | certinel:certinel 0640 | mail config (UI-managed) |
-| `/etc/certinel/integrations.conf` | certinel:certinel 0640 | GitLab config (UI-managed) |
-| `/etc/certinel/certinel.env` | certinel:certinel 0640 | app env (paths, flags) |
-| `/opt/certinel/helper/certinel_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
-| `/etc/systemd/system/certinel-api.service` | root:root 0644 | gunicorn unit |
-| `/etc/nginx/certinel.d/30-csr.conf` | root:root 0644 | **location fragment** |
-| `/etc/nginx/conf.d/certinel.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
-| `/usr/local/sbin/{certinel-backup,certinel-bootstrap-admin}` | root:root 0750 | tools |
+| `/var/lib/certheim/jobs.db` | certheim:certheim 0640 | SQLite (WAL) |
+| `/var/lib/certheim/trust/` | certheim:certheim | published CA certs (trust portal) |
+| `/etc/certheim/email.conf` | certheim:certheim 0640 | mail config (UI-managed) |
+| `/etc/certheim/integrations.conf` | certheim:certheim 0640 | GitLab config (UI-managed) |
+| `/etc/certheim/certheim.env` | certheim:certheim 0640 | app env (paths, flags) |
+| `/opt/certheim/helper/certheim_helper.sh` (+`.d/`) | root:root 0750/0640 | root-mediated ops (sudo) |
+| `/etc/systemd/system/certheim-api.service` | root:root 0644 | gunicorn unit |
+| `/etc/nginx/certheim.d/30-csr.conf` | root:root 0644 | **location fragment** |
+| `/etc/nginx/conf.d/certheim.conf` | root:root 0644 | **server block** (TLS + mTLS + include) |
+| `/usr/local/sbin/{certheim-backup,certheim-bootstrap-admin}` | root:root 0750 | tools |
 
-**Service account.** `certinel` is a system account, no login shell, no home.
+**Service account.** `certheim` is a system account, no login shell, no home.
 It runs ONLY the helper as root via a single sudoers rule
-(`/etc/sudoers.d/certinel`):
+(`/etc/sudoers.d/certheim`):
 ```
-certinel ALL=(root) NOPASSWD: /opt/certinel/helper/certinel_helper.sh
+certheim ALL=(root) NOPASSWD: /opt/certheim/helper/certheim_helper.sh
 ```
 
 ---
@@ -73,7 +73,7 @@ The public key ships with the release and, post-install, at
 service: `curl -sk https://localhost/csr/api/health` → `{"ok":true,…}`.
 Upgrade: `sudo dnf upgrade ./certheim-<newer>.rpm && sudo certheim-setup`.
 Remove: `sudo dnf remove certheim` (keeps data/config) then optional
-`sudo certinel-uninstall`.
+`sudo certheim-uninstall`.
 
 ### Connected / non-STIG (e.g. a dev box)
 ```bash
@@ -104,7 +104,7 @@ trust, deploy, start). Run via `bash` so fapolicyd doesn't block exec-by-path.
 
 ### Change workflow (existing install)
 ```bash
-git clone <repo> && cd certinel
+git clone <repo> && cd certheim
 # edit...
 sudo ./deploy.sh --diff      # preview
 sudo ./deploy.sh             # backup, install changed files, perms, fapolicyd,
@@ -116,9 +116,9 @@ git commit -am "..." && git push
 
 ## 3. PKI / CAC mTLS
 
-- **Server cert**: `/etc/pki/certinel/server.{crt,key}` (installer drops a
+- **Server cert**: `/etc/pki/certheim/server.{crt,key}` (installer drops a
   self-signed placeholder; replace with the site cert).
-- **mTLS lives at the SERVER level** (`conf.d/certinel.conf`), NOT in the
+- **mTLS lives at the SERVER level** (`conf.d/certheim.conf`), NOT in the
   fragment. To enforce:
   ```nginx
   ssl_client_certificate /etc/pki/dod/dod-cas.pem;   # root+intermediate, no CRLF
@@ -140,16 +140,16 @@ git commit -am "..." && git push
 ## 4. First admin
 
 A fresh DB has no admins. Either:
-- **Preferred**: `sudo certinel-bootstrap-admin "<YOUR CAC DN>"` (promotes a DN; no
-  prior login needed). `certinel-bootstrap-admin --list` shows admins.
-- Or set `CSR_BOOTSTRAP_FIRST_ADMIN=1` BEFORE first login (first user becomes
+- **Preferred**: `sudo certheim-bootstrap-admin "<YOUR CAC DN>"` (promotes a DN; no
+  prior login needed). `certheim-bootstrap-admin --list` shows admins.
+- Or set `CERTHEIM_BOOTSTRAP_FIRST_ADMIN=1` BEFORE first login (first user becomes
   admin, self-disables). Only safe under real mTLS.
 
 ---
 
 ## 5. Email
 
-UI-managed at Admin → Email (written to `/etc/certinel/email.conf`,
+UI-managed at Admin → Email (written to `/etc/certheim/email.conf`,
 hot-reloaded). Pick one method: **SMG** (plain :25), **SMTP** (STARTTLS/SSL +
 auth), or **Mailgun** (API). Blank SMG host = email disabled. "Send test
 email" verifies wiring.
@@ -171,24 +171,24 @@ email" verifies wiring.
   PyPI automatically (no action needed). For an **air-gapped RHEL 10** target,
   build the offline bundle/RPM **on a RHEL 10 box** so the wheelhouse matches
   python 3.12 — the same "match the target's python" rule as any offline bundle.
-- **fapolicyd**: new files under `/opt/certinel` need
+- **fapolicyd**: new files under `/opt/certheim` need
   `fapolicyd-cli --file add <f> && --update` once (the installer trusts the
   venv; `deploy.sh` updates trust for existing files). Untrusted bundle
   scripts can't exec-by-path → run via `bash`.
-- **venv perms**: `python -m venv` is 0700 under root umask 077 → certinel can't
-  traverse → `chmod -R g+rX /opt/certinel/venv` (installer does this).
+- **venv perms**: `python -m venv` is 0700 under root umask 077 → certheim can't
+  traverse → `chmod -R g+rX /opt/certheim/venv` (installer does this).
 - **systemd**: single-line `ExecStart`; `ProtectSystem=full` with
-  `ReadWritePaths` covering `/opt/certinel /var/lib/certinel
-  /var/opt/certinel /etc/certinel`. `ProtectHome=true` (helper under
-  `/opt/certinel`, keys in the vault — nothing under `/home` or `/root`). `deploy.sh` runs
+  `ReadWritePaths` covering `/opt/certheim /var/lib/certheim
+  /var/opt/certheim /etc/certheim`. `ProtectHome=true` (helper under
+  `/opt/certheim`, keys in the vault — nothing under `/home` or `/root`). `deploy.sh` runs
   `systemd-analyze verify` before restart.
-- **Data root**: signed certs + generated CSRs live under `/var/opt/certinel`
+- **Data root**: signed certs + generated CSRs live under `/var/opt/certheim`
   (`issued/`, `requests/`) — FHS add-on-app data, not a service-account home.
   `deploy.sh` creates them and sets `var_lib_t` so the confined service can
   write (matches the DB dir). The helper's `ISSUED_DIR`/`CSRDIR`
-  (`certinel_helper.d/00-common.sh`) must match `CSR_ISSUED_DIR`.
+  (`certheim_helper.d/00-common.sh`) must match `CERTHEIM_ISSUED_DIR`.
 - **SELinux**: `setsebool -P httpd_can_network_connect 1` (else nginx→backend
-  502s); `restorecon` on `/var/www/csr` + `/var/opt/certinel` (deploy.sh does this).
+  502s); `restorecon` on `/var/www/csr` + `/var/opt/certheim` (deploy.sh does this).
 - **firewalld**: open 443 (`firewall-cmd --permanent --add-service=https`).
 - **nginx**: the fragment must stay location-only; mTLS at server level.
 - **VERSION**: read once at startup → bump VERSION, restart, confirm via
@@ -198,14 +198,14 @@ email" verifies wiring.
 
 ## 7. Operations
 
-- **Backup before risk**: `certinel-backup` (snapshots deploy files + DB to
-  `/root/certinel-backup-*`). `deploy.sh` runs it pre-deploy.
+- **Backup before risk**: `certheim-backup` (snapshots deploy files + DB to
+  `/root/certheim-backup-*`). `deploy.sh` runs it pre-deploy.
 - **Health**: `curl -sk https://localhost/csr/api/health` → `{"ok":true,...}`.
-- **Logs**: `journalctl -u certinel-api`; audit events also land in the DB
+- **Logs**: `journalctl -u certheim-api`; audit events also land in the DB
   `audit_log` table (admin Audit panel).
-- **Expiry warnings**: `certinel-expiry-warn.timer` (daily 06:30 UTC) runs
+- **Expiry warnings**: `certheim-expiry-warn.timer` (daily 06:30 UTC) runs
   `app.run_expiry_warnings()`.
-- **Automated renewal**: `certinel-auto-renew.timer` (daily 07:00 UTC) runs
+- **Automated renewal**: `certheim-auto-renew.timer` (daily 07:00 UTC) runs
   `app.run_auto_renew()` — re-signs issued certs nearing expiry whose template
   opts into auto-renew, via that template's CA backend. Off by default; enable
   on Admin → Signing/CA (master switch + default window) and per template
@@ -217,7 +217,7 @@ email" verifies wiring.
   inbound webhook at `/csr/api/webhooks/gitlab` (validated by `X-Gitlab-Token`).
 - **ACME server** (the dashboard *as* an RFC 8555 CA, Phase 4): off by default.
   Enable on Admin → Signing/CA (toggle + directory base URL) and entitle it with
-  the `ca.server.acme` capability (env `CSR_CAP_ACME_SERVER=1`). It signs through
+  the `ca.server.acme` capability (env `CERTHEIM_CAP_ACME_SERVER=1`). It signs through
   the **default signing backend** and validates **HTTP-01** by fetching the
   challenge from the requested host, so:
   - **Reverse proxy**: forward the public `/acme/` path to the app (e.g. nginx
@@ -237,9 +237,9 @@ email" verifies wiring.
 
 | Symptom | Likely cause / fix |
 |---|---|
-| 502 on every request | `httpd_can_network_connect` off, or gunicorn down (`journalctl -u certinel-api`) |
-| UI shows old version | stale process — `deploy.sh` version check warns; `systemctl restart certinel-api` |
-| Admin email save 500 "read-only" | `/etc/certinel` not in unit `ReadWritePaths` |
+| 502 on every request | `httpd_can_network_connect` off, or gunicorn down (`journalctl -u certheim-api`) |
+| UI shows old version | stale process — `deploy.sh` version check warns; `systemctl restart certheim-api` |
+| Admin email save 500 "read-only" | `/etc/certheim` not in unit `ReadWritePaths` |
 | App logs `ip=` under mTLS | server-level `ssl_verify_client`/DoD bundle, not the app |
 | `/csr/` 404s to default docroot | fragment used `alias` instead of `root /var/www` |
 | orphan-certs 500 | reading issued dir directly — must go through helper `list-issued` |

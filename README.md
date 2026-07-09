@@ -1,9 +1,14 @@
 # Certheim
 
 > **Certheim** (formerly *Certinel*, originally *CSR Dashboard*) — a certificate **lifecycle** platform.
-> The repo slug, systemd services, paths, and `CSR_*` environment variables keep
-> their original names for deployment compatibility; only the product brand
-> changed.
+> As of v5.2 the internals are certheim-named too: `/opt|/etc|/var/{lib,opt}/certheim`,
+> the `certheim-api` service + timers, `certheim-*` tools, and `CERTHEIM_*`
+> environment variables (legacy `CSR_*`/`CERTINEL_*` spellings still read via a
+> compat shim until Phase 5). Pre-5.2 installs are migrated in place by
+> `tools/certheim-migrate.sh`, invoked automatically by `deploy.sh`.
+> Kept on purpose: the `/csr/` URL path + `/var/www/csr` web root ("certificate
+> signing request" — semantic, not brand) and external names (OpenBao
+> `certinel-keys` path, vault role names).
 
 Flask/SQLite certificate request & lifecycle dashboard for an
 Platforms RHEL fleet. Runs behind nginx
@@ -18,33 +23,33 @@ with PKI/CAC mTLS (or local accounts).
 
 | Repo | Deploys to | Owner / mode |
 |---|---|---|
-| `backend/` | `/opt/certinel/` | root:certinel 0640 |
+| `backend/` | `/opt/certheim/` | root:certheim 0640 |
 | `frontend/` | `/var/www/csr/` | root:nginx 0640 (+restorecon) |
 | `helper/` | `/root/sslcerts/scripts/` | root:root 0750 / 0640 |
 | `systemd/` | `/etc/systemd/system/` | root:root 0644 |
-| `nginx/` | `/etc/nginx/certinel.d/` | root:root 0644 |
-| `tools/certinel-backup.sh` | `/usr/local/sbin/certinel-backup` | root:root 0750 |
+| `nginx/` | `/etc/nginx/certheim.d/` | root:root 0644 |
+| `tools/certheim-backup.sh` | `/usr/local/sbin/certheim-backup` | root:root 0750 |
 | `ansible/` | run from AAP / CLI, not installed | — |
 
-Not tracked, on purpose: the SQLite DB (`/var/lib/certinel/`), the
-venv, and the live `/etc/certinel/email.conf` (managed through the
+Not tracked, on purpose: the SQLite DB (`/var/lib/certheim/`), the
+venv, and the live `/etc/certheim/email.conf` (managed through the
 admin UI; `config/email.conf.example` documents the shape).
 
 ## Change workflow
 
 ```
-git clone git@<your-git-host>:<group>/certinel.git
-cd certinel
+git clone git@<your-git-host>:<group>/certheim.git
+cd certheim
 # edit files...
 sudo ./deploy.sh --diff      # review exactly what will change on the box
-sudo ./deploy.sh             # certinel-backup, install, fapolicyd, restart, verify
+sudo ./deploy.sh             # certheim-backup, install, fapolicyd, restart, verify
 git add -A && git commit -m "what and why" && git push
 ```
 
 `deploy.sh` only touches files that differ, applies correct ownership and
-SELinux contexts, refreshes the fapolicyd trust DB for `/opt/certinel/`
+SELinux contexts, refreshes the fapolicyd trust DB for `/opt/certheim/`
 (REQUIRED on this STIG baseline - untrusted files get EPERM), restarts
-`certinel-api` only when backend files changed, and fails loudly if the service
+`certheim-api` only when backend files changed, and fails loudly if the service
 doesn't come back.
 
 If a hotfix was made directly on the box (it happens at 2am): run
@@ -52,12 +57,12 @@ If a hotfix was made directly on the box (it happens at 2am): run
 
 ## Operational notes
 
-- fapolicyd: any NEW file under `/opt/certinel/` needs
+- fapolicyd: any NEW file under `/opt/certheim/` needs
   `fapolicyd-cli --file add <file> && fapolicyd-cli --update` once;
   deploy.sh handles updates to existing files.
 - Ansible tasks against this host must NOT `become_user` to unprivileged
   accounts (fapolicyd blocks AnsiballZ temp modules). `become: true` +
-  `runuser -u certinel --` instead. See `ansible/fleet-cert-scan.yml`.
-- Expiry warnings: `certinel-expiry-warn.timer`, daily 06:30 UTC, runs
+  `runuser -u certheim --` instead. See `ansible/fleet-cert-scan.yml`.
+- Expiry warnings: `certheim-expiry-warn.timer`, daily 06:30 UTC, runs
   `app.run_expiry_warnings()` under the venv python.
-- DB: `/var/lib/certinel/jobs.db` (WAL). `certinel-backup` before risk.
+- DB: `/var/lib/certheim/jobs.db` (WAL). `certheim-backup` before risk.

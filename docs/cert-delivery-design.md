@@ -31,7 +31,7 @@ New module **`backend/deliver.py`** mirrors the existing provider-seam pattern
 behind one `deliver(job, bundle, cfg)` dispatch, per-template configuration,
 secrets via the server environment.
 
-A **`certinel-deliver` systemd timer** (like `certinel-auto-renew` / `certinel-expiry-warn`)
+A **`certheim-deliver` systemd timer** (like `certheim-auto-renew` / `certheim-expiry-warn`)
 re-attempts `pending`/`failed` deliveries with backoff — the reliability spine.
 (Background passes have no Flask request context; entrypoints are re-exported
 from `app.py` and guard `g`/`request`, per the existing convention.)
@@ -93,7 +93,7 @@ secrets (SSH key path, Vault creds, CyberArk creds, kubeconfig) stay
 
 ```
 issue (any producer) → _attach_signed_cert  → job 'issued', delivery_status='pending'
-certinel-deliver timer (or async)  → deliver.deliver(job, bundle, template_cfg)
+certheim-deliver timer (or async)  → deliver.deliver(job, bundle, template_cfg)
                               → provider ships cert (+ key per key_mode)
                               → delivery_status='delivered' | retry on 'failed'
                               → fire job.delivered webhook + audit; alert on final failure
@@ -136,7 +136,7 @@ keys gated like the signing backends. Community keeps manual download.
   over a single shared dashboard key for blast-radius containment and per-host
   STIG-egress auditability; it reuses the same Vault path/pattern as the Trust
   Store's `push_ssh`. Host keys bootstrap with `StrictHostKeyChecking=accept-new`
-  + `UserKnownHostsFile=/dev/null` because the `certinel-api` unit runs
+  + `UserKnownHostsFile=/dev/null` because the `certheim-api` unit runs
   `ProtectHome=true` (no persistent `~/.ssh`). A future zero-static-key option
   (short-lived step-ca SSH certificates) is noted but not required.
 - Default `delivery_target` = the job's `target_host` (the cert's CN/SAN) — ship

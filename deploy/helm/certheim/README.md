@@ -41,7 +41,7 @@ so proxying the paths is safe on every edition.
 |-----|---------|-------|
 | `image.tag` | chart appVersion | use `<ver>-slim` for the Debian-slim image |
 | `db.backend` | `sqlite` | or `postgres` (+ `db.postgres.url`/`existingSecret`) |
-| `license` | `""` | signed license blob (mounted, `CSR_LICENSE_FILE`) |
+| `license` | `""` | signed license blob (mounted, `CERTHEIM_LICENSE_FILE`) |
 | `ingress.host` | `certheim.example.com` | required |
 | `ingress.tls.secretName` | `certheim-tls` | TLS cert (cert-manager or pre-created) |
 | `ingress.clientCert.enabled` | `false` | CAC/mTLS at the ingress; `caSecret` = client-CA bundle |
@@ -53,9 +53,9 @@ PostgreSQL example:
 ```bash
 helm install certheim ./deploy/helm/certheim \
   --set db.backend=postgres \
-  --set db.postgres.url='postgresql://certinel:PW@pg:5432/certinel' \
+  --set db.postgres.url='postgresql://certheim:PW@pg:5432/certheim' \
   --set replicaCount=2 --set ingress.host=certheim.example.com
 ```
 
 Migrate an existing SQLite deployment onto Postgres first with
-`tools/certinel-db-migrate --to <dsn>` (see the app's Admin → Database page).
+`tools/certheim-db-migrate --to <dsn>` (see the app's Admin → Database page).

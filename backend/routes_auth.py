@@ -164,7 +164,7 @@ def auth_register():
             # First-admin bootstrap (local mode): when enabled and this is the
             # very first account on an empty database, the registrant becomes an
             # active admin - so a fresh password-only box has an administrator
-            # without a manual certinel-bootstrap-admin step. Self-disabling (fires
+            # without a manual certheim-bootstrap-admin step. Self-disabling (fires
             # only while users is empty); mirrors the CAC path in _upsert_user.
             if BOOTSTRAP_FIRST_ADMIN and conn.execute(
                     "SELECT COUNT(*) AS n FROM users").fetchone()["n"] == 0:

@@ -23,7 +23,7 @@ import support_bundle
 def _stub_env_detection():
     """build() calls capabilities.all_status(), whose env detection imports the
     real db module and caches its sqlite path. In this bare-process unit test
-    CSR_DB_PATH isn't set, so that would cache the default path and poison other
+    CERTHEIM_DB_PATH isn't set, so that would cache the default path and poison other
     test files that share the process. Pre-seed the env cache so _detect_env()
     (and its db access) never runs, then restore it."""
     saved = capabilities._env_cache
@@ -107,7 +107,7 @@ def test_bundle_has_expected_members_and_no_pii_tables():
     names = set(z.namelist())
     assert {"info.json", "capabilities.json", "fips.json", "schema.json",
             "settings.txt", "audit-tail.txt", "README.txt"} <= names
-    assert fname.startswith("certinel-support-commercial-") and fname.endswith(".zip")
+    assert fname.startswith("certheim-support-commercial-") and fname.endswith(".zip")
     # schema.json is COUNTS only — no row data
     schema = z.read("schema.json").decode()
     assert "app_settings" in schema and "mail.example.com" not in schema

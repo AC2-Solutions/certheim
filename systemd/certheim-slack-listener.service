@@ -3,14 +3,14 @@
 # NOT installed by deploy.sh - deploy + enable manually where wanted. Air-gapped
 # prod has no path to Slack, so leave it off there.
 Description=Certheim Slack Socket Mode listener
-After=network-online.target certinel-api.service
+After=network-online.target certheim-api.service
 Wants=network-online.target
 
 [Service]
-User=certinel
-Group=certinel
-EnvironmentFile=-/etc/certinel/certinel.env
-ExecStart=/opt/certinel/venv/bin/python /opt/certinel/slack_listener.py
+User=certheim
+Group=certheim
+EnvironmentFile=-/etc/certheim/certheim.env
+ExecStart=/opt/certheim/venv/bin/python /opt/certheim/slack_listener.py
 Restart=always
 RestartSec=10
 NoNewPrivileges=true

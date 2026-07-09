@@ -5,10 +5,10 @@
 #   * slim     -> docker.io/library/python:3.12-slim  (smaller, general use)
 # The package-install line below works on both (microdnf or apt).
 #
-#   buildah bud -t certinel:ubi  .
-#   buildah bud -t certinel:slim --build-arg PYBASE=docker.io/library/python:3.12-slim .
+#   buildah bud -t certheim:ubi  .
+#   buildah bud -t certheim:slim --build-arg PYBASE=docker.io/library/python:3.12-slim .
 #
-# Runs container-mode (CERTINEL_CONTAINER=1): no sudo helper, mTLS at the ingress.
+# Runs container-mode (CERTHEIM_CONTAINER=1): no sudo helper, mTLS at the ingress.
 # Roles are selected via the entrypoint: web (default) | migrate | cron <task>.
 ARG PYBASE=registry.access.redhat.com/ubi9/python-312-minimal:latest
 
@@ -39,16 +39,16 @@ RUN set -e; \
     else echo "no supported package manager in base image"; exit 1; fi
 
 COPY --from=builder /opt/venv /opt/venv
-COPY backend/  /opt/certinel/
-COPY VERSION   /opt/certinel/VERSION
+COPY backend/  /opt/certheim/
+COPY VERSION   /opt/certheim/VERSION
 # Per-edition version files. _read_version() prefers editions/<edition>.version
 # (selected by build_mode.EDITION) and only falls back to the root VERSION, which
 # is the community base line. Without this, a Commercial/Government image has no
 # editions/ dir and reports the community version (e.g. 3.23.3) instead of its
 # own (e.g. commercial 3.61.4). Each branch carries only its own .version, so
 # the community image still resolves community.version.
-COPY editions/ /opt/certinel/editions/
-COPY helper/   /opt/certinel/helper/
+COPY editions/ /opt/certheim/editions/
+COPY helper/   /opt/certheim/helper/
 COPY frontend/ /var/www/csr/
 COPY container/entrypoint.sh /usr/local/bin/entrypoint.sh
 
@@ -57,27 +57,32 @@ COPY container/entrypoint.sh /usr/local/bin/entrypoint.sh
 # absent. The chown runs BEFORE the VOLUME declaration so a fresh named volume
 # (Docker/Podman) inherits 10001 ownership; on k8s set podSecurityContext.fsGroup.
 RUN set -e; \
-    chmod 0750 /opt/certinel/helper/certinel_helper.sh; \
+    chmod 0750 /opt/certheim/helper/certheim_helper.sh; \
     chmod 0755 /usr/local/bin/entrypoint.sh; \
-    mkdir -p /var/lib/certinel /var/opt/certinel/issued /var/opt/certinel/requests \
-             /var/opt/certinel/private /etc/certinel; \
-    groupadd -g 10001 certinel 2>/dev/null || true; \
-    useradd -u 10001 -g 10001 -M -d /opt/certinel -s /sbin/nologin certinel 2>/dev/null \
-      || useradd -u 10001 -g 10001 -d /opt/certinel certinel 2>/dev/null || true; \
-    chown -R 10001:10001 /opt/certinel /var/lib/certinel /var/opt/certinel /etc/certinel
+    mkdir -p /var/lib/certheim /var/opt/certheim/issued /var/opt/certheim/requests \
+             /var/opt/certheim/private /etc/certheim; \
+    groupadd -g 10001 certheim 2>/dev/null || true; \
+    useradd -u 10001 -g 10001 -M -d /opt/certheim -s /sbin/nologin certheim 2>/dev/null \
+      || useradd -u 10001 -g 10001 -d /opt/certheim certheim 2>/dev/null || true; \
+    chown -R 10001:10001 /opt/certheim /var/lib/certheim /var/opt/certheim /etc/certheim
 
+# Image defaults use the LEGACY env spellings on purpose (rename Phase 2):
+# a pod/compose that sets the same legacy name overrides an image ENV, and one
+# that sets the CERTHEIM_* spelling wins via the app's envcompat shim. Baking
+# CERTHEIM_* here would SHADOW pod-set legacy vars (canonical wins in the shim)
+# and orphan data mounted at the old paths. Flip these in Phase 5.
 ENV PATH=/opt/venv/bin:$PATH \
     CERTINEL_CONTAINER=1 \
-    CSR_DB_PATH=/var/lib/certinel/jobs.db \
-    CSR_HELPER_PATH=/opt/certinel/helper/certinel_helper.sh \
-    CSR_ISSUED_DIR=/var/opt/certinel/issued \
-    CERTINEL_PORT=5002
+    CSR_DB_PATH=/var/lib/certheim/jobs.db \
+    CSR_HELPER_PATH=/opt/certheim/helper/certheim_helper.sh \
+    CSR_ISSUED_DIR=/var/opt/certheim/issued \
+    CERTHEIM_PORT=5002
 
-WORKDIR /opt/certinel
+WORKDIR /opt/certheim
 EXPOSE 5002
-# The /var/lib/certinel (SQLite) and /var/opt/certinel (issued/keys) paths are
+# The /var/lib/certheim (SQLite) and /var/opt/certheim (issued/keys) paths are
 # the persistent volumes a deployment mounts.
-VOLUME ["/var/lib/certinel", "/var/opt/certinel"]
+VOLUME ["/var/lib/certheim", "/var/opt/certheim"]
 # Default to the non-root user (Docker Scout: "default non-root user"). gunicorn
 # binds :5002 (>1024, unprivileged); the helper runs sudo-less in container mode.
 USER 10001

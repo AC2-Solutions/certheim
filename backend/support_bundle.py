@@ -87,7 +87,7 @@ def build(get_setting, db, app_version, edition, log_event=None):
         "hostname": platform.node(),
         "auth_mode": _safe(lambda: get_setting("auth_mode") or "mtls", "unknown"),
         "db_backend": _safe(lambda: (get_setting("db_backend")
-                                     or envcompat.getenv("CSR_DB_BACKEND", "sqlite")), "sqlite"),
+                                     or envcompat.getenv("CERTHEIM_DB_BACKEND", "sqlite")), "sqlite"),
     }
 
     capabilities_status = _safe(capabilities.all_status, {})
@@ -168,7 +168,7 @@ def build(get_setting, db, app_version, edition, log_event=None):
             log_event("support_bundle", "generated", version=app_version, edition=edition)
         except Exception:                   # noqa: BLE001
             pass
-    fname = "certinel-support-%s-%s.zip" % (
+    fname = "certheim-support-%s-%s.zip" % (
         edition, datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y%m%d-%H%M%S"))
     return buf.getvalue(), fname
 

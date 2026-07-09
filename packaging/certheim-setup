@@ -13,7 +13,7 @@
 #
 # Idempotent: safe to re-run after `dnf upgrade certheim` to roll the new code
 # onto the live paths (the venv/user/dirs are reused; deploy.sh no-ops for
-# unchanged files and restarts certinel-api when the backend changed).
+# unchanged files and restarts certheim-api when the backend changed).
 set -euo pipefail
 
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then

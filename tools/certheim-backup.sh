@@ -1,15 +1,15 @@
 #!/bin/bash
-# certinel-backup - snapshot the recoverable state of a Certheim deployment.
+# certheim-backup - snapshot the recoverable state of a Certheim deployment.
 #
 # Backs up the things that CANNOT be regenerated from a release artifact:
 #   - the database (all jobs, settings, sealed-keystore ciphertext, ACME state)
-#   - /etc/certinel   (env, license, email/chat/doctor config, install.conf)
-#   - /var/opt/certinel/private  (on-disk private keys, when key_storage=file)
+#   - /etc/certheim   (env, license, email/chat/doctor config, install.conf)
+#   - /var/opt/certheim/private  (on-disk private keys, when key_storage=file)
 #   - the systemd units + sudoers drop-in that wire it together
-# Application code (/opt/certinel, /var/www/csr) is intentionally NOT included:
+# Application code (/opt/certheim, /var/www/csr) is intentionally NOT included:
 # reinstall it from the pinned release. install.conf records that version.
 #
-# Output goes to /root/certinel-backup-YYYYMMDD-HHMMSS/ (a tarball alongside).
+# Output goes to /root/certheim-backup-YYYYMMDD-HHMMSS/ (a tarball alongside).
 #
 # IMPORTANT — sealed keystore: the encrypted secrets live in the DB and ARE
 # captured here, but the unseal material (passphrase / recovery code / Shamir
@@ -19,16 +19,16 @@
 # Settings -> Sealed keystore -> Export backup.
 #
 # Usage:
-#   certinel-backup            # take a backup now
-#   certinel-backup --list     # show existing backups
-#   certinel-backup --help     # this message
+#   certheim-backup            # take a backup now
+#   certheim-backup --list     # show existing backups
+#   certheim-backup --help     # this message
 
 set -euo pipefail
 
 case "${1:-}" in
     -l|--list)
         echo "Existing Certheim backups in /root/:"
-        ls -lhd /root/certinel-backup-* 2>/dev/null || echo "  (none)"
+        ls -lhd /root/certheim-backup-* 2>/dev/null || echo "  (none)"
         exit 0
         ;;
     -h|--help)
@@ -38,37 +38,37 @@ case "${1:-}" in
 esac
 
 if [[ $EUID -ne 0 ]]; then
-    echo "certinel-backup: must be run as root" >&2
+    echo "certheim-backup: must be run as root" >&2
     exit 1
 fi
 
-SERVICE_USER="${CERTINEL_USER:-certinel}"
-ENV_FILE="/etc/certinel/certinel.env"
-# Pull DB coordinates from the service env if present (CSR_DB_URL for Postgres,
-# CSR_DB_PATH for sqlite). Defaults mirror backend/db.py.
-CSR_DB_URL=""; CSR_DB_PATH=""
+SERVICE_USER="${CERTHEIM_USER:-certheim}"
+ENV_FILE="/etc/certheim/certheim.env"
+# Pull DB coordinates from the service env if present (CERTHEIM_DB_URL for Postgres,
+# CERTHEIM_DB_PATH for sqlite). Defaults mirror backend/db.py.
+CERTHEIM_DB_URL=""; CERTHEIM_DB_PATH=""
 if [[ -f "$ENV_FILE" ]]; then
     # shellcheck disable=SC1090
-    CSR_DB_URL="$(grep -E '^CSR_DB_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
-    CSR_DB_PATH="$(grep -E '^CSR_DB_PATH=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
+    CERTHEIM_DB_URL="$(grep -E '^CERTHEIM_DB_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
+    CERTHEIM_DB_PATH="$(grep -E '^CERTHEIM_DB_PATH=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"')"
 fi
-DB="${CSR_DB_PATH:-/var/lib/certinel/jobs.db}"
+DB="${CERTHEIM_DB_PATH:-/var/lib/certheim/jobs.db}"
 
 # Directory trees / files to snapshot, each included only if present so the
 # script stays forward-compatible as the deployment grows.
 PATHS=(
-    /etc/certinel
-    /etc/sudoers.d/certinel
-    /var/opt/certinel/private
-    /var/opt/certinel/issued
+    /etc/certheim
+    /etc/sudoers.d/certheim
+    /var/opt/certheim/private
+    /var/opt/certheim/issued
 )
-for u in /etc/systemd/system/certinel-*.service /etc/systemd/system/certinel-*.timer; do
+for u in /etc/systemd/system/certheim-*.service /etc/systemd/system/certheim-*.timer; do
     [[ -e "$u" ]] && PATHS+=("$u")
 done
 
 TS="$(date +%Y%m%d-%H%M%S)"
-DEST="/root/certinel-backup-$TS"
-echo "certinel-backup: snapshot to $DEST"
+DEST="/root/certheim-backup-$TS"
+echo "certheim-backup: snapshot to $DEST"
 mkdir -p "$DEST"
 
 copied=0; skipped=()
@@ -83,10 +83,10 @@ done
 
 # ----- Database -----
 db_status="not present"
-if [[ -n "$CSR_DB_URL" && "$CSR_DB_URL" == postgres* ]]; then
+if [[ -n "$CERTHEIM_DB_URL" && "$CERTHEIM_DB_URL" == postgres* ]]; then
     mkdir -p "$DEST/db"
-    if PGCONNECT_TIMEOUT=10 pg_dump "$CSR_DB_URL" -Fc -f "$DEST/db/certinel.dump" 2>"$DEST/db/pg_dump.err"; then
-        db_status="Postgres pg_dump: $(stat -c%s "$DEST/db/certinel.dump") bytes (restore with pg_restore)"
+    if PGCONNECT_TIMEOUT=10 pg_dump "$CERTHEIM_DB_URL" -Fc -f "$DEST/db/certheim.dump" 2>"$DEST/db/pg_dump.err"; then
+        db_status="Postgres pg_dump: $(stat -c%s "$DEST/db/certheim.dump") bytes (restore with pg_restore)"
         rm -f "$DEST/db/pg_dump.err"
     else
         db_status="Postgres pg_dump FAILED — see $DEST/db/pg_dump.err"
@@ -95,7 +95,7 @@ elif [[ -e "$DB" ]]; then
     mkdir -p "$DEST/db"
     # Online .backup handles WAL consistently. Snapshot to a path the service
     # user owns, then move it into the backup tree as root.
-    SNAP="$(dirname "$DB")/.certinel-backup.$$.db"
+    SNAP="$(dirname "$DB")/.certheim-backup.$$.db"
     if sudo -u "$SERVICE_USER" sqlite3 "$DB" ".backup '$SNAP'"; then
         mv "$SNAP" "$DEST/db/jobs.db"
         db_jobs=$(sqlite3 "$DEST/db/jobs.db" "SELECT COUNT(*) FROM jobs;" 2>/dev/null || echo "?")
@@ -111,28 +111,28 @@ fi
     echo "host=$(hostname -f 2>/dev/null || hostname)"
     echo "service_user=$SERVICE_USER"
     echo "db=$db_status"
-    [[ -f /opt/certinel/VERSION ]] && echo "version=$(cat /opt/certinel/VERSION)"
+    [[ -f /opt/certheim/VERSION ]] && echo "version=$(cat /opt/certheim/VERSION)"
 } > "$DEST/BACKUP-MANIFEST.txt"
 
 # ----- Report -----
 echo ""
-echo "certinel-backup: paths copied: $copied"
+echo "certheim-backup: paths copied: $copied"
 if [[ ${#skipped[@]} -gt 0 ]]; then
-    echo "certinel-backup: not present (skipped):"
+    echo "certheim-backup: not present (skipped):"
     for f in "${skipped[@]}"; do echo "  $f"; done
 fi
-echo "certinel-backup: database: $db_status"
+echo "certheim-backup: database: $db_status"
 
 # Tar it up for easy off-box transfer; keep the tree too for spot restores.
 TARBALL="$DEST.tar.gz"
-tar -C /root -czf "$TARBALL" "certinel-backup-$TS"
-echo "certinel-backup: total size: $(du -sh "$DEST" | cut -f1)  (tarball: $(du -sh "$TARBALL" | cut -f1))"
+tar -C /root -czf "$TARBALL" "certheim-backup-$TS"
+echo "certheim-backup: total size: $(du -sh "$DEST" | cut -f1)  (tarball: $(du -sh "$TARBALL" | cut -f1))"
 echo ""
-echo "certinel-backup: DONE."
+echo "certheim-backup: DONE."
 echo "  tree:    $DEST"
 echo "  tarball: $TARBALL"
 echo ""
-echo "Restore with:   certinel-restore $TARBALL"
+echo "Restore with:   certheim-restore $TARBALL"
 echo ""
 echo "REMINDER: the sealed-keystore unseal material (passphrase / recovery code"
 echo "/ Shamir shares) is NOT in this backup. Confirm it is stored separately."

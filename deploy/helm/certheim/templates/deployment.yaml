@@ -62,12 +62,12 @@ spec:
           {{- end }}
           volumeMounts:
             - name: db
-              mountPath: /var/lib/certinel
+              mountPath: /var/lib/certheim
             - name: data
-              mountPath: /var/opt/certinel
+              mountPath: /var/opt/certheim
             {{- if or (ne (.Values.license | default "") "") (and .Values.openbao.enabled (ne (.Values.openbao.caCert | default "") "")) }}
             - name: secret-files
-              mountPath: /etc/certinel/secret
+              mountPath: /etc/certheim/secret
               readOnly: true
             {{- end }}
         - name: nginx

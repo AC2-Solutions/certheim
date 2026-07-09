@@ -1,8 +1,8 @@
-# /etc/certinel/email.conf
+# /etc/certheim/email.conf
 # SMTP/SMG notification settings. Managed by the in-app admin panel
 # (Admin > Email (SMG)), which reads AND writes this file. Seed it on a new
 # server with these values, then refine from the UI.
-# Owner certinel:certinel, mode 0640.
+# Owner certheim:certheim, mode 0640.
 #
 # Plain SMTP to an IP-whitelisted relay: no TLS, no auth.
 # To disable email notifications entirely, leave [smtp] host empty.

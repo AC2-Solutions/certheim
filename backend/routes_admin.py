@@ -1275,7 +1275,7 @@ def admin_run_expiry_warnings():
 @require_csrf
 def admin_run_auto_renew():
     """Manually trigger the automated-renewal pass (also runs on the
-    certinel-auto-renew timer). No-op unless the master switch is on and templates
+    certheim-auto-renew timer). No-op unless the master switch is on and templates
     opt in. Imported lazily to avoid an import cycle with app."""
     try:                                # premium: auto-renew is Full-build only
         from renew import run_auto_renew
@@ -1427,7 +1427,7 @@ def _psycopg_present():
 @require_admin
 def admin_get_database():
     """Current DB backend + location, for the admin Database page. The backend is
-    selected by env (CSR_DB_URL / CSR_DB_BACKEND) and switched by a migrate +
+    selected by env (CERTHEIM_DB_URL / CERTHEIM_DB_BACKEND) and switched by a migrate +
     restart, so this is read-only status (the page renders the migrate steps)."""
     backend = dbx.backend()
     location = _redact_dsn(dbx.dsn()) if backend == "postgres" else dbx.sqlite_path()

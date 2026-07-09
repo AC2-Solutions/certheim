@@ -1,8 +1,8 @@
 #!/bin/bash
-# certinel-doctor.sh - read-only health check for a deployed Certheim host.
+# certheim-doctor.sh - read-only health check for a deployed Certheim host.
 #
-#   sudo certinel-doctor            run all checks, print PASS/WARN/FAIL
-#   sudo certinel-doctor --quiet    only print WARN/FAIL lines + summary
+#   sudo certheim-doctor            run all checks, print PASS/WARN/FAIL
+#   sudo certheim-doctor --quiet    only print WARN/FAIL lines + summary
 #
 # Probes the failure classes that have actually bitten installs (service
 # crash-loops, app-dir CHDIR perms, SELinux exec labels, nginx/static root,
@@ -17,12 +17,12 @@ QUIET=false; [[ "${1:-}" == "--quiet" ]] && QUIET=true
 [[ $EUID -eq 0 ]] || { echo "run as root (some checks need it)"; exit 2; }
 
 # ---- config / paths (match deploy.sh) -------------------------------------
-SVC_USER="$(systemctl show certinel-api -p User --value 2>/dev/null)"; SVC_USER="${SVC_USER:-certinel}"
-APP_DIR=/opt/certinel
+SVC_USER="$(systemctl show certheim-api -p User --value 2>/dev/null)"; SVC_USER="${SVC_USER:-certheim}"
+APP_DIR=/opt/certheim
 WWW_DIR=/var/www/csr
-ENV_FILE=/etc/certinel/certinel.env
-CERT=/etc/pki/certinel/server.crt
-DB="$(grep -oE '^CSR_DB_PATH=\S+' "$ENV_FILE" 2>/dev/null | cut -d= -f2)"; DB="${DB:-/var/lib/certinel/jobs.db}"
+ENV_FILE=/etc/certheim/certheim.env
+CERT=/etc/pki/certheim/server.crt
+DB="$(grep -oE '^CERTHEIM_DB_PATH=\S+' "$ENV_FILE" 2>/dev/null | cut -d= -f2)"; DB="${DB:-/var/lib/certheim/jobs.db}"
 BASE="https://localhost/csr"
 
 pass=0 warn=0 fail=0
@@ -35,11 +35,11 @@ echo "=== Certheim doctor ($(hostname)) - service user: ${SVC_USER} ==="
 
 # ---- 1. systemd service ---------------------------------------------------
 sec "service"
-state="$(systemctl is-active certinel-api 2>/dev/null)"
-if [[ "$state" == active ]]; then P "certinel-api is active"
+state="$(systemctl is-active certheim-api 2>/dev/null)"
+if [[ "$state" == active ]]; then P "certheim-api is active"
 else
-    F "certinel-api is '$state' (not running)"
-    code="$(systemctl show certinel-api -p ExecMainStatus --value 2>/dev/null)"
+    F "certheim-api is '$state' (not running)"
+    code="$(systemctl show certheim-api -p ExecMainStatus --value 2>/dev/null)"
     case "$code" in
       203) F "  -> 203/EXEC: venv not executable (SELinux label? see 'app dir' below)";;
       200) F "  -> 200/CHDIR: service user cannot enter WorkingDirectory (perms? see below)";;
@@ -105,7 +105,7 @@ if [[ -r "$CERT" ]]; then
     end="$(openssl x509 -in "$CERT" -noout -enddate 2>/dev/null | cut -d= -f2)"
     es="$(date -d "$end" +%s 2>/dev/null)"; now="$(date +%s)"
     days=$(( (es - now) / 86400 ))
-    renew_on=false; systemctl is-enabled certinel-tls-renew.timer >/dev/null 2>&1 && renew_on=true
+    renew_on=false; systemctl is-enabled certheim-tls-renew.timer >/dev/null 2>&1 && renew_on=true
     if (( days < 0 )); then F "TLS cert EXPIRED ($end)$($renew_on && echo ' (renew timer enabled but did not run)')"
     elif $renew_on; then P "TLS cert valid ${days}d (step-ca auto-renew enabled)"
     elif (( days <= 7 )); then W "TLS cert expires in ${days}d and there is NO renew timer"

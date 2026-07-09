@@ -14,8 +14,8 @@ changed since the last run (cert was renewed on-host), the expiry-warning
 tier is reset so warnings re-arm for the new cert. CA certificates
 (basicConstraints CA:TRUE) are skipped by default.
 
-Run as the certinel user (the DB owner):
-    sudo -u certinel python3 /opt/certinel/import_certs.py /tmp/fleet-certs.json
+Run as the certheim user (the DB owner):
+    sudo -u certheim python3 /opt/certheim/import_certs.py /tmp/fleet-certs.json
 
 Stdlib only - no Flask/venv required, though running under the venv python
 is also fine.
@@ -31,7 +31,7 @@ import time
 
 import db as dbx
 
-DB_PATH = "/var/lib/certinel/jobs.db"
+DB_PATH = "/var/lib/certheim/jobs.db"
 
 EKU_TYPE_MAP = {
     "TLS Web Server Authentication": "web",
