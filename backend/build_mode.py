@@ -25,6 +25,7 @@ is an unmistakable act of source tampering, not a documented env var - which is
 what makes it cleanly actionable under copyright / anti-circumvention law.
 """
 import os
+import envcompat
 
 # The release pipeline (tools/release.sh) flips this to True when it stamps a
 # release artifact. A plain source checkout is a development build.
@@ -78,7 +79,7 @@ def is_release():
     CERTINEL_RELEASE=1 marker applied at package/deploy time."""
     if RELEASE_BUILD:
         return True
-    return os.environ.get("CERTINEL_RELEASE", "").strip() not in ("", "0", "false", "False")
+    return envcompat.getenv("CERTINEL_RELEASE", "").strip() not in ("", "0", "false", "False")
 
 
 def dev_overrides_allowed():

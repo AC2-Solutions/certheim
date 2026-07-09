@@ -83,7 +83,7 @@ smoke-tests:
     # dropped/broken route from refactors (e.g. the planned blueprint split).
     - $PYBIN -m venv --clear /tmp/cienv
     - /tmp/cienv/bin/pip install -q -r requirements.txt pytest
-    - /tmp/cienv/bin/python -m pytest tests/test_smoke.py -q
+    - /tmp/cienv/bin/python -m pytest tests/test_smoke.py tests/test_envcompat.py -q
 
 # Same smoke suite, but against the PostgreSQL backend (db.py abstraction) so the
 # dialect shim + DDL translation stay honest. The shared runner is a SHELL
@@ -105,7 +105,7 @@ smoke-tests-postgres:
     - createdb -h "$PGHOME/sock" -U certinel certinel
     - $PYBIN -m venv --clear /tmp/cienv-pg
     - /tmp/cienv-pg/bin/pip install -q -r requirements.txt -r requirements-postgres.txt pytest
-    - CSR_DB_URL="postgresql://certinel@/certinel?host=$PGHOME/sock" /tmp/cienv-pg/bin/python -m pytest tests/test_smoke.py -q
+    - CSR_DB_URL="postgresql://certinel@/certinel?host=$PGHOME/sock" /tmp/cienv-pg/bin/python -m pytest tests/test_smoke.py tests/test_envcompat.py -q
   after_script:
     - pg_ctl -D "/tmp/certinel-pg-$CI_JOB_ID/data" stop -m immediate -t 10 2>/dev/null || true
     - pkill -9 -f "/tmp/certinel-pg-$CI_JOB_ID" 2>/dev/null || true

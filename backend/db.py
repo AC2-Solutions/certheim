@@ -28,6 +28,7 @@ psycopg is imported lazily, so a SQLite-only install needs no driver and the
 offline wheelhouse stays slim.
 """
 import os
+import envcompat
 import sqlite3
 
 # Backend-agnostic exception classes. Code does `except dbx.IntegrityError:` so a
@@ -72,8 +73,8 @@ def _resolve():
     global _backend, _pg_dsn, _sqlite_path
     if _backend:
         return
-    url = os.environ.get("CSR_DB_URL", "").strip()
-    be = os.environ.get("CSR_DB_BACKEND", "").strip().lower()
+    url = envcompat.getenv("CSR_DB_URL", "").strip()
+    be = envcompat.getenv("CSR_DB_BACKEND", "").strip().lower()
     if url and not be:
         be = "postgres"
     if be in ("postgres", "postgresql"):
@@ -82,18 +83,18 @@ def _resolve():
     else:
         _backend = "sqlite"
     if not _sqlite_path:
-        _sqlite_path = os.environ.get("CSR_DB_PATH", "/var/lib/certinel/jobs.db")
+        _sqlite_path = envcompat.getenv("CSR_DB_PATH", "/var/lib/certinel/jobs.db")
 
 
 def _dsn_from_parts():
     """Build a libpq DSN from discrete CSR_DB_* vars (alternative to CSR_DB_URL)."""
     parts = {
-        "host": os.environ.get("CSR_DB_HOST", "").strip(),
-        "port": os.environ.get("CSR_DB_PORT", "").strip(),
-        "dbname": os.environ.get("CSR_DB_NAME", "").strip(),
-        "user": os.environ.get("CSR_DB_USER", "").strip(),
-        "password": os.environ.get("CSR_DB_PASSWORD", "").strip(),
-        "sslmode": os.environ.get("CSR_DB_SSLMODE", "").strip(),
+        "host": envcompat.getenv("CSR_DB_HOST", "").strip(),
+        "port": envcompat.getenv("CSR_DB_PORT", "").strip(),
+        "dbname": envcompat.getenv("CSR_DB_NAME", "").strip(),
+        "user": envcompat.getenv("CSR_DB_USER", "").strip(),
+        "password": envcompat.getenv("CSR_DB_PASSWORD", "").strip(),
+        "sslmode": envcompat.getenv("CSR_DB_SSLMODE", "").strip(),
     }
     return " ".join(f"{k}={v}" for k, v in parts.items() if v)
 
