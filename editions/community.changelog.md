@@ -1,5 +1,79 @@
 # Certheim Community edition — changelog
 
+## 6.0.0 — 2026-07-09
+
+_Released 2026-07-09. 1 change since community-v5.1.0._
+
+### Breaking changes
+
+- **rename-p2:** rename internal certinel identifiers to certheim + migration hook (`4fd11deb`)
+  Phase 2 of the internal rename (docs/certheim-rename-design.md). Renames every load-bearing
+  certinel identifier the repo owns, and ships an in-place migration so existing installs upgrade
+  without data loss.
+  Renamed:
+  - paths: /opt|/etc|/var/lib|/var/opt/certinel -> /certheim; /etc/pki/certinel,
+    /etc/nginx/certinel.d, conf.d/certinel.conf, sudoers
+  - systemd: certinel-api + all timers -> certheim-* (git mv, 12 units)
+  - tools: certinel-{backup,restore,db-migrate,bootstrap-admin,uninstall,set-auth, doctor,doctor-
+    alert,issue-license} -> certheim-* (git mv)
+  - helper: certinel_helper.sh + .d/ -> certheim_helper.sh (git mv)
+  - service account default certinel -> certheim; config/certinel.env.example ->
+    certheim.env.example; env keys CSR_*/CERTINEL_* -> CERTHEIM_* (read via the Phase-1 envcompat
+    shim, so old env files keep working)
+  - deploy.sh MANIFEST + verify.sh manifest + Containerfile + entrypoint + helm + frontend guide +
+    docs/runbook + .gitlab-ci.yml (pg user, tmp dirs, unit lint, portal upload URLs)
+  Migration (move + upgrade hook):
+  - tools/certheim-migrate.sh: idempotent backup -> stop -> move dirs -> create certheim account +
+    chown-remap -> rewrite env/nginx/sudoers -> SELinux relabel -> fapolicyd re-trust -> daemon-
+    reload. Refuses ambiguous (both-layouts) state.
+  - deploy.sh runs it automatically when it detects the legacy layout (never on --diff); legacy-
+    unit retirement list extended with certinel-*.
+  - Containerfile bakes the LEGACY env spellings (values = new paths) so a pod overriding a legacy
+    var still wins; entrypoint keeps reading a legacy-mounted volume if present.
+  Kept on purpose: /csr/ URL + /var/www/csr web root (semantic 'certificate signing request');
+  OpenBao certinel-keys path + the openbao role default (external systems); the /certinel flat
+  legacy image tags; CI variable NAMES (CERTINEL_*_SECRET); git history (CHANGELOG). Portal DB
+  table/headers/endpoints are Phase 4.
+  Gates: py_compile, bash -n (incl. certheim-migrate.sh), 95 pytest passed, RPM builds clean (0
+  certinel-named files, renamed units/tools present).
+  BREAKING for pre-5.2 installs — auto-migrated by deploy.sh/certheim-setup; rehearsed on disa in
+  Phase 3 before the fleet. Propagates to Commercial/Government.
+
+### Features
+
+- **rename-p2:** rename internal certinel identifiers to certheim + migration hook (`4fd11deb`)
+  Phase 2 of the internal rename (docs/certheim-rename-design.md). Renames every load-bearing
+  certinel identifier the repo owns, and ships an in-place migration so existing installs upgrade
+  without data loss.
+  Renamed:
+  - paths: /opt|/etc|/var/lib|/var/opt/certinel -> /certheim; /etc/pki/certinel,
+    /etc/nginx/certinel.d, conf.d/certinel.conf, sudoers
+  - systemd: certinel-api + all timers -> certheim-* (git mv, 12 units)
+  - tools: certinel-{backup,restore,db-migrate,bootstrap-admin,uninstall,set-auth, doctor,doctor-
+    alert,issue-license} -> certheim-* (git mv)
+  - helper: certinel_helper.sh + .d/ -> certheim_helper.sh (git mv)
+  - service account default certinel -> certheim; config/certinel.env.example ->
+    certheim.env.example; env keys CSR_*/CERTINEL_* -> CERTHEIM_* (read via the Phase-1 envcompat
+    shim, so old env files keep working)
+  - deploy.sh MANIFEST + verify.sh manifest + Containerfile + entrypoint + helm + frontend guide +
+    docs/runbook + .gitlab-ci.yml (pg user, tmp dirs, unit lint, portal upload URLs)
+  Migration (move + upgrade hook):
+  - tools/certheim-migrate.sh: idempotent backup -> stop -> move dirs -> create certheim account +
+    chown-remap -> rewrite env/nginx/sudoers -> SELinux relabel -> fapolicyd re-trust -> daemon-
+    reload. Refuses ambiguous (both-layouts) state.
+  - deploy.sh runs it automatically when it detects the legacy layout (never on --diff); legacy-
+    unit retirement list extended with certinel-*.
+  - Containerfile bakes the LEGACY env spellings (values = new paths) so a pod overriding a legacy
+    var still wins; entrypoint keeps reading a legacy-mounted volume if present.
+  Kept on purpose: /csr/ URL + /var/www/csr web root (semantic 'certificate signing request');
+  OpenBao certinel-keys path + the openbao role default (external systems); the /certinel flat
+  legacy image tags; CI variable NAMES (CERTINEL_*_SECRET); git history (CHANGELOG). Portal DB
+  table/headers/endpoints are Phase 4.
+  Gates: py_compile, bash -n (incl. certheim-migrate.sh), 95 pytest passed, RPM builds clean (0
+  certinel-named files, renamed units/tools present).
+  BREAKING for pre-5.2 installs — auto-migrated by deploy.sh/certheim-setup; rehearsed on disa in
+  Phase 3 before the fleet. Propagates to Commercial/Government.
+
 ## 5.1.0 — 2026-07-09
 
 _Released 2026-07-09. 1 change since community-v5.0.1._
