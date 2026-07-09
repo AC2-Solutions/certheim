@@ -64,7 +64,16 @@ fi
 sec "http"
 code="$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/" 2>/dev/null)"
 [[ "$code" == 200 ]] && P "GET /csr/ -> 200" || F "GET /csr/ -> $code (backend down / nginx 502?)"
-running="$(curl -sk "$BASE/api/health" 2>/dev/null | grep -oE '"version":"[^"]+"' | cut -d'"' -f4)"
+# Retry briefly: on a fresh install the doctor runs right after the service
+# starts, and gunicorn may not have bound :5002 yet — the same startup race
+# deploy.sh already retries. Without this a healthy first install reports a
+# scary (but false) "app not responding" FAIL.
+running=""
+for _ in 1 2 3; do
+    running="$(curl -sk "$BASE/api/health" 2>/dev/null | grep -oE '"version":"[^"]+"' | cut -d'"' -f4)"
+    [[ -n "$running" ]] && break
+    sleep 2
+done
 deployed="$(cat "$APP_DIR/VERSION" 2>/dev/null)"
 if [[ -n "$running" && "$running" == "$deployed" ]]; then P "serving v$running (matches deployed)"
 elif [[ -n "$running" ]]; then W "serving v$running but deployed is v$deployed (restart needed?)"
