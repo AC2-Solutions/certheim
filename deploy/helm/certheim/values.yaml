@@ -18,7 +18,7 @@ image:
 
 # Stock nginx sidecar: serves the static frontend + proxies /csr/api to the app.
 nginx:
-  image: docker.io/library/nginx:1.27-alpine
+  image: docker.io/library/nginx:1.31-alpine
 
 nameOverride: ""
 fullnameOverride: ""
