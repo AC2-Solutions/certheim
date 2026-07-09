@@ -48,6 +48,7 @@ MANIFEST=(
   "backend/app.py            /opt/certinel/app.py                         root:certinel 0640 backend"
   "backend/notify.py         /opt/certinel/notify.py                      root:certinel 0640 backend"
   "backend/build_mode.py     /opt/certinel/build_mode.py                  root:certinel 0640 backend"
+  "backend/envcompat.py      /opt/certinel/envcompat.py                   root:certinel 0640 backend"
   "backend/capabilities.py   /opt/certinel/capabilities.py                root:certinel 0640 backend"
   "backend/db.py             /opt/certinel/db.py                          root:certinel 0640 backend"
   "backend/db_migrate.py     /opt/certinel/db_migrate.py                  root:certinel 0640 backend"

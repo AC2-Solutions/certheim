@@ -23,6 +23,7 @@ import base64
 import json
 import math
 import os
+import envcompat
 import socket
 import subprocess
 import tempfile
@@ -63,7 +64,7 @@ def _pubkey():
     # and self-issue licenses. See build_mode.py for why this is env-tightenable
     # but not env-loosenable.
     if build_mode.dev_overrides_allowed():
-        override = os.environ.get("CSR_LICENSE_PUBKEY")
+        override = envcompat.getenv("CSR_LICENSE_PUBKEY")
         if override:
             return override
     return VENDOR_PUBLIC_KEY
@@ -83,7 +84,7 @@ def b64u(data):
 
 def _raw_license():
     """The license blob from the env-pointed file, else the stored setting."""
-    path = os.environ.get("CSR_LICENSE_FILE", "").strip()
+    path = envcompat.getenv("CSR_LICENSE_FILE", "").strip()
     if path and os.path.isfile(path):
         try:
             return open(path).read().strip()
@@ -140,7 +141,7 @@ def _payload_for(blob):
 def _deployment_host():
     # CSR_LICENSE_HOST lets a containerized/renamed deployment declare the name a
     # license was bound to; otherwise the OS hostname is used.
-    return (os.environ.get("CSR_LICENSE_HOST") or socket.gethostname() or "").strip()
+    return (envcompat.getenv("CSR_LICENSE_HOST") or socket.gethostname() or "").strip()
 
 
 def _binding_warnings(payload):

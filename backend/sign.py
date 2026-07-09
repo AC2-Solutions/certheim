@@ -20,6 +20,7 @@ Security model (see docs/v2-ca-signing-design.md):
     the app pre-checks TTL only for a clean error.
 """
 import os
+import envcompat
 import json
 import ssl
 import urllib.request
@@ -114,7 +115,7 @@ def _enforce_domain_quota(csr_pem):
 
 def _cfg(setting_key, env_var, default=""):
     """Env var wins (operator/secret), then app_settings, then default."""
-    v = os.environ.get(env_var)
+    v = envcompat.getenv(env_var)
     if v:
         return v.strip()
     if _get_setting is not None:
@@ -184,8 +185,8 @@ def _openbao_addr_mount():
 
 def _openbao_login(addr):
     """AppRole login -> short-TTL client token. Credentials from the env only."""
-    role_id = os.environ.get("CSR_OPENBAO_ROLE_ID", "").strip()
-    secret_id = os.environ.get("CSR_OPENBAO_SECRET_ID", "").strip()
+    role_id = envcompat.getenv("CSR_OPENBAO_ROLE_ID", "").strip()
+    secret_id = envcompat.getenv("CSR_OPENBAO_SECRET_ID", "").strip()
     if not (role_id and secret_id):
         raise SignError(
             "OpenBao AppRole credential not configured "
@@ -277,8 +278,8 @@ def _winca_cfg():
         # Enterprise (domain-joined) CA: a certificate template makes certreq
         # issue against that template (auto-enroll policy). Blank = standalone CA.
         "template": _cfg("winca_template", "CSR_WINCA_TEMPLATE", ""),
-        "key": os.environ.get("CSR_WINCA_SSH_KEY", "").strip(),
-        "known_hosts": os.environ.get("CSR_WINCA_KNOWN_HOSTS", "").strip(),
+        "key": envcompat.getenv("CSR_WINCA_SSH_KEY", "").strip(),
+        "known_hosts": envcompat.getenv("CSR_WINCA_KNOWN_HOSTS", "").strip(),
     }
 
 
@@ -402,7 +403,7 @@ def _acme_client():
         ca_file=(_cfg("acme_ca_file", "CSR_ACME_CA_FILE") or None),
         contact_email=_cfg("acme_account_email", "CSR_ACME_ACCOUNT_EMAIL"),
         eab_kid=_cfg("acme_eab_kid", "CSR_ACME_EAB_KID"),
-        eab_hmac_b64=os.environ.get("CSR_ACME_EAB_HMAC", "").strip(),
+        eab_hmac_b64=envcompat.getenv("CSR_ACME_EAB_HMAC", "").strip(),
     )
 
 
@@ -434,26 +435,26 @@ def _acme_solver():
                 "Commercial license. Use HTTP-01 or internal DNS-01 (rfc2136).")
         if prov == "cloudflare":
             return acme_dns.Dns01CloudflareSolver(
-                os.environ.get("CSR_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
+                envcompat.getenv("CSR_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
         if prov == "route53":
             return acme_dns.Dns01Route53Solver(
-                os.environ.get("CSR_ACME_DNS_ACCESS_KEY", "").strip(),
-                os.environ.get("CSR_ACME_DNS_SECRET_KEY", "").strip(), zone,
-                session_token=os.environ.get("CSR_ACME_DNS_SESSION_TOKEN", "").strip() or None)
+                envcompat.getenv("CSR_ACME_DNS_ACCESS_KEY", "").strip(),
+                envcompat.getenv("CSR_ACME_DNS_SECRET_KEY", "").strip(), zone,
+                session_token=envcompat.getenv("CSR_ACME_DNS_SESSION_TOKEN", "").strip() or None)
         parts = (zone or "").split("/")
         if len(parts) != 3:
             raise SignError("Azure DNS-01 needs acme_dns_zone = "
                             "'subscription/resourceGroup/zone'")
         return acme_dns.Dns01AzureSolver(
             _cfg("acme_dns_azure_tenant", "CSR_ACME_DNS_AZURE_TENANT"),
-            os.environ.get("CSR_ACME_DNS_CLIENT_ID", "").strip(),
-            os.environ.get("CSR_ACME_DNS_CLIENT_SECRET", "").strip(),
+            envcompat.getenv("CSR_ACME_DNS_CLIENT_ID", "").strip(),
+            envcompat.getenv("CSR_ACME_DNS_CLIENT_SECRET", "").strip(),
             parts[0], parts[1], parts[2])
 
     # default: internal RFC2136 / nsupdate
     server = _cfg("acme_dns_server", "CSR_ACME_DNS_SERVER")
     tsig_name = _cfg("acme_dns_tsig_name", "CSR_ACME_DNS_TSIG_NAME")
-    tsig_secret = os.environ.get("CSR_ACME_DNS_TSIG_SECRET", "").strip()
+    tsig_secret = envcompat.getenv("CSR_ACME_DNS_TSIG_SECRET", "").strip()
     if not (server and tsig_name and tsig_secret):
         raise SignError("DNS-01 (rfc2136) requires acme_dns_server + "
                         "acme_dns_tsig_name + CSR_ACME_DNS_TSIG_SECRET (service env)")
@@ -676,12 +677,12 @@ def provider_meta():
 
 def _credential_present(provider):
     if provider == "openbao":
-        return bool(os.environ.get("CSR_OPENBAO_ROLE_ID")
-                    and os.environ.get("CSR_OPENBAO_SECRET_ID"))
+        return bool(envcompat.getenv("CSR_OPENBAO_ROLE_ID")
+                    and envcompat.getenv("CSR_OPENBAO_SECRET_ID"))
     if provider == "cyberark":
-        return bool(os.environ.get("CSR_CYBERARK_TOKEN"))
+        return bool(envcompat.getenv("CSR_CYBERARK_TOKEN"))
     if provider == "windows_ca":
-        key = os.environ.get("CSR_WINCA_SSH_KEY", "").strip()
+        key = envcompat.getenv("CSR_WINCA_SSH_KEY", "").strip()
         return bool(key and os.path.isfile(key))
     if provider == "acme":
         # ACME needs no single mandatory env secret (public CA + HTTP-01 works
@@ -689,13 +690,13 @@ def _credential_present(provider):
         # requirements (EAB / TSIG) surface at test/sign time.
         return bool(_cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL"))
     if provider == "ejbca":
-        return bool(os.environ.get("CSR_EJBCA_PASSWORD")
-                    or os.environ.get("CSR_EJBCA_CLIENT_CERT"))
+        return bool(envcompat.getenv("CSR_EJBCA_PASSWORD")
+                    or envcompat.getenv("CSR_EJBCA_CLIENT_CERT"))
     if provider == "venafi":
-        return bool(os.environ.get("CSR_VENAFI_TOKEN"))
+        return bool(envcompat.getenv("CSR_VENAFI_TOKEN"))
     if provider == "aws_pca":
-        return bool(os.environ.get("CSR_AWS_PCA_ACCESS_KEY")
-                    and os.environ.get("CSR_AWS_PCA_SECRET_KEY"))
+        return bool(envcompat.getenv("CSR_AWS_PCA_ACCESS_KEY")
+                    and envcompat.getenv("CSR_AWS_PCA_SECRET_KEY"))
     return True   # manual needs no credential
 
 

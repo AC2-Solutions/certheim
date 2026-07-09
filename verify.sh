@@ -11,6 +11,7 @@ PAIRS=(
   "backend/app.py|/opt/certinel/app.py"
   "backend/notify.py|/opt/certinel/notify.py"
   "backend/build_mode.py|/opt/certinel/build_mode.py"
+  "backend/envcompat.py|/opt/certinel/envcompat.py"
   "backend/capabilities.py|/opt/certinel/capabilities.py"
   "backend/db.py|/opt/certinel/db.py"
   "backend/db_migrate.py|/opt/certinel/db_migrate.py"

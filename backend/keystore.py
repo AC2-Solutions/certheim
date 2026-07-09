@@ -19,6 +19,7 @@ generation leaves the key on the host (never lost), and is logged.
 See docs/key-handling-design.md.
 """
 import os
+import envcompat
 import urllib.error
 import urllib.request
 
@@ -74,8 +75,8 @@ def effective_mode(template_id):
 
 def vault_available():
     """Vault storage needs OpenBao configured (AppRole creds in the env)."""
-    return bool(os.environ.get("CSR_OPENBAO_ROLE_ID", "").strip()
-                and os.environ.get("CSR_OPENBAO_SECRET_ID", "").strip())
+    return bool(envcompat.getenv("CSR_OPENBAO_ROLE_ID", "").strip()
+                and envcompat.getenv("CSR_OPENBAO_SECRET_ID", "").strip())
 
 
 # --------------------------------------------------------------------------- #

@@ -6,6 +6,7 @@ import logging.handlers
 import calendar
 import hashlib
 import os
+import envcompat
 import re
 import secrets
 import sqlite3
@@ -65,7 +66,7 @@ _ENV_DEFAULTS = {
 def _load_env_file():
     """Merge an optional KEY=value env file over os.environ over defaults."""
     values = dict(_ENV_DEFAULTS)
-    path = os.environ.get("CERTINEL_ENV",
+    path = envcompat.getenv("CERTINEL_ENV",
                           "/etc/certinel/certinel.env")
     try:
         with open(path) as f:
@@ -80,6 +81,18 @@ def _load_env_file():
     for k in list(values):
         if k in os.environ:
             values[k] = os.environ[k]
+    # certinel->certheim rename compat (Phase 1): a CERTHEIM_-spelled variable
+    # (real environment or the env file itself) satisfies its legacy CSR_/
+    # CERTINEL_ twin, and the canonical new spelling wins when both are set.
+    # Remove in Phase 5 with the rest of the shims.
+    for k in list(values):
+        for prefix in ("CSR_", "CERTINEL_"):
+            if k.startswith(prefix):
+                twin = "CERTHEIM_" + k[len(prefix):]
+                v = os.environ.get(twin, values.get(twin))
+                if v is not None:
+                    values[k] = v
+                break
     return values
 
 _ENV = _load_env_file()

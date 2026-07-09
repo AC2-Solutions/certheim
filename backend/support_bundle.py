@@ -15,6 +15,7 @@ credential — so a new setting can't leak by being unlisted.
 import io
 import json
 import os
+import envcompat
 import platform
 import re
 import subprocess
@@ -86,7 +87,7 @@ def build(get_setting, db, app_version, edition, log_event=None):
         "hostname": platform.node(),
         "auth_mode": _safe(lambda: get_setting("auth_mode") or "mtls", "unknown"),
         "db_backend": _safe(lambda: (get_setting("db_backend")
-                                     or os.environ.get("CSR_DB_BACKEND", "sqlite")), "sqlite"),
+                                     or envcompat.getenv("CSR_DB_BACKEND", "sqlite")), "sqlite"),
     }
 
     capabilities_status = _safe(capabilities.all_status, {})

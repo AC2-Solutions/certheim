@@ -17,6 +17,7 @@ Capabilities answer "what CAN this deployment do"; the existing per-feature
 settings (get_setting) still answer "what did the admin turn on".
 """
 import os
+import envcompat
 import socket
 import subprocess
 
@@ -97,7 +98,7 @@ def _setting(key, default=None):
 
 def _flag(name, default=False):
     """A declared env flag: env var CSR_CAP_<NAME> or setting cap_<name> wins."""
-    env = os.environ.get("CSR_CAP_" + name.upper())
+    env = envcompat.getenv("CSR_CAP_" + name.upper())
     if env is not None:
         return env.strip() not in ("", "0", "false", "False")
     s = _setting("cap_" + name)
@@ -194,7 +195,7 @@ def _detect_env():
         caps["selinux_enforcing"] = False
     caps["fapolicyd"] = _svc_active("fapolicyd")
     # declared (installer/admin) with detection fallback
-    if os.environ.get("CSR_CAP_EGRESS_INTERNET") is not None \
+    if envcompat.getenv("CSR_CAP_EGRESS_INTERNET") is not None \
             or _setting("cap_egress_internet") is not None:
         caps["egress_internet"] = _flag("egress_internet")
     else:
@@ -253,7 +254,7 @@ def _entitlements():
     """Set of entitled capability keys, or None = grant all (default, license-
     agnostic). Overridable now via CSR_ENTITLEMENTS=csv; later a signed license
     file populates this with no call-site change."""
-    env = os.environ.get("CSR_ENTITLEMENTS")
+    env = envcompat.getenv("CSR_ENTITLEMENTS")
     if env:
         return set(x.strip() for x in env.split(",") if x.strip())
     return None
