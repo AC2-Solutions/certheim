@@ -1,5 +1,34 @@
 # Certheim Community edition — changelog
 
+## 5.0.1 — 2026-07-09
+
+_Released 2026-07-09. 12 changes since community-v5.0.0._
+
+### Fixes & improvements
+
+- retry the doctor's health probe over gunicorn startup (`29ce13f3`)
+  On a fresh install certinel-doctor runs immediately after certinel-api starts, and gunicorn may
+  not have bound 127.0.0.1:5002 yet — so a perfectly healthy first install reports a false
+  '/api/health did not return a version' FAIL (observed on both the AlmaLinux 10 and DISA-STIG RHEL
+  10.2 RPM validation installs; the app answered 200 seconds later). Retry the probe up to 3x/2s,
+  the same startup grace deploy.sh already gives its version check.
+  Also cuts community-v5.0.1, whose publish step ships the first GPG-signed RPM to the licenses
+  portal now that the signing CI variables are in place.
+
+### Other changes
+
+- **deps:** update docker.io/library/nginx docker tag to v1.31 (`4351c677`)
+- rename design — keep /csr/ URL path (no URL change in any phase) (`a13b4c9f`)
+- rebrand customer-side artifact names certinel -> certheim (`1bacc08e`)
+- RPM install path for RHEL 9/10 incl. DISA STIG (`28851ad5`)
+- full certinel->certheim internal rename (Phase 0) (`78b7b6e3`)
+- GPG-sign the RPM for STIG / gpgcheck hosts (`ed8b824b`)
+- build a native RPM (.rpm) for self-hosted install (`9a07bf9b`)
+- push/pull certheim/<edition> nested image namespace (`e26ac61e`)
+- rename helm chart certinel -> certheim (`4ba0cb3b`)
+- **p4:** point entitled-registry + contact refs at certheim.com (`3f591ac7`)
+- **mirror:** mirror the true Community tip so GitHub main never lags the release (`05b29120`)
+
 ## 5.0.0 — 2026-07-08
 
 _Released 2026-07-08. 1 change since community-v4.1.1._
