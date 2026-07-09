@@ -41,7 +41,7 @@ contract every phase implements.
 | k8s namespace / release | `certinel` | `certheim` |
 | k8s secrets | `certinel-tls`, `certinel-client-ca` | `certheim-*` |
 | **Env var prefix** | `CSR_*`, `CERTINEL_*` | `CERTHEIM_*` |
-| **URL base path** | `/csr/` | `/certheim/` |
+| **URL base path** | `/csr/` | **KEPT `/csr/`** — decision 2026-07-09 (see §2) |
 | **Portal DB table** | `certinel_licenses` | `certheim_licenses` |
 | **HTTP headers** | `X-Certinel-*` (Version/SHA256), `X-Client-*` unchanged | `X-Certheim-*` |
 | Portal endpoints | `/api/v1/certinel/releases[/rpm]`, `/api/v1/public/certinel-inquiry` | `/api/v1/certheim/*` |
@@ -70,11 +70,11 @@ removed only in Phase 5.
 - **Filesystem** — the migration (§3) physically moves data; `deploy.sh` and
   `certheim-setup` detect the old layout and migrate before first run. No
   symlinks in the end state.
-- **URL `/csr/` → `/certheim/`** — nginx serves the app under `/certheim/` and
-  **301-redirects `/csr/…` → `/certheim/…`** (keeps bookmarks, existing ACME
-  directory URLs, and API clients working). The ACME `directory` resource keeps
-  advertising absolute URLs, so in-flight ACME accounts keep resolving via the
-  redirect. Drop the redirect in Phase 5.
+- **URL base path — `/csr/` is KEPT** (decided 2026-07-09). `/csr` reads as
+  "certificate signing request", which is what the app does — it is semantic,
+  not a brand name — and keeping it avoids the whole 301-redirect layer,
+  breaking bookmarks, re-pointing ACME directory URLs, and touching every
+  reverse-proxy fragment. No URL work in any phase.
 - **HTTP headers** — responses emit `X-Certheim-*`; any request-side reads accept
   both `X-Certheim-*` and `X-Certinel-*`.
 - **Portal DB** — migration `ALTER TABLE certinel_licenses RENAME TO
@@ -137,7 +137,7 @@ a maintenance window, before touching the others.
   paths/units, the `certinel-portal-*` VM roles. Ship the migration as a play so
   the fleet converges.
 - **gitops** (project 5): k8s app manifests — container paths, namespace/secret
-  names, probes hitting `/csr/` → `/certheim/`.
+  names. Probes keep hitting `/csr/` (URL path is kept).
 - **websites/app guide**: mostly product-name-clean already; update the residual
   path/command/URL references once the app side lands.
 
@@ -148,14 +148,14 @@ a maintenance window, before touching the others.
 3. Phase 3 live migrations, **`disa` first (rehearsed, backed up)**, validate,
    then `clm` (K8s: new image + PVC path handling), demo, `csr-dev`.
 4. Phase 4 cross-repo (portal DB rename in a window; ansible/gitops).
-5. Phase 5 remove shims (env fallback, `/csr` redirect, dual headers, DB view,
-   endpoint aliases) once every install + client is confirmed on the new names.
+5. Phase 5 remove shims (env fallback, dual headers, DB view, endpoint
+   aliases) once every install + client is confirmed on the new names.
 
 ## 6. Risks
 
 - **Government data** on `disa` — mitigated by backup + rehearsal + rollback path.
-- **URL change** breaks external ACME/API clients if the redirect is wrong —
-  mitigated by 301 + keeping it through Phase 5; announce the URL change.
+- ~~URL change~~ — **eliminated**: `/csr/` is kept (decision 2026-07-09), so no
+  ACME/API client, bookmark, or reverse-proxy fragment is affected.
 - **Portal DB rename** under a scoped role — grants must be re-applied to the new
   table **and** the compat view or the customer portal 500s (see the column-grant
   gotcha in prior portal work).
