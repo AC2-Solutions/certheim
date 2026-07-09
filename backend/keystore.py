@@ -10,7 +10,7 @@ generates is kept:
   host                   - legacy on-disk keystore (the helper's KEYDIR), for
                            air-gapped / no-vault deployments.
 
-Keys are stored per job at <kv>/certinel-keys/<job_id>. Retrieval is unified
+Keys are stored per job at <kv>/certheim/_shared/keys/<job_id>. Retrieval is unified
 (fetch_for_job / fetch_by_name): vault when `key_vault_path` is set, else the
 host helper. Connection + AppRole login are reused from sign.py; this module
 stores no secrets of its own. Every operation fails safe: any vault error during
@@ -80,7 +80,7 @@ def vault_available():
 
 
 # --------------------------------------------------------------------------- #
-# OpenBao KV v2 ops at <kv_mount>/certinel-keys/<job_id>                        #
+# OpenBao KV v2 ops at <kv_mount>/certheim/_shared/keys/<job_id>                        #
 # --------------------------------------------------------------------------- #
 def _kv_mount():
     return (_get("delivery_openbao_kv_mount", "secret")).strip("/")
@@ -88,7 +88,7 @@ def _kv_mount():
 
 def _url(job_id, kind="data"):
     addr, _pki = sign._openbao_addr_mount()
-    return f"{addr}/v1/{_kv_mount()}/{kind}/certinel-keys/{job_id}"
+    return f"{addr}/v1/{_kv_mount()}/{kind}/certheim/_shared/keys/{job_id}"
 
 
 def _token(addr):
@@ -164,7 +164,7 @@ def secure_after_generate(job_id, key_name, template_id=None):
         return "host"
     run_helper(["delete-key", key_name])              # shred the host copy
     _set_job(job_id, key_storage=mode,
-             key_vault_path="certinel-keys/" + job_id)  # local_key_name kept as a label
+             key_vault_path="certheim/_shared/keys/" + job_id)  # local_key_name kept as a label
     log_event("keystore", "stored_vault", job_id=job_id, mode=mode)
     return "returned" if mode == "return_once" else "vault"
 
@@ -236,7 +236,7 @@ def migrate_host_keys(limit=1000):
             failed += 1
             continue
         run_helper(["delete-key", j["local_key_name"]])   # shred host copy
-        _set_job(j["id"], key_vault_path="certinel-keys/" + j["id"], key_storage="vault")
+        _set_job(j["id"], key_vault_path="certheim/_shared/keys/" + j["id"], key_storage="vault")
         migrated += 1
     log_event("keystore", "migrate_sweep", migrated=migrated, failed=failed, scanned=len(jobs))
     return {"migrated": migrated, "failed": failed, "scanned": len(jobs)}
