@@ -66,16 +66,14 @@ RUN set -e; \
       || useradd -u 10001 -g 10001 -d /opt/certheim certheim 2>/dev/null || true; \
     chown -R 10001:10001 /opt/certheim /var/lib/certheim /var/opt/certheim /etc/certheim
 
-# Image defaults use the LEGACY env spellings on purpose (rename Phase 2):
-# a pod/compose that sets the same legacy name overrides an image ENV, and one
-# that sets the CERTHEIM_* spelling wins via the app's envcompat shim. Baking
-# CERTHEIM_* here would SHADOW pod-set legacy vars (canonical wins in the shim)
-# and orphan data mounted at the old paths. Flip these in Phase 5.
+# Canonical CERTHEIM_* env (rename Phase 5). Only CERTHEIM_CONTAINER/PORT are
+# baked. The DB/helper/issued paths are intentionally NOT baked: the app's
+# built-in _ENV_DEFAULTS supplies the identical values, and leaving them unset
+# in the image lets container/entrypoint.sh auto-detect a legacy volume mounted
+# at the old /var/lib/certinel path (its guard treats any baked CERTHEIM_DB_PATH
+# as an explicit override and would skip detection).
 ENV PATH=/opt/venv/bin:$PATH \
-    CERTINEL_CONTAINER=1 \
-    CSR_DB_PATH=/var/lib/certheim/jobs.db \
-    CSR_HELPER_PATH=/opt/certheim/helper/certheim_helper.sh \
-    CSR_ISSUED_DIR=/var/opt/certheim/issued \
+    CERTHEIM_CONTAINER=1 \
     CERTHEIM_PORT=5002
 
 WORKDIR /opt/certheim
