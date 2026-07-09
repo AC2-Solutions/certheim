@@ -40,8 +40,8 @@ def test_acme_client_is_not_a_licensed_capability():
 def test_acme_client_entitled_in_hardened_build_without_license(monkeypatch):
     """Free means free: entitled even in a hardened release build with no license
     and no dev override — proving it isn't leaking through the dev backdoor."""
-    monkeypatch.setenv("CERTINEL_RELEASE", "1")
-    monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+    monkeypatch.setenv("CERTHEIM_RELEASE", "1")
+    monkeypatch.delenv("CERTHEIM_ENTITLEMENTS", raising=False)
     import build_mode
     import capabilities
     importlib.reload(build_mode)

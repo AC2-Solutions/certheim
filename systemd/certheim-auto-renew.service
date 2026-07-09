@@ -1,0 +1,12 @@
+[Unit]
+Description=Certheim - automatically renew certificates nearing expiry
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=certheim
+Group=certheim
+WorkingDirectory=/opt/certheim
+EnvironmentFile=-/etc/certheim/certheim.env
+ExecStart=/opt/certheim/venv/bin/python3 -c 'import app; r,s,e = app.run_auto_renew(); print(f"auto-renew: renewed={r} skipped={s} errors={e}")'
+Environment=PYTHONUNBUFFERED=1

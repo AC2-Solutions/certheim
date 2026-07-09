@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""certinel-bootstrap-admin - create or promote the first admin by CAC DN.
+"""certheim-bootstrap-admin - create or promote the first admin by CAC DN.
 
 On a fresh database there are no admins and the app only ever inserts users
 with is_admin=0, so there is no in-app way to make the first one. Run this
 once as root on the dashboard host:
 
-    certinel-bootstrap-admin "CN=DOE.JANE.1234567890,OU=PKI,O=Example Org,C=US"
+    certheim-bootstrap-admin "CN=DOE.JANE.1234567890,OU=PKI,O=Example Org,C=US"
 
 It inserts the DN if absent (or promotes it if present), is_admin=1,
 is_active=1. Idempotent. Reads the DB path from the same env the app uses
-(CSR_DB_PATH / the certinel.env), falling back to the default.
+(CERTHEIM_DB_PATH / the certheim.env), falling back to the default.
 """
 import os
 import sqlite3
@@ -18,21 +18,21 @@ import time
 
 
 def _load_db_path():
-    # honour the same env file the app reads, then CSR_DB_PATH, then default
-    env_path = os.environ.get("CERTINEL_ENV",
-                              "/etc/certinel/certinel.env")
-    val = os.environ.get("CSR_DB_PATH")
+    # honour the same env file the app reads, then CERTHEIM_DB_PATH, then default
+    env_path = os.environ.get("CERTHEIM_ENV",
+                              "/etc/certheim/certheim.env")
+    val = os.environ.get("CERTHEIM_DB_PATH")
     if not val:
         try:
             with open(env_path) as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith("CSR_DB_PATH="):
+                    if line.startswith("CERTHEIM_DB_PATH="):
                         val = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
         except OSError:
             pass
-    return val or "/var/lib/certinel/jobs.db"
+    return val or "/var/lib/certheim/jobs.db"
 
 
 def _cn_from_dn(dn):
@@ -45,8 +45,8 @@ def _cn_from_dn(dn):
 
 def main():
     if len(sys.argv) != 2 or not sys.argv[1].strip():
-        print('usage: certinel-bootstrap-admin "<full CAC DN>"', file=sys.stderr)
-        print('example: certinel-bootstrap-admin "CN=DOE.JANE.A.1234567890,OU=...,C=US"',
+        print('usage: certheim-bootstrap-admin "<full CAC DN>"', file=sys.stderr)
+        print('example: certheim-bootstrap-admin "CN=DOE.JANE.A.1234567890,OU=...,C=US"',
               file=sys.stderr)
         return 2
 
@@ -54,7 +54,7 @@ def main():
     db_path = _load_db_path()
     if not os.path.exists(db_path):
         print(f"ERROR: database not found at {db_path}", file=sys.stderr)
-        print("Start certinel-api once so the schema is created, then re-run.",
+        print("Start certheim-api once so the schema is created, then re-run.",
               file=sys.stderr)
         return 1
 

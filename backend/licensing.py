@@ -9,9 +9,9 @@ key - no activation server, so it works fully air-gapped. A license is:
   payload    = {"customer","edition","entitlements":[...],"issued","expires"}
   signature  = RSA-SHA256 over the base64url(payload) bytes, signed by the
                vendor PRIVATE key (held only by the vendor; mint a license with
-               tools/certinel-issue-license).
+               tools/certheim-issue-license).
 
-Source order: env CSR_LICENSE_FILE (a path on disk) wins, else the admin-uploaded
+Source order: env CERTHEIM_LICENSE_FILE (a path on disk) wins, else the admin-uploaded
 blob in app_settings ('license_blob'). No valid license -> no premium
 entitlements -> the gated features simply don't appear in the UI.
 
@@ -64,7 +64,7 @@ def _pubkey():
     # and self-issue licenses. See build_mode.py for why this is env-tightenable
     # but not env-loosenable.
     if build_mode.dev_overrides_allowed():
-        override = envcompat.getenv("CSR_LICENSE_PUBKEY")
+        override = envcompat.getenv("CERTHEIM_LICENSE_PUBKEY")
         if override:
             return override
     return VENDOR_PUBLIC_KEY
@@ -84,7 +84,7 @@ def b64u(data):
 
 def _raw_license():
     """The license blob from the env-pointed file, else the stored setting."""
-    path = envcompat.getenv("CSR_LICENSE_FILE", "").strip()
+    path = envcompat.getenv("CERTHEIM_LICENSE_FILE", "").strip()
     if path and os.path.isfile(path):
         try:
             return open(path).read().strip()
@@ -139,14 +139,14 @@ def _payload_for(blob):
 
 
 def _deployment_host():
-    # CSR_LICENSE_HOST lets a containerized/renamed deployment declare the name a
+    # CERTHEIM_LICENSE_HOST lets a containerized/renamed deployment declare the name a
     # license was bound to; otherwise the OS hostname is used.
-    return (envcompat.getenv("CSR_LICENSE_HOST") or socket.gethostname() or "").strip()
+    return (envcompat.getenv("CERTHEIM_LICENSE_HOST") or socket.gethostname() or "").strip()
 
 
 def _binding_warnings(payload):
     """Soft, non-fatal binding tripwires. A license MAY carry a 'bind_host' claim
-    (minted with `certinel-issue-license --bind-host`); if it doesn't match this
+    (minted with `certheim-issue-license --bind-host`); if it doesn't match this
     deployment we WARN and surface it, but do NOT revoke entitlements - a
     legitimate host move shouldn't brick the app, and the mismatch makes a copied
     license self-evident in the logs and the admin UI."""

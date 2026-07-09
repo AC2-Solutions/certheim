@@ -52,12 +52,12 @@ spec:
                 {{- include "certheim.appEnv" $ | nindent 16 }}
               volumeMounts:
                 - name: db
-                  mountPath: /var/lib/certinel
+                  mountPath: /var/lib/certheim
                 - name: data
-                  mountPath: /var/opt/certinel
+                  mountPath: /var/opt/certheim
                 {{- if eq (include "certheim.needSecretFiles" $) "true" }}
                 - name: secret-files
-                  mountPath: /etc/certinel/secret
+                  mountPath: /etc/certheim/secret
                   readOnly: true
                 {{- end }}
           volumes:

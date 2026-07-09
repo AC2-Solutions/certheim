@@ -21,8 +21,8 @@ sudo certheim-setup                                  # configure + start
 
 `certheim-setup` is interactive. It picks the FQDN and TLS mode
 (self-signed / bring-your-own / step-ca ACME), provisions nginx, creates the
-`certinel` service account, builds the service virtualenv from the bundled
-**offline wheelhouse** (works air-gapped), and starts the `certinel-api`
+`certheim` service account, builds the service virtualenv from the bundled
+**offline wheelhouse** (works air-gapped), and starts the `certheim-api`
 systemd service behind nginx on 443.
 
 ## Unattended install
@@ -40,12 +40,12 @@ Full variable list: the header of `/usr/share/certheim/install/online-install.sh
 ## Service
 
 ```bash
-systemctl status certinel-api          # the app (gunicorn on 127.0.0.1:5002, fronted by nginx)
-journalctl -u certinel-api -f
+systemctl status certheim-api          # the app (gunicorn on 127.0.0.1:5002, fronted by nginx)
+journalctl -u certheim-api -f
 ```
 
-Timers `certinel-expiry-warn`, `certinel-auto-renew`, `certinel-deliver` and
-`certinel-doctor` are enabled by setup.
+Timers `certheim-expiry-warn`, `certheim-auto-renew`, `certheim-deliver` and
+`certheim-doctor` are enabled by setup.
 
 ## Upgrade
 
@@ -58,8 +58,8 @@ sudo certheim-setup                    # roll the new code onto the live paths (
 
 ```bash
 sudo dnf remove certheim               # stops the service; leaves data + config
-sudo certinel-uninstall                # optional: purge /opt/certinel, /var/opt/certinel, /etc/certinel
+sudo certheim-uninstall                # optional: purge /opt/certheim, /var/opt/certheim, /etc/certheim
 ```
 
-Runtime data (`/var/opt/certinel`), the database (`/var/lib/certinel`) and
-configuration (`/etc/certinel`) are preserved on `dnf remove` by design.
+Runtime data (`/var/opt/certheim`), the database (`/var/lib/certheim`) and
+configuration (`/etc/certheim`) are preserved on `dnf remove` by design.

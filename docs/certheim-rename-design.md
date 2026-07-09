@@ -26,7 +26,7 @@ contract every phase implements.
 | Config dir | `/etc/certinel` | `/etc/certheim` |
 | State/DB dir | `/var/lib/certinel` | `/var/lib/certheim` |
 | Data root | `/var/opt/certinel` | `/var/opt/certheim` |
-| Web root | `/var/www/csr` | `/var/www/certheim` |
+| Web root | `/var/www/csr` | **KEPT** — coupled to the kept `/csr/` URL (nginx `root /var/www` maps `/csr/<f>` → `/var/www/csr/<f>`; `alias` is a documented 404 trap) |
 | Env file | `/etc/certinel/certinel.env` | `/etc/certheim/certheim.env` |
 | Service account | `certinel` | `certheim` |
 | systemd units | `certinel-api.service`, `certinel-{expiry-warn,auto-renew,deliver,doctor}.{service,timer}` | `certheim-*` |
@@ -98,7 +98,7 @@ legacy layout (`/opt/certinel` or `/etc/certinel` present and no
    `/root/certheim-backup-premigrate-<stamp>`. Refuse if backup fails.
 2. **Stop** `certinel-api` + timers.
 3. **Move** each dir old→new (`/opt`, `/etc`, `/var/lib`, `/var/opt`,
-   `/var/www/csr`→`/var/www/certheim`, `/etc/pki/certinel`, `/etc/nginx/certinel.d`,
+   `/etc/pki/certinel`, `/etc/nginx/certinel.d`,
    `conf.d/certinel.conf`, sudoers). `mv` preserves SELinux context temporarily.
 4. **Service account** — create `certheim` group/user; `usermod`/chown the moved
    trees to it (keep `certinel` until Phase 5 so nothing half-owned breaks, then

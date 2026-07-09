@@ -24,7 +24,7 @@ CAC = {  # mTLS identity headers; with bootstrap, the first user becomes admin
     "X-Client-DN": "CN=TEST.ADMIN.0000000001,OU=PKI,OU=IT,O=Example Org,C=US",
     "X-Client-Serial": "AA11",
 }
-CSRF = {"X-Requested-With": "certinel"}
+CSRF = {"X-Requested-With": "certheim"}
 WRITE = {**CAC, **CSRF, "Content-Type": "application/json"}
 
 # Route groups every refactor must keep intact (method, path).
@@ -74,16 +74,16 @@ CRITICAL_ROUTES = [
 def client():
     tmp = tempfile.mkdtemp(prefix="csr-smoke-")
     # Default to a throwaway SQLite DB, but honor a pre-set Postgres target so the
-    # same suite runs unchanged against both backends (CI db-matrix). If CSR_DB_URL
-    # or CSR_DB_BACKEND=postgres is already in the env, don't pin SQLite over it.
-    _pg = os.environ.get("CSR_DB_URL") or \
-        os.environ.get("CSR_DB_BACKEND", "").lower() in ("postgres", "postgresql")
+    # same suite runs unchanged against both backends (CI db-matrix). If CERTHEIM_DB_URL
+    # or CERTHEIM_DB_BACKEND=postgres is already in the env, don't pin SQLite over it.
+    _pg = os.environ.get("CERTHEIM_DB_URL") or \
+        os.environ.get("CERTHEIM_DB_BACKEND", "").lower() in ("postgres", "postgresql")
     if not _pg:
-        os.environ["CSR_DB_PATH"] = os.path.join(tmp, "jobs.db")
-    os.environ["CERTINEL_ENV"] = os.path.join(tmp, "absent.env")
-    os.environ["CSR_BOOTSTRAP_FIRST_ADMIN"] = "1"
-    os.environ["CSR_CAP_EGRESS_INTERNET"] = "1"
-    os.environ["CSR_CAP_ACME_SERVER"] = "1"      # entitle the ACME-server tests
+        os.environ["CERTHEIM_DB_PATH"] = os.path.join(tmp, "jobs.db")
+    os.environ["CERTHEIM_ENV"] = os.path.join(tmp, "absent.env")
+    os.environ["CERTHEIM_BOOTSTRAP_FIRST_ADMIN"] = "1"
+    os.environ["CERTHEIM_CAP_EGRESS_INTERNET"] = "1"
+    os.environ["CERTHEIM_CAP_ACME_SERVER"] = "1"      # entitle the ACME-server tests
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "backend"))
     import app as appmod
     appmod.app.config.update(TESTING=True)
@@ -249,8 +249,8 @@ def test_keystore_vault_store_shreds_host(client, monkeypatch):
     record the vault path on the job."""
     import keystore
     appmod = client._appmod
-    monkeypatch.setenv("CSR_OPENBAO_ROLE_ID", "r")
-    monkeypatch.setenv("CSR_OPENBAO_SECRET_ID", "s")
+    monkeypatch.setenv("CERTHEIM_OPENBAO_ROLE_ID", "r")
+    monkeypatch.setenv("CERTHEIM_OPENBAO_SECRET_ID", "s")
     with appmod.app.app_context():
         appmod.set_setting("key_storage", "vault")
     deleted, store, sets = [], {}, []
@@ -299,8 +299,8 @@ def test_keystore_host_fallback_when_no_vault(client, monkeypatch):
     the key)."""
     import keystore
     appmod = client._appmod
-    monkeypatch.delenv("CSR_OPENBAO_ROLE_ID", raising=False)
-    monkeypatch.delenv("CSR_OPENBAO_SECRET_ID", raising=False)
+    monkeypatch.delenv("CERTHEIM_OPENBAO_ROLE_ID", raising=False)
+    monkeypatch.delenv("CERTHEIM_OPENBAO_SECRET_ID", raising=False)
     with appmod.app.app_context():
         appmod.set_setting("key_storage", "vault")
     sets = []
@@ -355,14 +355,14 @@ def test_keystore_migrate_host_keys(client, monkeypatch):
     import keystore
     appmod = client._appmod
     # endpoint, no vault -> safe 'not configured' result
-    monkeypatch.delenv("CSR_OPENBAO_ROLE_ID", raising=False)
-    monkeypatch.delenv("CSR_OPENBAO_SECRET_ID", raising=False)
+    monkeypatch.delenv("CERTHEIM_OPENBAO_ROLE_ID", raising=False)
+    monkeypatch.delenv("CERTHEIM_OPENBAO_SECRET_ID", raising=False)
     r = client.post("/api/admin/keys/migrate-to-vault", headers=WRITE)
     assert r.status_code == 200 and r.get_json().get("error")
 
     # sweep with a host-key job + vault available
-    monkeypatch.setenv("CSR_OPENBAO_ROLE_ID", "r")
-    monkeypatch.setenv("CSR_OPENBAO_SECRET_ID", "s")
+    monkeypatch.setenv("CERTHEIM_OPENBAO_ROLE_ID", "r")
+    monkeypatch.setenv("CERTHEIM_OPENBAO_SECRET_ID", "s")
     with appmod.app.app_context():
         with appmod.db() as conn:
             conn.execute("INSERT INTO jobs (id,created_at,requester_dn,target_host,csr_pem,"
@@ -705,7 +705,7 @@ def test_template_signing_policy(client):
     # the auto-renew opt-in + per-template window
     ok = client.put(f"/api/admin/templates/{tid}/signing", headers=WRITE,
                     data=json.dumps({"signer_backend": "openbao",
-                                     "openbao_role": "certinel",
+                                     "openbao_role": "certheim",
                                      "max_ttl": 3600, "auto_sign": True,
                                      "auto_renew": True, "renew_before_days": 21}))
     assert ok.status_code == 200, ok.get_data(as_text=True)
@@ -851,7 +851,7 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
     pub = str(tmp_path / "vendor.pem")
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())
     licensing.reset_cache()
 
     # no license -> not entitled, gov pack hidden
@@ -865,7 +865,7 @@ def test_license_gates_public_sector_pack(client, monkeypatch, tmp_path):
 
     # community (no license): the free signing path is the ACME client (+ manual
     # upload); every other in-UI backend — including OpenBao — is gated.
-    monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+    monkeypatch.delenv("CERTHEIM_ENTITLEMENTS", raising=False)
     assert "ca.signing.acme" not in capabilities.LICENSED_CAPABILITIES
     assert capabilities.is_entitled("ca.signing.acme") is True          # free CA (ACME client)
     assert capabilities.is_entitled("ca.signing.openbao") is False      # paid CA
@@ -916,7 +916,7 @@ def test_license_build_edition_mismatch(client, monkeypatch, tmp_path):
     pub = str(tmp_path / "vendor.pem")
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())
 
     # Commercial license installed on a COMMUNITY build -> mismatch, features off.
     monkeypatch.setattr(build_mode, "EDITION", "community")
@@ -955,10 +955,10 @@ def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
     """The hardening: in a RELEASE build the dev-only env overrides are inert.
 
     Demonstrates the asymmetry — same environment, two outcomes:
-      * dev build (default): CSR_LICENSE_PUBKEY swaps the trust anchor (a forged
-        license signed by an attacker key verifies) and CSR_ENTITLEMENTS=* grants
+      * dev build (default): CERTHEIM_LICENSE_PUBKEY swaps the trust anchor (a forged
+        license signed by an attacker key verifies) and CERTHEIM_ENTITLEMENTS=* grants
         paid caps with no real license.
-      * release build (CERTINEL_RELEASE=1): both are ignored — only the embedded
+      * release build (CERTHEIM_RELEASE=1): both are ignored — only the embedded
         vendor key is trusted and only a real signed license unlocks paid caps."""
     import subprocess
     import build_mode
@@ -971,22 +971,22 @@ def test_release_build_disables_env_overrides(client, monkeypatch, tmp_path):
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
     forged = _mint_license(priv, edition="government")
-    lic_file = tmp_path / "license.txt"          # via CSR_LICENSE_FILE => no shared state
+    lic_file = tmp_path / "license.txt"          # via CERTHEIM_LICENSE_FILE => no shared state
     lic_file.write_text(forged)
 
-    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic_file))
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())  # attacker trust anchor
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")                 # grant-all backdoor
+    monkeypatch.setenv("CERTHEIM_LICENSE_FILE", str(lic_file))
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())  # attacker trust anchor
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")                 # grant-all backdoor
 
     # --- DEV build (default): the overrides are honored ---
-    monkeypatch.delenv("CERTINEL_RELEASE", raising=False)
+    monkeypatch.delenv("CERTHEIM_RELEASE", raising=False)
     licensing.reset_cache()
     assert build_mode.dev_overrides_allowed() is True
     assert licensing.info()["valid"] is True                       # attacker key accepted
     assert capabilities.is_entitled("lifecycle.auto_renew") is True  # grant-all on
 
     # --- RELEASE build: identical environment, now inert ---
-    monkeypatch.setenv("CERTINEL_RELEASE", "1")
+    monkeypatch.setenv("CERTHEIM_RELEASE", "1")
     licensing.reset_cache()
     assert build_mode.dev_overrides_allowed() is False
     assert licensing.info()["valid"] is False                      # attacker key REJECTED
@@ -1007,7 +1007,7 @@ def test_license_host_binding_warns_not_blocks(client, monkeypatch, tmp_path):
     pub = str(tmp_path / "vendor.pem")
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())
 
     # Mint a government license bound to a host this deployment is NOT.
     import json as _json
@@ -1020,8 +1020,8 @@ def test_license_host_binding_warns_not_blocks(client, monkeypatch, tmp_path):
                          input=pb.encode(), capture_output=True).stdout
     lic_file = tmp_path / "license.txt"
     lic_file.write_text(f"{pb}.{licensing.b64u(sig)}")
-    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic_file))
-    monkeypatch.setenv("CSR_LICENSE_HOST", "this-host.example")
+    monkeypatch.setenv("CERTHEIM_LICENSE_FILE", str(lic_file))
+    monkeypatch.setenv("CERTHEIM_LICENSE_HOST", "this-host.example")
     licensing.reset_cache()
 
     info = licensing.info()
@@ -1041,7 +1041,7 @@ def test_license_renewal_notice(client, monkeypatch, tmp_path):
     pub = str(tmp_path / "vendor.pem")
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())
     licensing.reset_cache()
 
     def install(blob):
@@ -1117,12 +1117,12 @@ def test_commercial_domain_quota_blocks_second_domain(monkeypatch, tmp_path):
     pub = str(tmp_path / "vendor.pem")
     subprocess.run(["openssl", "genrsa", "-out", priv, "2048"], capture_output=True)
     subprocess.run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub], capture_output=True)
-    monkeypatch.setenv("CSR_LICENSE_PUBKEY", open(pub).read())
+    monkeypatch.setenv("CERTHEIM_LICENSE_PUBKEY", open(pub).read())
 
     lic = tmp_path / "lic"
     # v4.0.0: Commercial is a flat, unlimited plan — no per-domain cap by default.
     lic.write_text(_mint_license(priv, edition="commercial"))
-    monkeypatch.setenv("CSR_LICENSE_FILE", str(lic))
+    monkeypatch.setenv("CERTHEIM_LICENSE_FILE", str(lic))
     licensing.reset_cache()
     assert licensing.max_domains() == 0   # commercial now uncapped
 
@@ -1242,7 +1242,7 @@ def test_mtls_managed_by_ingress_in_container_mode(client, monkeypatch):
     defers TLS/mTLS to the ingress - no in-pod nginx rewrite via the helper."""
     import json
     import app
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "auth.cac")  # CAC is licensed
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "auth.cac")  # CAC is licensed
     monkeypatch.setattr(app, "CONTAINER_MODE", True)
     appmod = client._appmod
     with appmod.app.app_context():
@@ -1254,7 +1254,7 @@ def test_mtls_managed_by_ingress_in_container_mode(client, monkeypatch):
         b = r.get_json()
         assert b.get("mtls_applied") is True and b.get("mtls_managed_by") == "ingress"
     finally:
-        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+        monkeypatch.delenv("CERTHEIM_ENTITLEMENTS", raising=False)
         with appmod.app.app_context():
             for k, v in prev.items():
                 appmod.set_setting(k, v if v is not None else "")
@@ -1283,7 +1283,7 @@ def test_obo_token_stamps_actor(monkeypatch):
     assert len(calls) == 1 and calls[0]["url"].endswith("/v1/auth/token/create")
     assert calls[0]["token"] == "parent-tok"                 # minted via the AppRole token
     assert calls[0]["payload"]["metadata"]["certinel_actor"] == "CN=Alice,OU=Org"
-    assert calls[0]["payload"]["display_name"].startswith("certinel-")
+    assert calls[0]["payload"]["display_name"].startswith("certheim-")
     assert calls[0]["payload"]["ttl"] == "3m"
 
     # creation failure must not block issuance -> fall back to the parent token
@@ -1621,7 +1621,7 @@ def test_venafi_request(monkeypatch):
     import json
     import ca_providers
     _b64der, pem = _self_signed_b64der()
-    monkeypatch.setenv("CSR_VENAFI_TOKEN", "tok")
+    monkeypatch.setenv("CERTHEIM_VENAFI_TOKEN", "tok")
     calls, fake = _ca_recorder([
         (200, json.dumps({"CertificateDN": "\\VED\\cert1"}).encode()),
         (200, json.dumps({"CertificateData": base64.b64encode(pem.encode()).decode()}).encode()),
@@ -1642,8 +1642,8 @@ def test_aws_pca_request(monkeypatch):
     import base64
     import json
     import ca_providers
-    monkeypatch.setenv("CSR_AWS_PCA_ACCESS_KEY", "AKID")
-    monkeypatch.setenv("CSR_AWS_PCA_SECRET_KEY", "secret")
+    monkeypatch.setenv("CERTHEIM_AWS_PCA_ACCESS_KEY", "AKID")
+    monkeypatch.setenv("CERTHEIM_AWS_PCA_SECRET_KEY", "secret")
     calls, fake = _ca_recorder([
         (200, json.dumps({"CertificateArn": "arn:aws:acm-pca:us-east-1:1:certificate/abc"}).encode()),
         (200, json.dumps({"Certificate": "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
@@ -1725,7 +1725,7 @@ def _jws_post(client, path, key_pem, jwk, nonce, payload, url, kid=None):
 
 @pytest.mark.tier(1)
 def test_acme_server_directory_gated(client, monkeypatch):
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "0")
     assert client.get("/acme/directory").status_code == 404      # off by default
@@ -1744,7 +1744,7 @@ def test_acme_server_directory_gated(client, monkeypatch):
 
 @pytest.mark.tier(1)
 def test_acme_server_rejects_bad_jws(client, monkeypatch):
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
@@ -1774,7 +1774,7 @@ def test_acme_server_full_flow(client, monkeypatch):
     import acme_client
     import acme_server
     import sign
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")  # ACME server is a commercial cap
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")  # ACME server is a commercial cap
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
     appmod.set_setting("acme_server_base_url", "http://localhost/acme")
@@ -1866,7 +1866,7 @@ def test_acme_dns01_value():
 
 @pytest.mark.tier(1)
 def test_acme_server_key_change(client, monkeypatch):
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")
     import acme_client
     appmod = client._appmod
     appmod.set_setting("acme_server_enabled", "1")
@@ -1897,7 +1897,7 @@ def test_acme_server_key_change(client, monkeypatch):
 
 @pytest.mark.tier(1)
 def test_acme_server_revoke(client, monkeypatch):
-    monkeypatch.setenv("CSR_ENTITLEMENTS", "*")
+    monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "*")
     import subprocess
     import acme_client
     import acme_server
@@ -2011,7 +2011,7 @@ def test_truststore_pull_token_and_public_fetch(client):
     import json
     appmod = client._appmod
     with appmod.app.app_context():
-        appmod.set_setting("public_base_url", "https://certinel.example")
+        appmod.set_setting("public_base_url", "https://certheim.example")
     root = _gen_ca("Pull Root CA", ca=True)
     up = client.post("/api/admin/truststore/upload", headers=WRITE,
                      data=json.dumps({"pem": root, "name": "Pull Root"}))
@@ -2022,7 +2022,7 @@ def test_truststore_pull_token_and_public_fetch(client):
     tok = client.post("/api/admin/truststore/pull-token", headers=WRITE)
     assert tok.status_code == 200
     body = tok.get_json()
-    assert body["url"].startswith("https://certinel.example/api/truststore/bundle/")
+    assert body["url"].startswith("https://certheim.example/api/truststore/bundle/")
     assert "Certheim trust bundle installed" in body["script"]
     token = body["token"]
 
@@ -2088,7 +2088,7 @@ def test_mtls_auth_settings(client, monkeypatch):
         assert "mtls_mode" in s and s["mtls_modes"] == ["off", "optional", "enforce"]
 
         # --- Community (no entitlement): CAC/mTLS is gated (403) ---
-        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+        monkeypatch.delenv("CERTHEIM_ENTITLEMENTS", raising=False)
         assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/pki/dod/dod-cas.pem"}).status_code == 403
         assert put({"mtls_mode": "optional"}).status_code == 403
         assert put({"auth_mode": "mtls", "confirm_mtls": True}).status_code == 403
@@ -2096,7 +2096,7 @@ def test_mtls_auth_settings(client, monkeypatch):
         assert put({"mtls_mode": "off"}).status_code == 200
 
         # --- licensed (Government / CAC add-on) via an explicit entitlement ---
-        monkeypatch.setenv("CSR_ENTITLEMENTS", "auth.cac")
+        monkeypatch.setenv("CERTHEIM_ENTITLEMENTS", "auth.cac")
         assert put({"mtls_mode": "bogus"}).status_code == 400                                   # bad mode
         assert put({"mtls_mode": "enforce"}).status_code == 400                                  # missing path
         assert put({"mtls_mode": "enforce", "mtls_ca_bundle_path": "/etc/x; rm -rf /"}).status_code == 400  # bad path
@@ -2107,7 +2107,7 @@ def test_mtls_auth_settings(client, monkeypatch):
         # auth_mode=mtls is now allowed too
         assert put({"auth_mode": "mtls", "confirm_mtls": True}).status_code == 200
     finally:
-        monkeypatch.delenv("CSR_ENTITLEMENTS", raising=False)
+        monkeypatch.delenv("CERTHEIM_ENTITLEMENTS", raising=False)
         with appmod.app.app_context():
             appmod.set_setting("auth_mode", prev.get("auth_mode") or "mtls")
             for k, v in prev.items():

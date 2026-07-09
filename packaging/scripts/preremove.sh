@@ -9,8 +9,8 @@
 set -e
 
 if [ "$1" = "0" ]; then
-    systemctl disable --now certinel-api.service 2>/dev/null || true
-    for t in certinel-expiry-warn certinel-auto-renew certinel-deliver certinel-doctor; do
+    systemctl disable --now certheim-api.service 2>/dev/null || true
+    for t in certheim-expiry-warn certheim-auto-renew certheim-deliver certheim-doctor; do
         systemctl disable --now "$t.timer" 2>/dev/null || true
     done
 fi

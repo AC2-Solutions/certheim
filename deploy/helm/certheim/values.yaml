@@ -25,30 +25,30 @@ fullnameOverride: ""
 
 # ---- licensing -------------------------------------------------------------
 # Paste the signed license blob to unlock the paid edition. Mounted as a file
-# and pointed to by CSR_LICENSE_FILE. Leave empty for the free Community tier.
+# and pointed to by CERTHEIM_LICENSE_FILE. Leave empty for the free Community tier.
 license: ""
 
 # ---- database --------------------------------------------------------------
 db:
   backend: sqlite          # sqlite | postgres
   postgres:
-    # A libpq URL. Provide here, or reference an existing Secret with key CSR_DB_URL.
-    url: ""                 # postgresql://user:pass@host:5432/certinel
-    existingSecret: ""      # Secret name holding key "CSR_DB_URL"
+    # A libpq URL. Provide here, or reference an existing Secret with key CERTHEIM_DB_URL.
+    url: ""                 # postgresql://user:pass@host:5432/certheim
+    existingSecret: ""      # Secret name holding key "CERTHEIM_DB_URL"
 
 # ---- OpenBao / Vault (optional, for in-UI signing) -------------------------
 openbao:
   enabled: false
   addr: ""                 # https://openbao.example.com
   pkiMount: pki_csr
-  role: certinel
+  role: certheim
   roleId: ""
   secretId: ""             # sensitive -> Secret
-  existingSecret: ""       # Secret with keys CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID
+  existingSecret: ""       # Secret with keys CERTHEIM_OPENBAO_ROLE_ID / CERTHEIM_OPENBAO_SECRET_ID
   caCert: ""               # optional PEM to verify OpenBao TLS
 
 # Arbitrary extra CSR_* env (advanced).
-extraEnv: {}               # CSR_CAP_OPENBAO: "1"
+extraEnv: {}               # CERTHEIM_CAP_OPENBAO: "1"
 
 # ---- persistence (SQLite DB + issued certs / keys) -------------------------
 persistence:

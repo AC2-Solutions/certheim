@@ -75,8 +75,8 @@ def effective_mode(template_id):
 
 def vault_available():
     """Vault storage needs OpenBao configured (AppRole creds in the env)."""
-    return bool(envcompat.getenv("CSR_OPENBAO_ROLE_ID", "").strip()
-                and envcompat.getenv("CSR_OPENBAO_SECRET_ID", "").strip())
+    return bool(envcompat.getenv("CERTHEIM_OPENBAO_ROLE_ID", "").strip()
+                and envcompat.getenv("CERTHEIM_OPENBAO_SECRET_ID", "").strip())
 
 
 # --------------------------------------------------------------------------- #

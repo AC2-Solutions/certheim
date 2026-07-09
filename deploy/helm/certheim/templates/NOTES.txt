@@ -15,9 +15,9 @@ No ingress: port-forward to try it —
 {{- end }}
 
 First-run setup:
-  1. Make yourself admin (one-time): set CERTINEL_BOOTSTRAP via env, or run
+  1. Make yourself admin (one-time): set CERTHEIM_BOOTSTRAP via env, or run
        kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "certheim.fullname" . }} -c app -- \
-         env CSR_BOOTSTRAP_FIRST_ADMIN=1 true   # see the Setup Guide for details
+         env CERTHEIM_BOOTSTRAP_FIRST_ADMIN=1 true   # see the Setup Guide for details
   2. Open the app and finish setup in Admin (license, org identity, signing).
 {{- if eq (.Values.license | default "") "" }}
 

@@ -48,7 +48,7 @@ Architecture (works on both DB backends via the single `db.connect()` chokepoint
   `search_path` to the resolved tenant's schema. Global rows (the tenant
   registry, license) live in a control schema.
 - **SQLite**: one **database file per tenant**
-  (`/var/opt/certinel/tenants/<slug>.db`); `connect()` opens the resolved
+  (`/var/opt/certheim/tenants/<slug>.db`); `connect()` opens the resolved
   tenant's file. The control DB holds the registry.
 - **Tenant registry** (control plane): `tenants(id, slug, name, store, active,
   created_at)`; `users.tenant_id` binds a user to a tenant. A small `tenancy.py`

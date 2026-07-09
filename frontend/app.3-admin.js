@@ -468,8 +468,8 @@ document.getElementById("admin-db-test-btn")?.addEventListener("click", async ()
   }
   setStatus(status, "Connected — " + (r.body.server || "PostgreSQL"), "ok");
   document.getElementById("admin-db-cmd-migrate").textContent =
-    'sudo -u certinel certinel-db-migrate --to "' + dsn + '"';
-  document.getElementById("admin-db-cmd-env").textContent = "CSR_DB_URL=" + dsn;
+    'sudo -u certheim certheim-db-migrate --to "' + dsn + '"';
+  document.getElementById("admin-db-cmd-env").textContent = "CERTHEIM_DB_URL=" + dsn;
   steps.hidden = false;
 });
 
@@ -1184,7 +1184,7 @@ document.getElementById("admin-support-bundle-btn")?.addEventListener("click", a
     }
     const blob = await resp.blob();
     const cd = resp.headers.get("Content-Disposition") || "";
-    const name = (cd.match(/filename=([^;]+)/) || [])[1] || "certinel-support-bundle.zip";
+    const name = (cd.match(/filename=([^;]+)/) || [])[1] || "certheim-support-bundle.zip";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = name.trim();

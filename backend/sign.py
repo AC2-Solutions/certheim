@@ -132,7 +132,7 @@ def _ssl_context():
     """TLS context, optionally pinned to the OpenBao CA. Falls back to the
     system trust store (the app box trusts the internal root CA, which OpenBao chains
     to). Verification is NEVER disabled."""
-    ca_file = _cfg("openbao_ca_file", "CSR_OPENBAO_CA_FILE", "")
+    ca_file = _cfg("openbao_ca_file", "CERTHEIM_OPENBAO_CA_FILE", "")
     if ca_file and os.path.isfile(ca_file):
         return ssl.create_default_context(cafile=ca_file)
     return ssl.create_default_context()
@@ -178,19 +178,19 @@ def _redact(url):
 
 
 def _openbao_addr_mount():
-    addr = _cfg("openbao_addr", "CSR_OPENBAO_ADDR", "https://openbao.example.com").rstrip("/")
-    mount = _cfg("openbao_pki_mount", "CSR_OPENBAO_PKI_MOUNT", "pki_csr").strip("/")
+    addr = _cfg("openbao_addr", "CERTHEIM_OPENBAO_ADDR", "https://openbao.example.com").rstrip("/")
+    mount = _cfg("openbao_pki_mount", "CERTHEIM_OPENBAO_PKI_MOUNT", "pki_csr").strip("/")
     return addr, mount
 
 
 def _openbao_login(addr):
     """AppRole login -> short-TTL client token. Credentials from the env only."""
-    role_id = envcompat.getenv("CSR_OPENBAO_ROLE_ID", "").strip()
-    secret_id = envcompat.getenv("CSR_OPENBAO_SECRET_ID", "").strip()
+    role_id = envcompat.getenv("CERTHEIM_OPENBAO_ROLE_ID", "").strip()
+    secret_id = envcompat.getenv("CERTHEIM_OPENBAO_SECRET_ID", "").strip()
     if not (role_id and secret_id):
         raise SignError(
             "OpenBao AppRole credential not configured "
-            "(set CSR_OPENBAO_ROLE_ID and CSR_OPENBAO_SECRET_ID in the env file)")
+            "(set CERTHEIM_OPENBAO_ROLE_ID and CERTHEIM_OPENBAO_SECRET_ID in the env file)")
     data = _http(f"{addr}/v1/auth/approle/login",
                  {"role_id": role_id, "secret_id": secret_id})
     token = (data.get("auth") or {}).get("client_token")
@@ -212,7 +212,7 @@ def _obo_token(addr, parent_token, actor):
     safe = "".join(c if (c.isalnum() or c in "_.-@") else "_" for c in actor)[:64]
     body = {
         "metadata": {"certinel_actor": actor},
-        "display_name": "certinel-" + (safe or "user"),
+        "display_name": "certheim-" + (safe or "user"),
         "ttl": "3m", "num_uses": 3, "renewable": False,
     }
     try:
@@ -225,8 +225,10 @@ def _obo_token(addr, parent_token, actor):
 
 def _sign_openbao(csr_pem, template, actor=None):
     addr, mount = _openbao_addr_mount()
+    # The role default stays "certinel": it names the role on the operator's
+    # OpenBao (an external system) — renaming our repo does not rename their vault.
     role = (template or {}).get("openbao_role") or \
-        _cfg("openbao_default_role", "CSR_OPENBAO_ROLE", "certinel")
+        _cfg("openbao_default_role", "CERTHEIM_OPENBAO_ROLE", "certinel")
     token = _obo_token(addr, _openbao_login(addr), actor)
     payload = {"csr": csr_pem, "format": "pem"}
     ttl = (template or {}).get("max_ttl")
@@ -272,14 +274,14 @@ def _sign_cyberark(csr_pem, template):
 # known_hosts come from the environment (secret), never the DB.
 def _winca_cfg():
     return {
-        "host": _cfg("winca_host", "CSR_WINCA_HOST", ""),
-        "config": _cfg("winca_config", "CSR_WINCA_CONFIG", ""),
-        "user": _cfg("winca_ssh_user", "CSR_WINCA_SSH_USER", "Administrator"),
+        "host": _cfg("winca_host", "CERTHEIM_WINCA_HOST", ""),
+        "config": _cfg("winca_config", "CERTHEIM_WINCA_CONFIG", ""),
+        "user": _cfg("winca_ssh_user", "CERTHEIM_WINCA_SSH_USER", "Administrator"),
         # Enterprise (domain-joined) CA: a certificate template makes certreq
         # issue against that template (auto-enroll policy). Blank = standalone CA.
-        "template": _cfg("winca_template", "CSR_WINCA_TEMPLATE", ""),
-        "key": envcompat.getenv("CSR_WINCA_SSH_KEY", "").strip(),
-        "known_hosts": envcompat.getenv("CSR_WINCA_KNOWN_HOSTS", "").strip(),
+        "template": _cfg("winca_template", "CERTHEIM_WINCA_TEMPLATE", ""),
+        "key": envcompat.getenv("CERTHEIM_WINCA_SSH_KEY", "").strip(),
+        "known_hosts": envcompat.getenv("CERTHEIM_WINCA_KNOWN_HOSTS", "").strip(),
     }
 
 
@@ -293,7 +295,7 @@ def _winca_run_ps(ps_script, timeout=60):
     if not c["host"]:
         raise SignError("Windows CA host not configured")
     if not c["key"] or not os.path.isfile(c["key"]):
-        raise SignError("Windows CA SSH key not configured (CSR_WINCA_SSH_KEY)")
+        raise SignError("Windows CA SSH key not configured (CERTHEIM_WINCA_SSH_KEY)")
     b64 = base64.b64encode(ps_script.encode("utf-16-le")).decode()
     opts = ["ssh", "-i", c["key"], "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=20"]
@@ -395,15 +397,15 @@ def _acme_account_key():
 
 def _acme_client():
     import acme_client
-    directory = _cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL")
+    directory = _cfg("acme_directory_url", "CERTHEIM_ACME_DIRECTORY_URL")
     if not directory:
         raise SignError("ACME directory URL is not configured")
     return acme_client.AcmeClient(
         directory, _acme_account_key(),
-        ca_file=(_cfg("acme_ca_file", "CSR_ACME_CA_FILE") or None),
-        contact_email=_cfg("acme_account_email", "CSR_ACME_ACCOUNT_EMAIL"),
-        eab_kid=_cfg("acme_eab_kid", "CSR_ACME_EAB_KID"),
-        eab_hmac_b64=envcompat.getenv("CSR_ACME_EAB_HMAC", "").strip(),
+        ca_file=(_cfg("acme_ca_file", "CERTHEIM_ACME_CA_FILE") or None),
+        contact_email=_cfg("acme_account_email", "CERTHEIM_ACME_ACCOUNT_EMAIL"),
+        eab_kid=_cfg("acme_eab_kid", "CERTHEIM_ACME_EAB_KID"),
+        eab_hmac_b64=envcompat.getenv("CERTHEIM_ACME_EAB_HMAC", "").strip(),
     )
 
 
@@ -413,16 +415,16 @@ def _acme_solver():
     in acme_dns). Secrets come from the service environment; non-secret config
     (zones, server) from app_settings."""
     import acme_client
-    ctype = (_cfg("acme_challenge_type", "CSR_ACME_CHALLENGE_TYPE") or "dns-01").strip().lower()
+    ctype = (_cfg("acme_challenge_type", "CERTHEIM_ACME_CHALLENGE_TYPE") or "dns-01").strip().lower()
     if ctype == "http-01":
-        webroot = _cfg("acme_http_webroot", "CSR_ACME_HTTP_WEBROOT")
+        webroot = _cfg("acme_http_webroot", "CERTHEIM_ACME_HTTP_WEBROOT")
         if not webroot:
             raise SignError("HTTP-01 selected but no webroot is configured "
                             "(acme_http_webroot)")
         return acme_client.Http01WebrootSolver(webroot)
 
-    prov = (_cfg("acme_dns_provider", "CSR_ACME_DNS_PROVIDER") or "rfc2136").strip().lower()
-    zone = _cfg("acme_dns_zone", "CSR_ACME_DNS_ZONE")
+    prov = (_cfg("acme_dns_provider", "CERTHEIM_ACME_DNS_PROVIDER") or "rfc2136").strip().lower()
+    zone = _cfg("acme_dns_zone", "CERTHEIM_ACME_DNS_ZONE")
     if prov in ("cloudflare", "route53", "azure"):
         try:
             import acme_dns
@@ -435,31 +437,31 @@ def _acme_solver():
                 "Commercial license. Use HTTP-01 or internal DNS-01 (rfc2136).")
         if prov == "cloudflare":
             return acme_dns.Dns01CloudflareSolver(
-                envcompat.getenv("CSR_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
+                envcompat.getenv("CERTHEIM_ACME_DNS_API_TOKEN", "").strip(), zone=zone)
         if prov == "route53":
             return acme_dns.Dns01Route53Solver(
-                envcompat.getenv("CSR_ACME_DNS_ACCESS_KEY", "").strip(),
-                envcompat.getenv("CSR_ACME_DNS_SECRET_KEY", "").strip(), zone,
-                session_token=envcompat.getenv("CSR_ACME_DNS_SESSION_TOKEN", "").strip() or None)
+                envcompat.getenv("CERTHEIM_ACME_DNS_ACCESS_KEY", "").strip(),
+                envcompat.getenv("CERTHEIM_ACME_DNS_SECRET_KEY", "").strip(), zone,
+                session_token=envcompat.getenv("CERTHEIM_ACME_DNS_SESSION_TOKEN", "").strip() or None)
         parts = (zone or "").split("/")
         if len(parts) != 3:
             raise SignError("Azure DNS-01 needs acme_dns_zone = "
                             "'subscription/resourceGroup/zone'")
         return acme_dns.Dns01AzureSolver(
-            _cfg("acme_dns_azure_tenant", "CSR_ACME_DNS_AZURE_TENANT"),
-            envcompat.getenv("CSR_ACME_DNS_CLIENT_ID", "").strip(),
-            envcompat.getenv("CSR_ACME_DNS_CLIENT_SECRET", "").strip(),
+            _cfg("acme_dns_azure_tenant", "CERTHEIM_ACME_DNS_AZURE_TENANT"),
+            envcompat.getenv("CERTHEIM_ACME_DNS_CLIENT_ID", "").strip(),
+            envcompat.getenv("CERTHEIM_ACME_DNS_CLIENT_SECRET", "").strip(),
             parts[0], parts[1], parts[2])
 
     # default: internal RFC2136 / nsupdate
-    server = _cfg("acme_dns_server", "CSR_ACME_DNS_SERVER")
-    tsig_name = _cfg("acme_dns_tsig_name", "CSR_ACME_DNS_TSIG_NAME")
-    tsig_secret = envcompat.getenv("CSR_ACME_DNS_TSIG_SECRET", "").strip()
+    server = _cfg("acme_dns_server", "CERTHEIM_ACME_DNS_SERVER")
+    tsig_name = _cfg("acme_dns_tsig_name", "CERTHEIM_ACME_DNS_TSIG_NAME")
+    tsig_secret = envcompat.getenv("CERTHEIM_ACME_DNS_TSIG_SECRET", "").strip()
     if not (server and tsig_name and tsig_secret):
         raise SignError("DNS-01 (rfc2136) requires acme_dns_server + "
-                        "acme_dns_tsig_name + CSR_ACME_DNS_TSIG_SECRET (service env)")
-    algo = _cfg("acme_dns_tsig_algo", "CSR_ACME_DNS_TSIG_ALGO") or "hmac-sha256"
-    port = _cfg("acme_dns_port", "CSR_ACME_DNS_PORT") or "53"
+                        "acme_dns_tsig_name + CERTHEIM_ACME_DNS_TSIG_SECRET (service env)")
+    algo = _cfg("acme_dns_tsig_algo", "CERTHEIM_ACME_DNS_TSIG_ALGO") or "hmac-sha256"
+    port = _cfg("acme_dns_port", "CERTHEIM_ACME_DNS_PORT") or "53"
     return acme_client.Dns01Rfc2136Solver(server, tsig_name, tsig_secret,
                                           tsig_algo=algo, port=int(port))
 
@@ -495,7 +497,7 @@ PROVIDERS = {
     "openbao": {
         "label": "OpenBao PKI",
         "automated": True, "stub": False,
-        "secret_hint": "AppRole CSR_OPENBAO_ROLE_ID / CSR_OPENBAO_SECRET_ID (service env)",
+        "secret_hint": "AppRole CERTHEIM_OPENBAO_ROLE_ID / CERTHEIM_OPENBAO_SECRET_ID (service env)",
         "fields": [
             {"key": "addr", "setting": "openbao_addr", "label": "OpenBao address",
              "placeholder": "https://openbao.example.com"},
@@ -508,20 +510,20 @@ PROVIDERS = {
     "cyberark": {
         "label": "CyberArk",
         "automated": True, "stub": True,
-        "secret_hint": "API token CSR_CYBERARK_TOKEN (service env)",
+        "secret_hint": "API token CERTHEIM_CYBERARK_TOKEN (service env)",
         "fields": [
             {"key": "base_url", "setting": "signing_cyberark_base_url",
              "label": "CyberArk base URL", "placeholder": "https://cyberark.example.com"},
             {"key": "ca_id", "setting": "signing_cyberark_ca_id",
              "label": "Issuing CA / policy ID", "placeholder": "policy or CA identifier"},
             {"key": "app_id", "setting": "signing_cyberark_app_id",
-             "label": "Application ID", "placeholder": "certinel"},
+             "label": "Application ID", "placeholder": "certheim"},
         ],
     },
     "windows_ca": {
         "label": "Windows CA (AD CS / certreq)",
         "automated": True, "stub": False,
-        "secret_hint": "SSH key CSR_WINCA_SSH_KEY (+ optional CSR_WINCA_KNOWN_HOSTS) in the service env",
+        "secret_hint": "SSH key CERTHEIM_WINCA_SSH_KEY (+ optional CERTHEIM_WINCA_KNOWN_HOSTS) in the service env",
         "fields": [
             {"key": "host", "setting": "winca_host", "label": "CA host (SSH)",
              "placeholder": "ca.example.com"},
@@ -537,11 +539,11 @@ PROVIDERS = {
     "acme": {
         "label": "ACME (RFC 8555 - Let's Encrypt, step-ca, ZeroSSL, ...)",
         "automated": True, "stub": False,
-        "secret_hint": "EAB HMAC CSR_ACME_EAB_HMAC (commercial CAs); DNS-01 secret "
-                       "in the service env per provider: TSIG CSR_ACME_DNS_TSIG_SECRET "
-                       "(rfc2136), CSR_ACME_DNS_API_TOKEN (cloudflare), "
-                       "CSR_ACME_DNS_ACCESS_KEY/SECRET_KEY (route53), "
-                       "CSR_ACME_DNS_CLIENT_ID/CLIENT_SECRET (azure)",
+        "secret_hint": "EAB HMAC CERTHEIM_ACME_EAB_HMAC (commercial CAs); DNS-01 secret "
+                       "in the service env per provider: TSIG CERTHEIM_ACME_DNS_TSIG_SECRET "
+                       "(rfc2136), CERTHEIM_ACME_DNS_API_TOKEN (cloudflare), "
+                       "CERTHEIM_ACME_DNS_ACCESS_KEY/SECRET_KEY (route53), "
+                       "CERTHEIM_ACME_DNS_CLIENT_ID/CLIENT_SECRET (azure)",
         "fields": [
             {"key": "directory_url", "setting": "acme_directory_url",
              "label": "ACME directory URL",
@@ -585,9 +587,9 @@ PROVIDERS = {
     "ejbca": {
         "label": "EJBCA (REST enrollment)",
         "automated": True, "stub": False,
-        "secret_hint": "Enrollment password CSR_EJBCA_PASSWORD; optional mTLS "
-                       "client cert CSR_EJBCA_CLIENT_CERT / CSR_EJBCA_CLIENT_KEY "
-                       "(+ CSR_EJBCA_CA_FILE), all in the service env",
+        "secret_hint": "Enrollment password CERTHEIM_EJBCA_PASSWORD; optional mTLS "
+                       "client cert CERTHEIM_EJBCA_CLIENT_CERT / CERTHEIM_EJBCA_CLIENT_KEY "
+                       "(+ CERTHEIM_EJBCA_CA_FILE), all in the service env",
         "fields": [
             {"key": "base_url", "setting": "ejbca_base_url", "label": "EJBCA base URL",
              "placeholder": "https://ejbca.example.com"},
@@ -598,13 +600,13 @@ PROVIDERS = {
             {"key": "ee_profile", "setting": "ejbca_ee_profile",
              "label": "End-entity profile", "placeholder": "ENDUSER"},
             {"key": "username", "setting": "ejbca_username", "label": "Enrollment username",
-             "placeholder": "certinel"},
+             "placeholder": "certheim"},
         ],
     },
     "venafi": {
         "label": "Venafi TPP (Trust Protection Platform)",
         "automated": True, "stub": False,
-        "secret_hint": "OAuth bearer token CSR_VENAFI_TOKEN (service env)",
+        "secret_hint": "OAuth bearer token CERTHEIM_VENAFI_TOKEN (service env)",
         "fields": [
             {"key": "base_url", "setting": "venafi_base_url", "label": "TPP base URL",
              "placeholder": "https://tpp.example.com"},
@@ -615,8 +617,8 @@ PROVIDERS = {
     "aws_pca": {
         "label": "AWS Private CA (ACM PCA)",
         "automated": True, "stub": False,
-        "secret_hint": "CSR_AWS_PCA_ACCESS_KEY / CSR_AWS_PCA_SECRET_KEY "
-                       "(+ optional CSR_AWS_PCA_SESSION_TOKEN) in the service env",
+        "secret_hint": "CERTHEIM_AWS_PCA_ACCESS_KEY / CERTHEIM_AWS_PCA_SECRET_KEY "
+                       "(+ optional CERTHEIM_AWS_PCA_SESSION_TOKEN) in the service env",
         "fields": [
             {"key": "ca_arn", "setting": "aws_pca_ca_arn", "label": "CA ARN",
              "placeholder": "arn:aws:acm-pca:us-east-1:123456789012:certificate-authority/..."},
@@ -677,26 +679,26 @@ def provider_meta():
 
 def _credential_present(provider):
     if provider == "openbao":
-        return bool(envcompat.getenv("CSR_OPENBAO_ROLE_ID")
-                    and envcompat.getenv("CSR_OPENBAO_SECRET_ID"))
+        return bool(envcompat.getenv("CERTHEIM_OPENBAO_ROLE_ID")
+                    and envcompat.getenv("CERTHEIM_OPENBAO_SECRET_ID"))
     if provider == "cyberark":
-        return bool(envcompat.getenv("CSR_CYBERARK_TOKEN"))
+        return bool(envcompat.getenv("CERTHEIM_CYBERARK_TOKEN"))
     if provider == "windows_ca":
-        key = envcompat.getenv("CSR_WINCA_SSH_KEY", "").strip()
+        key = envcompat.getenv("CERTHEIM_WINCA_SSH_KEY", "").strip()
         return bool(key and os.path.isfile(key))
     if provider == "acme":
         # ACME needs no single mandatory env secret (public CA + HTTP-01 works
         # with none); it's "configured" once a directory URL is set. Per-config
         # requirements (EAB / TSIG) surface at test/sign time.
-        return bool(_cfg("acme_directory_url", "CSR_ACME_DIRECTORY_URL"))
+        return bool(_cfg("acme_directory_url", "CERTHEIM_ACME_DIRECTORY_URL"))
     if provider == "ejbca":
-        return bool(envcompat.getenv("CSR_EJBCA_PASSWORD")
-                    or envcompat.getenv("CSR_EJBCA_CLIENT_CERT"))
+        return bool(envcompat.getenv("CERTHEIM_EJBCA_PASSWORD")
+                    or envcompat.getenv("CERTHEIM_EJBCA_CLIENT_CERT"))
     if provider == "venafi":
-        return bool(envcompat.getenv("CSR_VENAFI_TOKEN"))
+        return bool(envcompat.getenv("CERTHEIM_VENAFI_TOKEN"))
     if provider == "aws_pca":
-        return bool(envcompat.getenv("CSR_AWS_PCA_ACCESS_KEY")
-                    and envcompat.getenv("CSR_AWS_PCA_SECRET_KEY"))
+        return bool(envcompat.getenv("CERTHEIM_AWS_PCA_ACCESS_KEY")
+                    and envcompat.getenv("CERTHEIM_AWS_PCA_SECRET_KEY"))
     return True   # manual needs no credential
 
 

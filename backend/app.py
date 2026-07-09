@@ -36,38 +36,38 @@ import db as dbx  # pluggable DB backend (sqlite default / postgres); 'db' is th
 
 # ---------- Configuration ----------
 # Deployment-specific values come from an env file so a new environment is
-# a single file to edit. Search order: $CERTINEL_ENV, then the default
+# a single file to edit. Search order: $CERTHEIM_ENV, then the default
 # path. Missing file is fine - sensible generic defaults below.
 # Format: plain KEY=value lines, # comments allowed, no shell
 # expansion (read with stdlib, so no python-dotenv dependency - matters for
 # the offline/air-gapped bundle).
 _ENV_DEFAULTS = {
-    "CSR_HELPER_PATH": "/opt/certinel/helper/certinel_helper.sh",
-    "CSR_DB_PATH": "/var/lib/certinel/jobs.db",
-    "CSR_ISSUED_DIR": "/var/opt/certinel/issued",
-    "CSR_SESSION_TTL": "28800",          # 8h in seconds
-    "CSR_MAX_CERTLIST_BYTES": "65536",
-    "CSR_MAX_CSR_BYTES": "32768",
-    "CSR_MAX_CERT_BYTES": "65536",
+    "CERTHEIM_HELPER_PATH": "/opt/certheim/helper/certheim_helper.sh",
+    "CERTHEIM_DB_PATH": "/var/lib/certheim/jobs.db",
+    "CERTHEIM_ISSUED_DIR": "/var/opt/certheim/issued",
+    "CERTHEIM_SESSION_TTL": "28800",          # 8h in seconds
+    "CERTHEIM_MAX_CERTLIST_BYTES": "65536",
+    "CERTHEIM_MAX_CSR_BYTES": "32768",
+    "CERTHEIM_MAX_CERT_BYTES": "65536",
     # When "1"/"true", the FIRST user to log in on a completely empty users
     # table is made admin (initial-setup convenience). Self-disables once any
     # user exists. Default off - on a box where mTLS isn't fully locked down,
     # auto-promoting "whoever logs in first" is a risk; enable it deliberately
     # for first-time setup, then turn it off (or it simply never fires again).
-    "CSR_BOOTSTRAP_FIRST_ADMIN": "0",
+    "CERTHEIM_BOOTSTRAP_FIRST_ADMIN": "0",
     # Container mode: when "1"/"true", the app runs as a single user inside a
     # container (the container, not sudo, is the privilege boundary). The helper
     # is invoked directly (no `sudo -n`), and mTLS is terminated at the ingress
     # rather than rewritten into nginx at runtime. Default off = the VM/systemd
     # deployment is completely unchanged.
-    "CERTINEL_CONTAINER": "0",
+    "CERTHEIM_CONTAINER": "0",
 }
 
 def _load_env_file():
     """Merge an optional KEY=value env file over os.environ over defaults."""
     values = dict(_ENV_DEFAULTS)
-    path = envcompat.getenv("CERTINEL_ENV",
-                          "/etc/certinel/certinel.env")
+    path = envcompat.getenv("CERTHEIM_ENV",
+                          "/etc/certheim/certheim.env")
     try:
         with open(path) as f:
             for line in f:
@@ -107,20 +107,20 @@ def _env_bool(key):
     return str(_ENV.get(key, _ENV_DEFAULTS.get(key, "0"))).strip().lower() \
         in ("1", "true", "yes", "on")
 
-BOOTSTRAP_FIRST_ADMIN = _env_bool("CSR_BOOTSTRAP_FIRST_ADMIN")
-CONTAINER_MODE = _env_bool("CERTINEL_CONTAINER")
+BOOTSTRAP_FIRST_ADMIN = _env_bool("CERTHEIM_BOOTSTRAP_FIRST_ADMIN")
+CONTAINER_MODE = _env_bool("CERTHEIM_CONTAINER")
 
 # In container mode the app + helper run as the same user, so the helper is
 # called directly; on a VM the unprivileged service account escalates to the
 # root-owned helper via a single scoped sudoers rule.
 def _helper_cmd(container_mode):
-    path = _ENV["CSR_HELPER_PATH"]
+    path = _ENV["CERTHEIM_HELPER_PATH"]
     return [path] if container_mode else ["sudo", "-n", path]
 
 
 HELPER = _helper_cmd(CONTAINER_MODE)
-DB_PATH = _ENV["CSR_DB_PATH"]
-ISSUED_DIR = _ENV["CSR_ISSUED_DIR"]
+DB_PATH = _ENV["CERTHEIM_DB_PATH"]
+ISSUED_DIR = _ENV["CERTHEIM_ISSUED_DIR"]
 
 # Application version. Each edition (Community/Commercial/Government) carries its
 # OWN version line in editions/<edition>.version so the three branches never
@@ -151,13 +151,13 @@ def _read_version():
 
 APP_VERSION = _read_version()
 
-MAX_CERTLIST_BYTES = _env_int("CSR_MAX_CERTLIST_BYTES")
-MAX_CSR_BYTES = _env_int("CSR_MAX_CSR_BYTES")
-MAX_CERT_BYTES = _env_int("CSR_MAX_CERT_BYTES")
-SESSION_TTL = _env_int("CSR_SESSION_TTL")
+MAX_CERTLIST_BYTES = _env_int("CERTHEIM_MAX_CERTLIST_BYTES")
+MAX_CSR_BYTES = _env_int("CERTHEIM_MAX_CSR_BYTES")
+MAX_CERT_BYTES = _env_int("CERTHEIM_MAX_CERT_BYTES")
+SESSION_TTL = _env_int("CERTHEIM_SESSION_TTL")
 
 CERTLIST_LINE_RE = re.compile(r"^[A-Za-z0-9._,@+:-]{0,253}$")
-CSR_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\.csr$")
+CERTHEIM_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\.csr$")
 KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\.key$")
 HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -166,14 +166,14 @@ DOMAIN_RE = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 GROUP_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,63}$")
 
 # Cert types supported by the helper's generate-typed subcommand. Must match
-# CERT_TYPE_LIST in certinel_helper.d/10-certtypes.sh.
+# CERT_TYPE_LIST in certheim_helper.d/10-certtypes.sh.
 # "server-client" is a legacy alias accepted on input, expanded to client+web.
 CERT_TYPES_ALLOWED = ("web", "client", "email", "codesign",
                       "ipsec", "ocsp", "timestamp", "8021x")
 EXCLUSIVE_CERT_TYPES = {"codesign", "ocsp", "timestamp"}
 
 # Key algorithms the helper can generate. Must match KEY_ALGO_RE in
-# certinel_helper.d/20-generate.sh.
+# certheim_helper.d/20-generate.sh.
 KEY_ALGOS_ALLOWED = ("rsa2048", "rsa3072", "rsa4096", "ecdsa256", "ecdsa384")
 
 # Built-in templates seeded on first run, named after the familiar Windows
@@ -451,7 +451,7 @@ def _send_webhook_sync(url, payload, headers, timeout=WEBHOOK_TIMEOUT):
     body = json.dumps(payload).encode("utf-8")
     request_headers = {
         "Content-Type": "application/json",
-        "User-Agent": "certinel/2.2",
+        "User-Agent": "certheim/2.2",
     }
     if isinstance(headers, dict):
         for k, v in headers.items():
@@ -581,14 +581,14 @@ try:
             address="/dev/log",
             facility=logging.handlers.SysLogHandler.LOG_AUTHPRIV,
         )
-        _h.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
+        _h.setFormatter(logging.Formatter("certheim[%(process)d]: %(message)s"))
     else:
         # No syslog socket (e.g. container): audit to stdout so k8s/journald captures it.
         _h = logging.StreamHandler()
-        _h.setFormatter(logging.Formatter("certinel-audit: %(message)s"))
+        _h.setFormatter(logging.Formatter("certheim-audit: %(message)s"))
 except Exception:
     _h = logging.StreamHandler()
-    _h.setFormatter(logging.Formatter("certinel-audit: %(message)s"))
+    _h.setFormatter(logging.Formatter("certheim-audit: %(message)s"))
 audit.addHandler(_h)
 
 app = Flask(__name__)
@@ -599,7 +599,7 @@ def init_db():
         # mkdir the CURRENTLY-configured sqlite path, not the import-time DB_PATH
         # global: the migration tool (db_migrate) reconfigures dbx to a target
         # path before calling init_db(), and a Postgres deployment never sets
-        # CSR_DB_PATH so the stale default (/var/lib/certinel) may be unwritable.
+        # CERTHEIM_DB_PATH so the stale default (/var/lib/certheim) may be unwritable.
         Path(dbx.sqlite_path()).parent.mkdir(parents=True, exist_ok=True)
     # schema_connect() applies dialect translation (AUTOINCREMENT/REAL) so the
     # SQLite-flavored CREATE/ALTER below also build correctly on Postgres.
@@ -870,7 +870,7 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_at REAL")
     if "revoked_by_dn" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN revoked_by_dn TEXT")
-    # Certificate delivery (P1): per-job delivery state for the certinel-deliver timer.
+    # Certificate delivery (P1): per-job delivery state for the certheim-deliver timer.
     if "delivery_status" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN delivery_status TEXT")
     if "delivery_detail" not in job_cols:
@@ -1381,7 +1381,7 @@ import keystore  # noqa: E402
 keystore.configure(get_setting=get_setting)
 import truststore  # noqa: E402
 truststore.configure(get_setting=get_setting)
-# Re-export the delivery-retry pass so the certinel-deliver timer can call
+# Re-export the delivery-retry pass so the certheim-deliver timer can call
 # app.run_deliveries() without its own Flask context (same pattern as
 # run_auto_renew / run_expiry_warnings). Premium: stubbed in the Community build.
 if deliver is not None:
@@ -1596,7 +1596,7 @@ def require_csrf(fn):
     @wraps(fn)
     def w(*a, **kw):
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
-            if request.headers.get("X-Requested-With") != "certinel":
+            if request.headers.get("X-Requested-With") != "certheim":
                 log_event(fn.__name__, "deny_csrf")
                 abort(403)
         return fn(*a, **kw)
@@ -2191,7 +2191,7 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
     # Certificate delivery (P1): if this job's template configures a delivery
     # backend, flag it pending and attempt an immediate ship. Best-effort and
     # fully isolated - a delivery hiccup must never fail an otherwise-good issue;
-    # the certinel-deliver timer retries anything left 'pending'/'failed'.
+    # the certheim-deliver timer retries anything left 'pending'/'failed'.
     try:
         import deliver
         if deliver.mark_pending(job_id):
@@ -2286,10 +2286,10 @@ def _startup_license_banner():
         import licensing
         info = licensing.info()
         rel = build_mode.is_release()
-        boot = logging.getLogger("certinel.boot")
+        boot = logging.getLogger("certheim.boot")
         if not boot.handlers:
             _bh = logging.StreamHandler()  # stderr -> journald/console
-            _bh.setFormatter(logging.Formatter("certinel[%(process)d]: %(message)s"))
+            _bh.setFormatter(logging.Formatter("certheim[%(process)d]: %(message)s"))
             boot.addHandler(_bh)
             boot.setLevel(logging.INFO)
             boot.propagate = False
@@ -2329,14 +2329,14 @@ def _startup_license_banner():
         # A release build must never honor the env backdoors; a dev build that
         # has them set is fine but should say so out loud.
         if not rel:
-            for var in ("CSR_ENTITLEMENTS", "CSR_LICENSE_PUBKEY"):
+            for var in ("CERTHEIM_ENTITLEMENTS", "CERTHEIM_LICENSE_PUBKEY"):
                 if os.environ.get(var):
                     emit(logging.WARNING,
                          f"DEV OVERRIDE ACTIVE: {var} is set and honored "
                          f"(development build) - it would be IGNORED in a release build")
     except Exception as e:  # never let licensing logging stop boot
         try:
-            logging.getLogger("certinel.boot").warning(
+            logging.getLogger("certheim.boot").warning(
                 "license banner failed: %s", e)
         except Exception:
             pass

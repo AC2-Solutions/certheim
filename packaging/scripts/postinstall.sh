@@ -17,7 +17,7 @@ cat <<'EOF'
       sudo certheim-setup
 
   This picks the FQDN/TLS mode, provisions nginx, builds the service venv from
-  the bundled offline wheelhouse, and starts the certinel-api systemd service.
+  the bundled offline wheelhouse, and starts the certheim-api systemd service.
 
   Unattended install (every prompt has an env override):
 

@@ -27,9 +27,9 @@ posture as other commercial on-prem products. We do not pursue obfuscation DRM.
 - **Edition + explicit `entitlements[]`** gate every premium feature.
 - **Host binding** — optional `bind_host` claim; a mismatch warns in logs + admin
   (soft, so a legitimate host move doesn't brick prod). Container-aware via
-  `CSR_LICENSE_HOST`.
+  `CERTHEIM_LICENSE_HOST`.
 - Works identically in the container; the Helm chart mounts the license as a
-  Secret (`CSR_LICENSE_FILE`), compose via an env/volume.
+  Secret (`CERTHEIM_LICENSE_FILE`), compose via an env/volume.
 
 **Conclusion:** runtime entitlement is solid. The open gap is **distribution** —
 the image itself is currently pullable by anyone holding the (shared) registry
@@ -50,8 +50,8 @@ The customer's entitlement *is* their pull credential. We use the standard
 auth service:
 
 ```
- customer ── docker login dl.certinel.io -u <customer-id> -p <pull-token>
- customer ── docker pull dl.certinel.io/certinel:<tag>
+ customer ── docker login dl.certheim.io -u <customer-id> -p <pull-token>
+ customer ── docker pull dl.certheim.io/certheim:<tag>
                 │  401 + Www-Authenticate: realm=https://licenses.../v2/token
                 ▼
  registry (registry:2, auth: token)
@@ -61,7 +61,7 @@ auth service:
                 │  1. look up pull-token  → customer's signed license
                 │  2. verify license (reuse licensing verify): signature OK?
                 │  3. edition allows pull?  not expired?
-                │  4. mint a short-lived registry JWT, scope repository:certinel:pull
+                │  4. mint a short-lived registry JWT, scope repository:certheim:pull
                 ▼
  registry serves the image (+ its SBOM/provenance attestations)
 ```
@@ -70,14 +70,14 @@ auth service:
 
 1. **Entitled registry** — `registry:2` on/beside vm1022, `auth.token`
    configured with `realm` = the license-server `/v2/token` URL, a `service`
-   name, and the JWT-signing cert bundle. Public name `dl.certinel.io`
+   name, and the JWT-signing cert bundle. Public name `dl.certheim.io`
    (placeholder — confirm), fronted by Caddy/Cloudflare with TLS.
 
 2. **license-server `/v2/token` endpoint** (new, in `ac2-solutions/licenses`) —
    implements the registry token protocol: authenticate `customer-id:pull-token`,
    resolve to the customer's license, run the **same verification** used to issue
    it (signature, edition, `expires`), and on success mint an RS256 registry JWT
-   (scoped `repository:certinel:pull`, short TTL, signed by the registry's trust
+   (scoped `repository:certheim:pull`, short TTL, signed by the registry's trust
    key). Deny (401/403) when the token is unknown/revoked or the license is
    expired/Community-only.
 
@@ -121,10 +121,10 @@ auth service:
 1. **This doc.**
 2. **Entitled registry + `/v2/token`** — stand up `registry:2` on/beside vm1022;
    add the token endpoint + pull-token issuance to the license-server; DNS + TLS
-   for `dl.certinel.io`; CI/release `skopeo` mirror. Codify in Ansible.
+   for `dl.certheim.io`; CI/release `skopeo` mirror. Codify in Ansible.
 3. **Issuance UX** — the portal shows the customer their license **and** their
    `docker login` + pull command; the setup-guide deployment generator references
-   `dl.certinel.io` (instead of the raw Docker Hub repo) and emits the pull
+   `dl.certheim.io` (instead of the raw Docker Hub repo) and emits the pull
    secret. Image references in chart/compose default to the entitled registry.
 4. **(optional) cosign-sign** the published images so customers can verify
    authenticity (`cosign verify`), complementing the SBOM/provenance attestations.
@@ -133,7 +133,7 @@ auth service:
 
 ## Open items to confirm
 
-- **Public hostname** for the entitled registry (`dl.certinel.io`? under an
+- **Public hostname** for the entitled registry (`dl.certheim.io`? under an
   `*.ac2solutions.com` name? the eventual Certheim product domain?).
 - **TLS source** (public ACME vs step-ca — customer-facing ⇒ public CA).
 - Registry storage backend + retention (which tags to mirror/keep).

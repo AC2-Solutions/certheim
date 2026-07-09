@@ -97,8 +97,8 @@ def _setting(key, default=None):
 
 
 def _flag(name, default=False):
-    """A declared env flag: env var CSR_CAP_<NAME> or setting cap_<name> wins."""
-    env = envcompat.getenv("CSR_CAP_" + name.upper())
+    """A declared env flag: env var CERTHEIM_CAP_<NAME> or setting cap_<name> wins."""
+    env = envcompat.getenv("CERTHEIM_CAP_" + name.upper())
     if env is not None:
         return env.strip() not in ("", "0", "false", "False")
     s = _setting("cap_" + name)
@@ -195,7 +195,7 @@ def _detect_env():
         caps["selinux_enforcing"] = False
     caps["fapolicyd"] = _svc_active("fapolicyd")
     # declared (installer/admin) with detection fallback
-    if envcompat.getenv("CSR_CAP_EGRESS_INTERNET") is not None \
+    if envcompat.getenv("CERTHEIM_CAP_EGRESS_INTERNET") is not None \
             or _setting("cap_egress_internet") is not None:
         caps["egress_internet"] = _flag("egress_internet")
     else:
@@ -252,9 +252,9 @@ def fips_status():
 # --- entitlements (license) ------------------------------------------------
 def _entitlements():
     """Set of entitled capability keys, or None = grant all (default, license-
-    agnostic). Overridable now via CSR_ENTITLEMENTS=csv; later a signed license
+    agnostic). Overridable now via CERTHEIM_ENTITLEMENTS=csv; later a signed license
     file populates this with no call-site change."""
-    env = envcompat.getenv("CSR_ENTITLEMENTS")
+    env = envcompat.getenv("CERTHEIM_ENTITLEMENTS")
     if env:
         return set(x.strip() for x in env.split(",") if x.strip())
     return None
@@ -349,7 +349,7 @@ def is_entitled(key):
         if not build_mode.build_includes_tier(_cap_build_tier(key)):
             return False
         # Explicit operator override (dev / evaluation / all-access self-host):
-        # CSR_ENTITLEMENTS=* or a comma list unlocks licensed caps without a
+        # CERTHEIM_ENTITLEMENTS=* or a comma list unlocks licensed caps without a
         # license file. Honored ONLY in a development build - a hardened RELEASE
         # build ignores this backdoor, so paid capabilities require a valid
         # signed license no matter what the environment is set to.

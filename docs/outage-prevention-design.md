@@ -10,7 +10,7 @@ alerting (you route alerts to owners; a broken chain is an alertable condition).
 
 ## What already exists (and what C2 generalizes)
 
-A `certinel-expiry-warn` systemd timer runs `run_expiry_warnings()`
+A `certheim-expiry-warn` systemd timer runs `run_expiry_warnings()`
 (`routes_admin.py`), which warns on soon-to-expire `fleet_certs` using an
 `expiry_warned` flag to avoid re-warning, sending via `notify.py` (email) and the
 chat path. C2 **generalizes this single pass into an inventory-wide alerting
@@ -59,7 +59,7 @@ The routing + enrichment foundation the alerting engine needs.
 - **SLA tracking**: record time-in-tier; surface "N certs past their renewal SLA"
   in the summary and the digest.
 - **Admin config** (`routes_admin` settings): tier thresholds, channels per tier,
-  escalation recipients, quiet hours. Scheduler stays the `certinel-expiry-warn`
+  escalation recipients, quiet hours. Scheduler stays the `certheim-expiry-warn`
   timer (renamed/aliased to a general alerts pass).
 
 ## Increment C2.3 — Scheduled expiry digests

@@ -20,9 +20,9 @@ psycopg (v3) in a thin compatibility shim so the 350+ query sites don't change:
 Backend selection (priority): an explicit configure() call from the app (which
 may apply an admin setting), else the environment:
 
-    CSR_DB_URL = postgresql://user:pass@host:5432/certinel   -> postgres
-    CSR_DB_BACKEND = sqlite | postgres                        -> explicit
-    (default)                                                 -> sqlite at CSR_DB_PATH
+    CERTHEIM_DB_URL = postgresql://user:pass@host:5432/certheim   -> postgres
+    CERTHEIM_DB_BACKEND = sqlite | postgres                        -> explicit
+    (default)                                                 -> sqlite at CERTHEIM_DB_PATH
 
 psycopg is imported lazily, so a SQLite-only install needs no driver and the
 offline wheelhouse stays slim.
@@ -73,8 +73,8 @@ def _resolve():
     global _backend, _pg_dsn, _sqlite_path
     if _backend:
         return
-    url = envcompat.getenv("CSR_DB_URL", "").strip()
-    be = envcompat.getenv("CSR_DB_BACKEND", "").strip().lower()
+    url = envcompat.getenv("CERTHEIM_DB_URL", "").strip()
+    be = envcompat.getenv("CERTHEIM_DB_BACKEND", "").strip().lower()
     if url and not be:
         be = "postgres"
     if be in ("postgres", "postgresql"):
@@ -83,18 +83,18 @@ def _resolve():
     else:
         _backend = "sqlite"
     if not _sqlite_path:
-        _sqlite_path = envcompat.getenv("CSR_DB_PATH", "/var/lib/certinel/jobs.db")
+        _sqlite_path = envcompat.getenv("CERTHEIM_DB_PATH", "/var/lib/certheim/jobs.db")
 
 
 def _dsn_from_parts():
-    """Build a libpq DSN from discrete CSR_DB_* vars (alternative to CSR_DB_URL)."""
+    """Build a libpq DSN from discrete CERTHEIM_DB_* vars (alternative to CERTHEIM_DB_URL)."""
     parts = {
-        "host": envcompat.getenv("CSR_DB_HOST", "").strip(),
-        "port": envcompat.getenv("CSR_DB_PORT", "").strip(),
-        "dbname": envcompat.getenv("CSR_DB_NAME", "").strip(),
-        "user": envcompat.getenv("CSR_DB_USER", "").strip(),
-        "password": envcompat.getenv("CSR_DB_PASSWORD", "").strip(),
-        "sslmode": envcompat.getenv("CSR_DB_SSLMODE", "").strip(),
+        "host": envcompat.getenv("CERTHEIM_DB_HOST", "").strip(),
+        "port": envcompat.getenv("CERTHEIM_DB_PORT", "").strip(),
+        "dbname": envcompat.getenv("CERTHEIM_DB_NAME", "").strip(),
+        "user": envcompat.getenv("CERTHEIM_DB_USER", "").strip(),
+        "password": envcompat.getenv("CERTHEIM_DB_PASSWORD", "").strip(),
+        "sslmode": envcompat.getenv("CERTHEIM_DB_SSLMODE", "").strip(),
     }
     return " ".join(f"{k}={v}" for k, v in parts.items() if v)
 
@@ -303,7 +303,7 @@ class _PgConn:
         import psycopg  # lazy: only needed on postgres installs
         if not conn_dsn:
             raise RuntimeError("postgres backend selected but no DSN configured "
-                               "(set CSR_DB_URL or the CSR_DB_* parts)")
+                               "(set CERTHEIM_DB_URL or the CERTHEIM_DB_* parts)")
         _register_pg_errors()
         self._conn = psycopg.connect(conn_dsn, autocommit=False)
 

@@ -137,7 +137,7 @@
       </div>
       <div>
         <label>Service account name <span class="hint">(advanced — leave as is)</span><button type="button" class="help" data-help="svc" aria-label="How to find this">?</button></label>
-        <input type="text" id="svc" placeholder="certinel">
+        <input type="text" id="svc" placeholder="certheim">
       </div>
     </div>
 
@@ -155,7 +155,7 @@
         <div><label>PKI mount <span class="hint">(default pki_csr)</span><button type="button" class="help" data-help="ob_mount" aria-label="How to find this">?</button></label><input type="text" id="ob_mount" placeholder="pki_csr"></div>
       </div>
       <div class="row">
-        <div><label>Signing role <span class="hint">(default certinel)</span><button type="button" class="help" data-help="ob_role" aria-label="How to find this">?</button></label><input type="text" id="ob_role" placeholder="certinel"></div>
+        <div><label>Signing role <span class="hint">(default certheim)</span><button type="button" class="help" data-help="ob_role" aria-label="How to find this">?</button></label><input type="text" id="ob_role" placeholder="certheim"></div>
         <div><label>AppRole role_id <span class="hint">(from your Vault admin)</span><button type="button" class="help" data-help="ob_rid" aria-label="How to find this">?</button></label><input type="text" id="ob_rid" placeholder="xxxxxxxx-xxxx-..."></div>
       </div>
       <label>AppRole secret_id <span class="hint">(treat like a password)</span><button type="button" class="help" data-help="ob_sid" aria-label="How to find this">?</button></label>
@@ -227,9 +227,9 @@
 {{OBINSTALL}}     ASSUME_DEFAULTS=yes \
      bash install/online-install.sh</pre></div>
       <div class="note when-postgres" hidden>You picked <b>PostgreSQL</b>: append
-        <code>CSR_DB_URL=<span data-tpl="url2"></span></code> to the line above (or add it to
-        <code>/etc/certinel/certinel.env</code> and restart). Already running on SQLite? Switch over without losing data with
-        <code>sudo certinel-db-migrate --to "<i>your-postgres-url</i>"</code>.</div>
+        <code>CERTHEIM_DB_URL=<span data-tpl="url2"></span></code> to the line above (or add it to
+        <code>/etc/certheim/certheim.env</code> and restart). Already running on SQLite? Switch over without losing data with
+        <code>sudo certheim-db-migrate --to "<i>your-postgres-url</i>"</code>.</div>
 
       <h3 style="font-size:15px;margin:16px 0 2px">B · Sealed / offline network</h3>
       <p class="sub">On a connected machine, build a self-contained bundle, copy it across, then run its installer.</p>
@@ -317,16 +317,16 @@ kubectl -n certheim create secret docker-registry regcred \
     <div class="do when-vm">⌨️ <b>Turn on first-admin mode.</b> On the server, open the settings file and set the bootstrap line to <code>1</code>:</div>
     <div class="when-vm">
     <div class="term"><div class="bar"><span>run on your server</span><button class="copy">Copy</button></div>
-<pre data-tpl="bootstrap">sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env
-sudo systemctl restart certinel-api</pre></div>
+<pre data-tpl="bootstrap">sudo sed -i 's/^CERTHEIM_BOOTSTRAP_FIRST_ADMIN=.*/CERTHEIM_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certheim/certheim.env
+sudo systemctl restart certheim-api</pre></div>
     </div>
-    <div class="do when-container" hidden>⌨️ <b>Turn on first-admin mode.</b> Add <code>CSR_BOOTSTRAP_FIRST_ADMIN: "1"</code> to the
+    <div class="do when-container" hidden>⌨️ <b>Turn on first-admin mode.</b> Add <code>CERTHEIM_BOOTSTRAP_FIRST_ADMIN: "1"</code> to the
       <code>app</code> service&rsquo;s <code>environment:</code> in your Compose file, then <code>docker compose up -d</code> to apply.
       Remove it (and re-up) once you&rsquo;ve registered.</div>
     <div class="do when-k8s" hidden>⌨️ <b>Turn on first-admin mode.</b> Add it under <code>extraEnv:</code> in your values file, then re-run <code>helm upgrade</code>:
       <div class="term" style="margin-top:6px"><div class="bar"><span>certheim-values.yaml</span><button class="copy">Copy</button></div>
 <pre>extraEnv:
-  CSR_BOOTSTRAP_FIRST_ADMIN: "1"</pre></div>
+  CERTHEIM_BOOTSTRAP_FIRST_ADMIN: "1"</pre></div>
       Remove it and upgrade again after you&rsquo;ve registered.</div>
 
     <div class="do when-local">🖥️ <b>Make your account.</b> Go to <b>https://<span data-tpl="url">{{FQDN}}</span>/csr/</b> → <b>Register</b> →
@@ -335,9 +335,9 @@ sudo systemctl restart certinel-api</pre></div>
        Your identity is read from the card and the first one in becomes the admin.</div>
 
     <div class="note">Already created a normal account and need to promote it? On the server run
-      <code>sudo certinel-bootstrap-admin <span class="var">your-username</span></code>.</div>
+      <code>sudo certheim-bootstrap-admin <span class="var">your-username</span></code>.</div>
     <div class="tip">Security tip: once you can see the <b>Admin</b> menu, set
-      <code>CSR_BOOTSTRAP_FIRST_ADMIN=0</code> again (same file as above) so nobody else can self-promote.</div>
+      <code>CERTHEIM_BOOTSTRAP_FIRST_ADMIN=0</code> again (same file as above) so nobody else can self-promote.</div>
   </div>
 
   <!-- ─────────────  STEP 3  ───────────── -->
@@ -349,9 +349,9 @@ sudo systemctl restart certinel-api</pre></div>
       <div class="do">🖥️ In Certheim, open <span class="where">Admin → License</span>, paste your license blob into the box, and click <b>Save</b>.</div>
       <div class="tip">It should immediately show <b data-tpl="editionName">Commercial</b> Edition with a green check. If it says
         &ldquo;invalid,&rdquo; you probably copied an extra space — paste it again cleanly.</div>
-      <div class="note">Prefer a file instead of pasting? Put the blob in <code>/etc/certinel/license.txt</code>, add
-        <code>CSR_LICENSE_FILE=/etc/certinel/license.txt</code> to <code>/etc/certinel/certinel.env</code>, and restart with
-        <code>sudo systemctl restart certinel-api</code>.</div>
+      <div class="note">Prefer a file instead of pasting? Put the blob in <code>/etc/certheim/license.txt</code>, add
+        <code>CERTHEIM_LICENSE_FILE=/etc/certheim/license.txt</code> to <code>/etc/certheim/certheim.env</code>, and restart with
+        <code>sudo systemctl restart certheim-api</code>.</div>
     </div>
   </div>
 
@@ -409,15 +409,15 @@ sudo systemctl restart certinel-api</pre></div>
       server, never in the web app — that&rsquo;s deliberate.)</div>
     <div class="when-vm">
     <div class="term"><div class="bar"><span>run on your server — your details filled in</span><button class="copy">Copy</button></div>
-<pre data-tpl="obenv">sudo tee -a /etc/certinel/certinel.env >/dev/null &lt;&lt;'EOF'
-CSR_OPENBAO_ADDR=<span class="var">{{OB_ADDR}}</span>
-CSR_OPENBAO_PKI_MOUNT=<span class="var">{{OB_MOUNT}}</span>
-CSR_OPENBAO_ROLE=<span class="var">{{OB_ROLE}}</span>
-CSR_OPENBAO_ROLE_ID=<span class="var">{{OB_RID}}</span>
-CSR_OPENBAO_SECRET_ID=<span class="var">{{OB_SID}}</span>
-CSR_CAP_OPENBAO=1
+<pre data-tpl="obenv">sudo tee -a /etc/certheim/certheim.env >/dev/null &lt;&lt;'EOF'
+CERTHEIM_OPENBAO_ADDR=<span class="var">{{OB_ADDR}}</span>
+CERTHEIM_OPENBAO_PKI_MOUNT=<span class="var">{{OB_MOUNT}}</span>
+CERTHEIM_OPENBAO_ROLE=<span class="var">{{OB_ROLE}}</span>
+CERTHEIM_OPENBAO_ROLE_ID=<span class="var">{{OB_RID}}</span>
+CERTHEIM_OPENBAO_SECRET_ID=<span class="var">{{OB_SID}}</span>
+CERTHEIM_CAP_OPENBAO=1
 EOF
-sudo systemctl restart certinel-api</pre></div>
+sudo systemctl restart certheim-api</pre></div>
     </div>
     <div class="do when-container" hidden>✅ <b>Already wired.</b> Your Compose file from Step&nbsp;1 carries these OpenBao settings as <code>app</code>
       environment variables — nothing to add here. Just confirm them in the next step.</div>
@@ -507,10 +507,10 @@ sudo systemctl restart certinel-api</pre></div>
   <!-- ─────────────  help  ───────────── -->
   <div class="card" id="help">
     <h2>If something looks wrong</h2>
-    <div class="do"><b>The website won&rsquo;t load.</b> On the server run <code>sudo systemctl status certinel-api</code>;
-      if it&rsquo;s stopped, <code>sudo systemctl restart certinel-api</code>.</div>
-    <div class="do"><b>&ldquo;Save &amp; Test&rdquo; for signing fails.</b> Re-check the five <code>CSR_OPENBAO_*</code> lines in
-      <code>/etc/certinel/certinel.env</code> (Step 6) and that the server can reach the OpenBao address.</div>
+    <div class="do"><b>The website won&rsquo;t load.</b> On the server run <code>sudo systemctl status certheim-api</code>;
+      if it&rsquo;s stopped, <code>sudo systemctl restart certheim-api</code>.</div>
+    <div class="do"><b>&ldquo;Save &amp; Test&rdquo; for signing fails.</b> Re-check the five <code>CERTHEIM_OPENBAO_*</code> lines in
+      <code>/etc/certheim/certheim.env</code> (Step 6) and that the server can reach the OpenBao address.</div>
     <div class="do"><b>Can&rsquo;t see the Admin menu.</b> You&rsquo;re not an admin yet — redo Step 2 (first-admin mode), or have an
       existing admin promote you.</div>
     <div class="do"><b>License says invalid.</b> Copy the blob again with no extra spaces or line breaks, and make sure it&rsquo;s the
@@ -570,30 +570,30 @@ sudo systemctl restart certinel-api</pre></div>
       case "install":{
         var ob = st.ob==="yes"
           ? '     CONFIGURE_OPENBAO=yes \\\n'
-          + '     CSR_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+' \\\n'
-          + '     CSR_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+' \\\n'
-          + '     CSR_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+' \\\n'
+          + '     CERTHEIM_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+' \\\n'
+          + '     CERTHEIM_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+' \\\n'
+          + '     CERTHEIM_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+' \\\n'
           : '';
         return 'sudo FQDN='+ph(st.fqdn,"certheim.example.com")+' \\\n'
              + '     AUTH_MODE='+esc(st.auth)+' \\\n'
-             + '     SERVICE_USER='+ph(st.svc,"certinel")+' \\\n'
+             + '     SERVICE_USER='+ph(st.svc,"certheim")+' \\\n'
              + ob
              + '     ASSUME_DEFAULTS=yes \\\n'
              + '     bash install/online-install.sh';
       }
       case "obenv":
-        return 'sudo tee -a /etc/certinel/certinel.env >/dev/null &lt;&lt;\'EOF\'\n'
-             + 'CSR_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+'\n'
-             + 'CSR_OPENBAO_PKI_MOUNT='+ph(st.ob_mount,"pki_csr")+'\n'
-             + 'CSR_OPENBAO_ROLE='+ph(st.ob_role,"certinel")+'\n'
-             + 'CSR_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+'\n'
-             + 'CSR_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+'\n'
-             + 'CSR_CAP_OPENBAO=1\n'
+        return 'sudo tee -a /etc/certheim/certheim.env >/dev/null &lt;&lt;\'EOF\'\n'
+             + 'CERTHEIM_OPENBAO_ADDR='+ph(st.ob_addr,"https://openbao.example.com")+'\n'
+             + 'CERTHEIM_OPENBAO_PKI_MOUNT='+ph(st.ob_mount,"pki_csr")+'\n'
+             + 'CERTHEIM_OPENBAO_ROLE='+ph(st.ob_role,"certheim")+'\n'
+             + 'CERTHEIM_OPENBAO_ROLE_ID='+ph(st.ob_rid,"your-role-id")+'\n'
+             + 'CERTHEIM_OPENBAO_SECRET_ID='+ph(st.ob_sid,"your-secret-id")+'\n'
+             + 'CERTHEIM_CAP_OPENBAO=1\n'
              + 'EOF\n'
-             + 'sudo systemctl restart certinel-api';
+             + 'sudo systemctl restart certheim-api';
       case "bootstrap":
-        return "sudo sed -i 's/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certinel/certinel.env\n"
-             + "sudo systemctl restart certinel-api";
+        return "sudo sed -i 's/^CERTHEIM_BOOTSTRAP_FIRST_ADMIN=.*/CERTHEIM_BOOTSTRAP_FIRST_ADMIN=1/' /etc/certheim/certheim.env\n"
+             + "sudo systemctl restart certheim-api";
       case "url2": return esc(dbUrlPlain());
       case "methodName": return ({vm:"Single server (VM)",container:"Container",k8s:"Kubernetes"})[st.method];
       case "dbName": return ({sqlite:"Built-in (SQLite)",postgres:"PostgreSQL"})[st.db];
@@ -623,26 +623,26 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("    image: "+imageRef());
     L.push("    command: [\"web\"]");
     L.push("    environment:");
-    L.push("      CERTINEL_CONTAINER: \"1\"");
+    L.push("      CERTHEIM_CONTAINER: \"1\"");
     if(pg){
-      L.push("      CSR_DB_URL: \""+(bundledPg ? "postgresql://certheim:certheim@db:5432/certheim" : dbUrlPlain())+"\"");
+      L.push("      CERTHEIM_DB_URL: \""+(bundledPg ? "postgresql://certheim:certheim@db:5432/certheim" : dbUrlPlain())+"\"");
     } else {
-      L.push("      CSR_DB_PATH: /var/lib/certinel/jobs.db");
+      L.push("      CERTHEIM_DB_PATH: /var/lib/certheim/jobs.db");
     }
     if(st.ob==="yes"){
-      L.push("      CSR_CAP_OPENBAO: \"1\"");
-      L.push("      CSR_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
-      L.push("      CSR_OPENBAO_PKI_MOUNT: \""+val(st.ob_mount,"pki_csr")+"\"");
-      L.push("      CSR_OPENBAO_ROLE: \""+val(st.ob_role,"certinel")+"\"");
-      L.push("      CSR_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
-      L.push("      CSR_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
+      L.push("      CERTHEIM_CAP_OPENBAO: \"1\"");
+      L.push("      CERTHEIM_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
+      L.push("      CERTHEIM_OPENBAO_PKI_MOUNT: \""+val(st.ob_mount,"pki_csr")+"\"");
+      L.push("      CERTHEIM_OPENBAO_ROLE: \""+val(st.ob_role,"certheim")+"\"");
+      L.push("      CERTHEIM_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
+      L.push("      CERTHEIM_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
     }
     L.push("    volumes:");
-    L.push("      - db:/var/lib/certinel");
-    L.push("      - data:/var/opt/certinel");
+    L.push("      - db:/var/lib/certheim");
+    L.push("      - data:/var/opt/certheim");
     if(st.edition!=="community"){
       L.push("      # Licensed edition: put your license blob in ./license, then uncomment:");
-      L.push("      # - ./license:/etc/certinel/secret/license:ro   # + add  CSR_LICENSE_FILE: /etc/certinel/secret/license  above");
+      L.push("      # - ./license:/etc/certheim/secret/license:ro   # + add  CERTHEIM_LICENSE_FILE: /etc/certheim/secret/license  above");
     }
     if(bundledPg){ L.push("    depends_on: [db]"); }
     L.push("    restart: unless-stopped");
@@ -731,7 +731,7 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("  backend: "+(pg?"postgres":"sqlite"));
     if(pg){
       L.push("  postgres:");
-      L.push("    # The chart writes this into a Secret as CSR_DB_URL.");
+      L.push("    # The chart writes this into a Secret as CERTHEIM_DB_URL.");
       L.push("    url: \""+dbUrlPlain()+"\"");
     }
     if(st.edition!=="community"){
@@ -745,7 +745,7 @@ sudo systemctl restart certinel-api</pre></div>
       L.push("  enabled: true");
       L.push("  addr: "+val(st.ob_addr,"https://openbao.example.com"));
       L.push("  pkiMount: "+val(st.ob_mount,"pki_csr"));
-      L.push("  role: "+val(st.ob_role,"certinel"));
+      L.push("  role: "+val(st.ob_role,"certheim"));
       L.push("  roleId: \""+val(st.ob_rid,"your-role-id")+"\"");
       L.push("  secretId: \""+val(st.ob_sid,"your-secret-id")+"\"");
       L.push("  # caCert: |        # optional PEM, if OpenBao uses a private CA");
@@ -787,12 +787,12 @@ sudo systemctl restart certinel-api</pre></div>
     L.push("        ASSUME_DEFAULTS: \"yes\"");
     L.push("        FQDN: \""+val(st.fqdn,"certheim.example.com")+"\"");
     L.push("        AUTH_MODE: \""+st.auth+"\"");
-    L.push("        SERVICE_USER: \""+val(st.svc,"certinel")+"\"");
+    L.push("        SERVICE_USER: \""+val(st.svc,"certheim")+"\"");
     if(st.ob==="yes"){
       L.push("        CONFIGURE_OPENBAO: \"yes\"");
-      L.push("        CSR_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
-      L.push("        CSR_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
-      L.push("        CSR_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
+      L.push("        CERTHEIM_OPENBAO_ADDR: \""+val(st.ob_addr,"https://openbao.example.com")+"\"");
+      L.push("        CERTHEIM_OPENBAO_ROLE_ID: \""+val(st.ob_rid,"your-role-id")+"\"");
+      L.push("        CERTHEIM_OPENBAO_SECRET_ID: \""+val(st.ob_sid,"your-secret-id")+"\"");
     }
     L.push("");
     L.push("    - name: \"Container · bring up the compose stack\"");
@@ -891,16 +891,16 @@ sudo systemctl restart certinel-api</pre></div>
     fqdn: ["Server web address (FQDN)", "The full address people type to reach Certheim, e.g. <code>certheim.example.com</code>. Your network / IT admin assigns it. It must (1) point to your server in DNS and (2) match the name on the server&rsquo;s TLS certificate."],
     org: ["Organization name", "Your organization&rsquo;s name exactly as it should appear inside issued certificates (the &ldquo;O&rdquo; field) — e.g. <code>Acme Corporation</code> or <code>U.S. Government</code>. Use your official / legal name."],
     auth: ["How people sign in", "<b>Username &amp; password</b> — simplest; people sign in with an account. <b>CAC / smart card</b> — people authenticate with a client certificate (e.g. a DoD CAC). CAC is included in <b>Government</b>; on <b>Commercial</b> it needs a CAC add-on, and your web server must be given the card-issuer CA bundle."],
-    svc: ["Service account name", "The Linux user account Certheim runs as. Leave it as <code>certinel</code> unless your security policy requires a specific service-account name — the installer creates it for you."],
+    svc: ["Service account name", "The Linux user account Certheim runs as. Leave it as <code>certheim</code> unless your security policy requires a specific service-account name — the installer creates it for you."],
     ob: ["Auto-sign with OpenBao?", "OpenBao (or HashiCorp Vault) is the secure system that holds your signing key and issues certificates. Choose <b>Yes</b> if you have one and want Certheim to issue certs automatically in the web app. Choose <b>Not yet</b> to start by uploading certificates signed elsewhere — you can switch this on later."],
     ob_addr: ["OpenBao address", "The HTTPS address of your OpenBao / Vault, e.g. <code>https://openbao.example.com</code> (sometimes with a port like <code>:8200</code>). Ask your Vault administrator. Your Certheim server must be able to reach this URL and trust its TLS certificate."],
     ob_mount: ["PKI mount", "The name of the PKI &ldquo;secrets engine&rdquo; in OpenBao that issues your certificates — often <code>pki_csr</code>. Your Vault admin set this up; they can list it with:<br><code>bao secrets list</code> (look for the type <code>pki</code>)."],
-    ob_role: ["Signing role", "A named policy inside the PKI mount that controls what may be issued (allowed domains, lifetime, key type) — often <code>certinel</code>. Your Vault admin lists them with:<br><code>bao list pki_csr/roles</code>"],
+    ob_role: ["Signing role", "A named policy inside the PKI mount that controls what may be issued (allowed domains, lifetime, key type) — often <code>certheim</code>. Your Vault admin lists them with:<br><code>bao list pki_csr/roles</code>"],
     ob_rid: ["AppRole role_id", "The &ldquo;username&rdquo; half of the credential Certheim uses to talk to OpenBao. It is <b>not secret</b> and does not change. Your Vault admin creates an AppRole and reads it with:<br><code>bao read auth/approle/role/&lt;name&gt;/role-id</code>"],
     ob_sid: ["AppRole secret_id", "The &ldquo;password&rdquo; half — <b>keep it private.</b> Your Vault admin generates one with:<br><code>bao write -f auth/approle/role/&lt;name&gt;/secret-id</code><br>It can be set to expire, so it may need rotating. If signing suddenly stops working, a fresh secret_id is the first thing to check."],
     email: ["Email notifications", "Optional notices (certificate issued / expiring soon). <b>None</b> — no email; everything else still works. <b>SMTP</b> — your company mail relay; you&rsquo;ll need its host and port. <b>Mailgun</b> — cloud email; you&rsquo;ll need a Mailgun domain + API key and outbound internet."],
     method: ["How to run Certheim", "Pick where it runs and the <b>Install</b> step tailors itself. <b>Single server (VM)</b> — one Linux box; the installer sets up everything (best for most people). <b>Container</b> — Docker or Podman on one host; great for a quick evaluation. <b>Kubernetes</b> — a cluster, installed with our Helm chart; scales to multiple replicas and self-heals. All three are generated for you from the answers above — copy or download and run."],
-    db: ["Where data lives", "<b>Built-in (SQLite)</b> — a single self-contained file on the server; nothing to set up, perfect to start, but one node only. <b>PostgreSQL</b> — an external database; required if you want multiple replicas / high availability (Kubernetes), and recommended for larger teams. You can switch from SQLite to PostgreSQL later without losing data — see <code>tools/certinel-db-migrate</code>."],
+    db: ["Where data lives", "<b>Built-in (SQLite)</b> — a single self-contained file on the server; nothing to set up, perfect to start, but one node only. <b>PostgreSQL</b> — an external database; required if you want multiple replicas / high availability (Kubernetes), and recommended for larger teams. You can switch from SQLite to PostgreSQL later without losing data — see <code>tools/certheim-db-migrate</code>."],
     dburl: ["PostgreSQL connection URL", "A standard libpq connection string for your database, e.g. <code>postgresql://certheim:PASSWORD@db.example.com:5432/certheim</code>. Your DBA creates an empty database + a user that owns it; Certheim builds its own tables on first start. Leave blank in the container path and the generated Compose file will spin up a throwaway PostgreSQL for you to evaluate with."]
   };
   var pop = $("#popover"), popBody = $("#popover-body");

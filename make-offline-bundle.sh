@@ -79,7 +79,7 @@ gunicorn
 REQ
     echo "  WARNING: no requirements.txt found - wrote minimal flask+gunicorn."
     echo "  For reproducibility, generate from the live venv instead:"
-    echo "    /opt/certinel/venv/bin/pip freeze > requirements.txt"
+    echo "    /opt/certheim/venv/bin/pip freeze > requirements.txt"
 fi
 
 # --- 3. wheelhouse: download every wheel for offline pip install ---
@@ -109,12 +109,12 @@ cat > "$OUT/install/START_HERE" <<'STARTHERE'
 
 # This deployment's domain and hostname. The installer rewrites the bundled
 # files to use these in place of the defaults (example.com / certinel-host):
-#   - CSR_DOMAIN   = the domain appended to bare hostnames on cert requests
+#   - CERTHEIM_DOMAIN   = the domain appended to bare hostnames on cert requests
 #                    (the helper's DOMAIN_SUFFIX) and shown in the UI.
-#   - CSR_HOSTNAME = this server's short hostname, shown in UI titles and
-#                    used to build the FQDN (CSR_HOSTNAME.CSR_DOMAIN).
-CSR_DOMAIN="example.com"
-CSR_HOSTNAME="certinel-host"
+#   - CERTHEIM_HOSTNAME = this server's short hostname, shown in UI titles and
+#                    used to build the FQDN (CERTHEIM_HOSTNAME.CERTHEIM_DOMAIN).
+CERTHEIM_DOMAIN="example.com"
+CERTHEIM_HOSTNAME="certinel-host"
 
 # SMG relay IP or hostname (the mail relay this server sends through).
 # OPTIONAL: leave BLANK to disable email entirely (the dashboard works fine
@@ -122,7 +122,7 @@ CSR_HOSTNAME="certinel-host"
 SMG_HOST=""
 
 # This server's dashboard URL (used in notification email links). If left
-# blank the installer builds it from CSR_HOSTNAME.CSR_DOMAIN automatically.
+# blank the installer builds it from CERTHEIM_HOSTNAME.CERTHEIM_DOMAIN automatically.
 DASHBOARD_URL=""
 
 # From: address on outgoing notifications (only needed if SMG_HOST is set).
@@ -145,7 +145,7 @@ GLOBAL_CC=""
 # (empty) database an admin automatically - convenient for initial stand-up.
 # Self-disables once any user exists. Only enable if mTLS is verifying real
 # CACs on this box (so "first user" is genuinely you). Otherwise leave 0 and
-# use certinel-bootstrap-admin after first login.
+# use certheim-bootstrap-admin after first login.
 BOOTSTRAP_FIRST_ADMIN="0"
 
 # Authentication mode: "mtls" (CAC, default) or "local" (username/password,
@@ -159,7 +159,7 @@ REQUIRE_APPROVAL="0"
 # --- DATA MIGRATION (optional) ---------------------------------------------
 
 # To migrate an existing instance, set this to the path of a jobs.db you
-# carried over (e.g. from `certinel-backup` on the source box). It will be
+# carried over (e.g. from `certheim-backup` on the source box). It will be
 # restored before first start. Leave BLANK for a fresh, empty database.
 RESTORE_DB=""
 STARTHERE
@@ -181,7 +181,7 @@ cat > "$OUT/install/offline-install.sh" <<'INSTALL'
 #     sudo ./offline-install.sh --unattended
 #   Reads install/START_HERE instead of prompting (for scripted deploys).
 #
-# Either way it then automates everything mechanical: the certinel service
+# Either way it then automates everything mechanical: the certheim service
 # account, all directories, the Python venv (from the bundled wheelhouse, no
 # network), fapolicyd trust, config files written from your answers, optional
 # data restore, and the app deploy. It STOPS with a clear message if an OS
@@ -195,7 +195,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PYBIN="${PYBIN:-python3.9}"
-SVC_USER="certinel"
+SVC_USER="certheim"
 log()  { echo -e "\n=== $* ==="; }
 warn() { echo "  WARN: $*" >&2; }
 die()  { echo "  ERROR: $*" >&2; exit 1; }
@@ -215,7 +215,7 @@ Usage:
   ./offline-install.sh --help            Show this help.
 
 What it does (both modes):
-  Creates the certinel service account, all directories and the sudoers
+  Creates the certheim service account, all directories and the sudoers
   drop-in, builds the Python venv from the bundled wheelhouse (no network),
   writes the config from your answers, optionally restores a database,
   refreshes fapolicyd trust, deploys the app, and starts the service.
@@ -286,12 +286,12 @@ else
     echo "=========================================================="
     echo
 
-    ask CSR_DOMAIN "Domain to append to bare hostnames" "example.com" \
+    ask CERTHEIM_DOMAIN "Domain to append to bare hostnames" "example.com" \
         "Bare cert names get this appended (e.g. 'web' -> 'web.<domain>')."
-    ask CSR_HOSTNAME "This server's short hostname" "certinel-host" \
+    ask CERTHEIM_HOSTNAME "This server's short hostname" "certinel-host" \
         "Shown in UI titles; combined with the domain to form the FQDN."
 
-    DASHBOARD_URL_DEFAULT="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
+    DASHBOARD_URL_DEFAULT="https://${CERTHEIM_HOSTNAME}.${CERTHEIM_DOMAIN}/csr/"
     ask DASHBOARD_URL "Dashboard URL" "$DASHBOARD_URL_DEFAULT" \
         "Used in notification email links. Usually the default is correct."
 
@@ -305,7 +305,7 @@ else
     if [[ -n "$SMG_HOST" ]]; then
         ask SMG_PORT "SMG port" "25" "Plain SMTP port on the relay."
         ask FROM_ADDRESS "From: address for notifications" \
-            "noreply-csr@${CSR_HOSTNAME}.${CSR_DOMAIN}" \
+            "noreply-csr@${CERTHEIM_HOSTNAME}.${CERTHEIM_DOMAIN}" \
             "The relay must accept this sender from this server."
         ask GLOBAL_CC "Global Cc on all mail (optional, blank = none)" "" \
             "Comma-separated. Leave blank for none."
@@ -352,8 +352,8 @@ else
     # --- confirm summary ---
     echo "=========================================================="
     echo "  Review:"
-    echo "    Domain (suffix)   : ${CSR_DOMAIN}"
-    echo "    Hostname          : ${CSR_HOSTNAME}"
+    echo "    Domain (suffix)   : ${CERTHEIM_DOMAIN}"
+    echo "    Hostname          : ${CERTHEIM_HOSTNAME}"
     echo "    Dashboard URL     : ${DASHBOARD_URL}"
     if [[ "$AUTH_MODE" == "local" ]]; then
         echo "    Auth mode         : username/password (local)"
@@ -382,16 +382,16 @@ cd "$BUNDLE_ROOT"
 # ---------------------------------------------------------------------------
 log "0/8  Validating configuration"
 # ---------------------------------------------------------------------------
-: "${CSR_DOMAIN:=example.com}"
-: "${CSR_HOSTNAME:=certinel-host}"
-[[ -n "${DASHBOARD_URL:-}" ]] || DASHBOARD_URL="https://${CSR_HOSTNAME}.${CSR_DOMAIN}/csr/"
+: "${CERTHEIM_DOMAIN:=example.com}"
+: "${CERTHEIM_HOSTNAME:=certinel-host}"
+[[ -n "${DASHBOARD_URL:-}" ]] || DASHBOARD_URL="https://${CERTHEIM_HOSTNAME}.${CERTHEIM_DOMAIN}/csr/"
 [[ "$DASHBOARD_URL" != *CHANGEME* ]] || die "DASHBOARD_URL not set"
 # Email is OPTIONAL: empty SMG_HOST = email disabled (valid).
 if [[ -n "${SMG_HOST:-}" ]]; then
     [[ -n "${FROM_ADDRESS:-}" && "$FROM_ADDRESS" != *CHANGEME* ]] \
         || die "FROM_ADDRESS required when an SMG relay is set"
 fi
-echo "  domain=${CSR_DOMAIN} host=${CSR_HOSTNAME} email=$( [[ -n "${SMG_HOST:-}" ]] && echo "${SMG_HOST}" || echo disabled)"
+echo "  domain=${CERTHEIM_DOMAIN} host=${CERTHEIM_HOSTNAME} email=$( [[ -n "${SMG_HOST:-}" ]] && echo "${SMG_HOST}" || echo disabled)"
 
 # ---------------------------------------------------------------------------
 log "1/8  Checking OS prerequisites (from this enclave's repo)"
@@ -422,12 +422,12 @@ getent group nginx >/dev/null || warn "group 'nginx' missing - is nginx installe
 log "3/8  Directories"
 # ---------------------------------------------------------------------------
 DIRS=(
-  "/opt/certinel|root:${SVC_USER}|0750"
-  "/var/lib/certinel|${SVC_USER}:${SVC_USER}|0750"
+  "/opt/certheim|root:${SVC_USER}|0750"
+  "/var/lib/certheim|${SVC_USER}:${SVC_USER}|0750"
   "/var/www/csr|root:nginx|0750"
-  "/etc/certinel|root:${SVC_USER}|0750"
+  "/etc/certheim|root:${SVC_USER}|0750"
   "/root/sslcerts/scripts|root:root|0750"
-  "/root/sslcerts/scripts/certinel_helper.d|root:root|0750"
+  "/root/sslcerts/scripts/certheim_helper.d|root:root|0750"
   "/root/sslcerts/private|root:root|0700"
   "/home/ansible/new_request|root:root|0755"
   "/home/ansible/issued|root:${SVC_USER}|0750"
@@ -439,16 +439,16 @@ for entry in "${DIRS[@]}"; do
     install -d -o "$own" -g "$grp" -m "$mode" "$d"
     echo "  $d ($own:$grp $mode)"
 done
-chmod o+x /home/ansible 2>/dev/null || warn "could not chmod /home/ansible - ensure certinel can traverse it"
+chmod o+x /home/ansible 2>/dev/null || warn "could not chmod /home/ansible - ensure certheim can traverse it"
 
 # ---------------------------------------------------------------------------
 log "4/8  Sudoers drop-in"
 # ---------------------------------------------------------------------------
-SUDOERS=/etc/sudoers.d/certinel
+SUDOERS=/etc/sudoers.d/certheim
 if [[ -f "$SUDOERS" ]]; then
     echo "  exists - leaving as-is"
 else
-    printf '# Certheim: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/certinel_helper.sh\n' \
+    printf '# Certheim: service account runs ONLY the helper as root.\n%s ALL=(root) NOPASSWD: /root/sslcerts/scripts/certheim_helper.sh\n' \
         "$SVC_USER" > "$SUDOERS"
     chmod 0440 "$SUDOERS"
     visudo -cf "$SUDOERS" >/dev/null || die "sudoers validation failed"
@@ -458,7 +458,7 @@ fi
 # ---------------------------------------------------------------------------
 log "5/8  Python venv from bundled wheelhouse (offline)"
 # ---------------------------------------------------------------------------
-VENV=/opt/certinel/venv
+VENV=/opt/certheim/venv
 [[ -x "$VENV/bin/python3" ]] || "$PYBIN" -m venv "$VENV"
 [[ -d wheelhouse ]] || die "wheelhouse/ missing from bundle"
 "$VENV/bin/pip" install --no-index --find-links wheelhouse --upgrade pip setuptools wheel
@@ -466,10 +466,10 @@ VENV=/opt/certinel/venv
 echo "  deps installed"
 
 # CRITICAL: python -m venv creates the venv dir 0700 under root's STIG umask
-# (077). That locks out the certinel group, so the service cannot traverse into
+# (077). That locks out the certheim group, so the service cannot traverse into
 # venv/ to exec gunicorn/python. Set group ownership AND traversal bits.
-chown -R root:certinel "$VENV"
-chmod 0750 /opt/certinel
+chown -R root:certheim "$VENV"
+chmod 0750 /opt/certheim
 # group must READ all venv files (pyvenv.cfg + every site-packages .py are
 # created 0600 under root umask 077) and TRAVERSE all dirs. g+rX does exactly
 # that: read for files, and execute/search only where already set (dirs +
@@ -482,9 +482,9 @@ echo "  venv ownership/modes set for ${SVC_USER} (g+rX recursive)"
 # gunicorn/python on STIG hosts. deploy.sh later UPDATES trust for known
 # files; the brand-new venv binaries must be ADDED here first.
 if command -v fapolicyd-cli >/dev/null; then
-    fapolicyd-cli --file add /opt/certinel/venv/ 2>/dev/null || true
+    fapolicyd-cli --file add /opt/certheim/venv/ 2>/dev/null || true
     fapolicyd-cli --update 2>/dev/null || true
-    echo "  fapolicyd: trusted /opt/certinel/venv/"
+    echo "  fapolicyd: trusted /opt/certheim/venv/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -493,8 +493,8 @@ log "6/8  Config files"
 # email.conf - written from your answers. Empty host = email disabled, which
 # the app honours (no notifications sent). Writing it either way keeps the
 # file present and UI-manageable later.
-cat > /etc/certinel/email.conf <<EMAILCONF
-# /etc/certinel/email.conf  -  generated by offline-install
+cat > /etc/certheim/email.conf <<EMAILCONF
+# /etc/certheim/email.conf  -  generated by offline-install
 # Empty [smtp] host = email disabled. Set a relay here or via the admin UI.
 [smtp]
 host = ${SMG_HOST:-}
@@ -510,31 +510,31 @@ cc = ${GLOBAL_CC:-}
 [content]
 dashboard_url = ${DASHBOARD_URL}
 EMAILCONF
-chown "${SVC_USER}:${SVC_USER}" /etc/certinel/email.conf
-chmod 0640 /etc/certinel/email.conf
+chown "${SVC_USER}:${SVC_USER}" /etc/certheim/email.conf
+chmod 0640 /etc/certheim/email.conf
 if [[ -n "${SMG_HOST:-}" ]]; then
-    echo "  wrote /etc/certinel/email.conf (relay ${SMG_HOST}:${SMG_PORT:-25})"
+    echo "  wrote /etc/certheim/email.conf (relay ${SMG_HOST}:${SMG_PORT:-25})"
 else
-    echo "  wrote /etc/certinel/email.conf (email DISABLED - no relay)"
+    echo "  wrote /etc/certheim/email.conf (email DISABLED - no relay)"
 fi
 
-# certinel.env - seed from example if absent (paths are defaults)
-if [[ ! -f /etc/certinel/certinel.env && -f config/certinel.env.example ]]; then
+# certheim.env - seed from example if absent (paths are defaults)
+if [[ ! -f /etc/certheim/certheim.env && -f config/certheim.env.example ]]; then
     install -o "$SVC_USER" -g "$SVC_USER" -m 0640 \
-        config/certinel.env.example /etc/certinel/certinel.env
-    echo "  seeded /etc/certinel/certinel.env"
+        config/certheim.env.example /etc/certheim/certheim.env
+    echo "  seeded /etc/certheim/certheim.env"
 fi
 # Reflect the START_HERE first-admin choice into the live env file (set or
 # replace the line so the app picks it up). Only the value the operator chose.
-if [[ -f /etc/certinel/certinel.env ]]; then
+if [[ -f /etc/certheim/certheim.env ]]; then
     want="${BOOTSTRAP_FIRST_ADMIN:-0}"
-    if grep -q '^CSR_BOOTSTRAP_FIRST_ADMIN=' /etc/certinel/certinel.env; then
-        sed -i "s/^CSR_BOOTSTRAP_FIRST_ADMIN=.*/CSR_BOOTSTRAP_FIRST_ADMIN=${want}/" \
-            /etc/certinel/certinel.env
+    if grep -q '^CERTHEIM_BOOTSTRAP_FIRST_ADMIN=' /etc/certheim/certheim.env; then
+        sed -i "s/^CERTHEIM_BOOTSTRAP_FIRST_ADMIN=.*/CERTHEIM_BOOTSTRAP_FIRST_ADMIN=${want}/" \
+            /etc/certheim/certheim.env
     else
-        echo "CSR_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/certinel/certinel.env
+        echo "CERTHEIM_BOOTSTRAP_FIRST_ADMIN=${want}" >> /etc/certheim/certheim.env
     fi
-    echo "  first-admin bootstrap: CSR_BOOTSTRAP_FIRST_ADMIN=${want}"
+    echo "  first-admin bootstrap: CERTHEIM_BOOTSTRAP_FIRST_ADMIN=${want}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -547,21 +547,21 @@ log "6.5/8  Rewriting domain/hostname in bundle files"
 # the FQDN (host.domain) composes correctly, then the domain.
 DEF_DOMAIN="example.com"
 DEF_HOST="certinel-host"
-if [[ "$CSR_DOMAIN" != "$DEF_DOMAIN" || "$CSR_HOSTNAME" != "$DEF_HOST" ]]; then
+if [[ "$CERTHEIM_DOMAIN" != "$DEF_DOMAIN" || "$CERTHEIM_HOSTNAME" != "$DEF_HOST" ]]; then
     files=(
         backend/app.py backend/notify.py
         frontend/app.js frontend/index.html
-        helper/certinel_helper.d/00-common.sh
+        helper/certheim_helper.d/00-common.sh
         nginx/30-csr.conf
     )
     for f in "${files[@]}"; do
         [[ -f "$f" ]] || continue
         sed -i \
-            -e "s/${DEF_HOST}/${CSR_HOSTNAME}/g" \
-            -e "s/${DEF_DOMAIN//./\\.}/${CSR_DOMAIN}/g" \
+            -e "s/${DEF_HOST}/${CERTHEIM_HOSTNAME}/g" \
+            -e "s/${DEF_DOMAIN//./\\.}/${CERTHEIM_DOMAIN}/g" \
             "$f"
     done
-    echo "  rewrote -> host=${CSR_HOSTNAME} domain=${CSR_DOMAIN}"
+    echo "  rewrote -> host=${CERTHEIM_HOSTNAME} domain=${CERTHEIM_DOMAIN}"
 else
     echo "  defaults unchanged - no rewrite needed"
 fi
@@ -571,8 +571,8 @@ log "7/8  Deploy code + optional data restore"
 # ---------------------------------------------------------------------------
 if [[ -n "${RESTORE_DB:-}" ]]; then
     [[ -f "$RESTORE_DB" ]] || die "RESTORE_DB set but file not found: $RESTORE_DB"
-    install -o "$SVC_USER" -g "$SVC_USER" -m 0640 "$RESTORE_DB" /var/lib/certinel/jobs.db
-    rm -f /var/lib/certinel/jobs.db-wal /var/lib/certinel/jobs.db-shm
+    install -o "$SVC_USER" -g "$SVC_USER" -m 0640 "$RESTORE_DB" /var/lib/certheim/jobs.db
+    rm -f /var/lib/certheim/jobs.db-wal /var/lib/certheim/jobs.db-shm
     echo "  restored database from $RESTORE_DB"
 fi
 # Use -f (presence), not -x: the bundle preserves the build user's 0700 and
@@ -584,35 +584,35 @@ bash ./deploy.sh
 # ---------------------------------------------------------------------------
 log "7.5/8  Authentication mode"
 # ---------------------------------------------------------------------------
-# deploy.sh started certinel-api, which created the schema (incl. app_settings).
+# deploy.sh started certheim-api, which created the schema (incl. app_settings).
 # Now write the auth settings into the DB via the helper. Default mtls needs
-# nothing (app default), but we set it explicitly so `certinel-set-auth --show`
+# nothing (app default), but we set it explicitly so `certheim-set-auth --show`
 # always reflects the install choice.
-if command -v certinel-set-auth >/dev/null 2>&1; then
-    SETAUTH=certinel-set-auth
-elif [[ -f tools/certinel-set-auth ]]; then
-    SETAUTH="$PYBIN tools/certinel-set-auth"
+if command -v certheim-set-auth >/dev/null 2>&1; then
+    SETAUTH=certheim-set-auth
+elif [[ -f tools/certheim-set-auth ]]; then
+    SETAUTH="$PYBIN tools/certheim-set-auth"
 else
     SETAUTH=""
 fi
 if [[ -n "$SETAUTH" ]]; then
     # brief wait so the app has created the schema on first start
     for _ in 1 2 3 4 5; do
-        [[ -f /var/lib/certinel/jobs.db ]] && break; sleep 1
+        [[ -f /var/lib/certheim/jobs.db ]] && break; sleep 1
     done
     if [[ "$AUTH_MODE" == "local" ]]; then
         $SETAUTH --mode local --domain "${TRUSTED_EMAIL_DOMAIN:-}" \
             $( [[ "${REQUIRE_APPROVAL:-0}" == "1" ]] && echo --require-approval || echo --no-require-approval ) \
-            || warn "could not set auth mode (run certinel-set-auth manually)"
+            || warn "could not set auth mode (run certheim-set-auth manually)"
         echo "  auth mode: username/password (domain=${TRUSTED_EMAIL_DOMAIN:-<none>})"
     else
         $SETAUTH --mode mtls || warn "could not set auth mode"
         echo "  auth mode: CAC mTLS"
     fi
 else
-    warn "certinel-set-auth not found - auth mode left at app default (mtls)."
+    warn "certheim-set-auth not found - auth mode left at app default (mtls)."
     [[ "$AUTH_MODE" == "local" ]] && \
-        warn "to enable password auth: certinel-set-auth --mode local --domain <domain>"
+        warn "to enable password auth: certheim-set-auth --mode local --domain <domain>"
 fi
 
 # ---------------------------------------------------------------------------
@@ -636,12 +636,12 @@ fi
 if [[ -z "${RESTORE_DB:-}" ]]; then
 cat <<MAN
  [ ] ADMIN: fresh empty database - bootstrap your CAC as the first admin
-         (certinel-bootstrap-admin) or you will have no admin rights.
+         (certheim-bootstrap-admin) or you will have no admin rights.
 MAN
 fi
 cat <<MAN
  Verify:
-   systemctl status certinel-api nginx
+   systemctl status certheim-api nginx
    curl -sk https://localhost/csr/api/health      # expect ok:true + version
 ===================================================================
 MAN
@@ -656,12 +656,12 @@ sed -i "s|PYBIN=\"\${PYBIN:-python3.9}\"|PYBIN=\"\${PYBIN:-$PYVER}\"|g" "$OUT/in
 
 # uninstaller: ship it in install/ next to the installer. It's tracked in the
 # repo under tools/, so copy it in (fall back to a note if absent).
-if [[ -f tools/certinel-uninstall.sh ]]; then
-    cp tools/certinel-uninstall.sh "$OUT/install/certinel-uninstall.sh"
-    chmod +x "$OUT/install/certinel-uninstall.sh"
-    echo "  included install/certinel-uninstall.sh"
+if [[ -f tools/certheim-uninstall.sh ]]; then
+    cp tools/certheim-uninstall.sh "$OUT/install/certheim-uninstall.sh"
+    chmod +x "$OUT/install/certheim-uninstall.sh"
+    echo "  included install/certheim-uninstall.sh"
 else
-    echo "  (tools/certinel-uninstall.sh not found - uninstaller not bundled)"
+    echo "  (tools/certheim-uninstall.sh not found - uninstaller not bundled)"
 fi
 
 cat > "$OUT/OFFLINE-INSTALL.md" <<DOC
@@ -678,16 +678,16 @@ enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
 
 ## Environment prep (one time, as root)
 1. **Service account**
-   - Create \`certinel\` (system account, no login shell).
-   - Install the sudoers drop-in granting certinel NOPASSWD on the helper
+   - Create \`certheim\` (system account, no login shell).
+   - Install the sudoers drop-in granting certheim NOPASSWD on the helper
      dispatcher only. (See \`docs/runbook.md\`.)
 2. **Directories**
-   - \`/opt/certinel/\`            (app + venv)        root:certinel
-   - \`/var/lib/certinel/\`        (SQLite DB)         certinel:certinel 0750
+   - \`/opt/certheim/\`            (app + venv)        root:certheim
+   - \`/var/lib/certheim/\`        (SQLite DB)         certheim:certheim 0750
    - \`/var/www/csr/\`                  (frontend)          root:nginx
-   - \`/etc/certinel/\`            (email.conf)        certinel:certinel
+   - \`/etc/certheim/\`            (email.conf)        certheim:certheim
    - \`/root/sslcerts/scripts/\` + \`...d/\`, \`new_request/\`, \`private/\`
-   - \`/home/ansible/issued/\`          (issued certs)      traversable by certinel
+   - \`/home/ansible/issued/\`          (issued certs)      traversable by certheim
 3. **PKI / mTLS**
    - Install the enclave's DoD CA bundle into the system trust store.
    - Place the dashboard's server cert + key for nginx.
@@ -695,8 +695,8 @@ enclave lacks them): \`${PYBIN}\`, \`nginx\`, \`sqlite\`, \`fapolicyd\`,
      \`ssl_verify_client\` for CAC mTLS (see \`nginx/30-csr.conf\` and the
      runbook).
 4. **email.conf**
-   - Copy \`config/email.conf.example\` to \`/etc/certinel/email.conf\`
-     and set the enclave's SMG relay host. Owner certinel:certinel, mode 0640.
+   - Copy \`config/email.conf.example\` to \`/etc/certheim/email.conf\`
+     and set the enclave's SMG relay host. Owner certheim:certheim, mode 0640.
 
 ## Install (three steps)
 1. Edit the variables for THIS site:
@@ -719,9 +719,9 @@ sudo fapolicyd-cli --update
 cd install
 sudo bash ./offline-install.sh
 \`\`\`
-It reads START_HERE, then creates the certinel account, all directories,
+It reads START_HERE, then creates the certheim account, all directories,
 sudoers drop-in, the venv (from the bundled wheelhouse, no network),
-writes email.conf + certinel.env with YOUR values, optionally
+writes email.conf + certheim.env with YOUR values, optionally
 restores a migrated database, refreshes fapolicyd trust for the venv,
 deploys the code (\`bash ./deploy.sh\`), and starts the service.
 Idempotent. When done it prints the only items it cannot script -
@@ -732,9 +732,9 @@ On a box that has never run this app, before/around install:
 \`\`\`bash
 # OS packages from the enclave repo (NOT in the bundle):
 #   ${PYBIN} nginx sqlite fapolicyd openssl policycoreutils sudo
-# nginx must include the certinel.d drop-in and be enabled (F9):
-grep -q 'certinel.d' /etc/nginx/nginx.conf || \\
-  sed -i '/http {/a\\    include /etc/nginx/certinel.d/*.conf;' /etc/nginx/nginx.conf
+# nginx must include the certheim.d drop-in and be enabled (F9):
+grep -q 'certheim.d' /etc/nginx/nginx.conf || \\
+  sed -i '/http {/a\\    include /etc/nginx/certheim.d/*.conf;' /etc/nginx/nginx.conf
 systemctl enable --now nginx
 # open 443 (the installer does NOT touch firewalld) (F11):
 firewall-cmd --permanent --add-service=https && firewall-cmd --reload
@@ -744,10 +744,10 @@ firewall-cmd --permanent --add-service=https && firewall-cmd --reload
 deploy.sh refreshes trust for existing files, but the FIRST install needs
 the venv + app trusted:
 \`\`\`bash
-fapolicyd-cli --file add /opt/certinel/
+fapolicyd-cli --file add /opt/certheim/
 fapolicyd-cli --update
 \`\`\`
-Also add the rules.d allow for any Ansible/automation that runs as certinel.
+Also add the rules.d allow for any Ansible/automation that runs as certheim.
 
 ## Build box requirements (where you run make-offline-bundle.sh)
 This bundle must be BUILT on a connected box that:
@@ -762,26 +762,26 @@ wheels are compatible.
 A fresh DB has no admins and the app has no built-in promotion. After you
 authenticate once over mTLS (so your DN row exists), promote yourself:
 \`\`\`bash
-sqlite3 /var/lib/certinel/jobs.db \\
+sqlite3 /var/lib/certheim/jobs.db \\
   "UPDATE users SET is_admin=1 WHERE dn='<YOUR CAC DN>';"
-systemctl restart certinel-api
+systemctl restart certheim-api
 \`\`\`
 Preferred: the bundled tool does this for you (no prior login needed):
 \`\`\`bash
-certinel-bootstrap-admin "<YOUR CAC DN>"
+certheim-bootstrap-admin "<YOUR CAC DN>"
 \`\`\`
 
 ## Verify
 \`\`\`bash
-systemctl status certinel-api nginx
+systemctl status certheim-api nginx
 curl -sk https://localhost/csr/api/health        # {"ok":true,"version":"${VERSION}"}
 \`\`\`
 The admin Overview tile should show v${VERSION}.
 
 ## Data migration (if moving an existing instance, not a fresh stand-up)
-On the SOURCE box: \`certinel-backup\` (or copy /var/lib/certinel/jobs.db).
-Carry the backup across; restore to /var/lib/certinel/jobs.db,
-owner certinel:certinel, BEFORE first start. WAL files (-wal/-shm) can be
+On the SOURCE box: \`certheim-backup\` (or copy /var/lib/certheim/jobs.db).
+Carry the backup across; restore to /var/lib/certheim/jobs.db,
+owner certheim:certheim, BEFORE first start. WAL files (-wal/-shm) can be
 omitted if the source app was stopped cleanly.
 DOC
 

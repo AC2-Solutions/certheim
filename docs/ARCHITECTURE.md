@@ -25,7 +25,7 @@ client ──TLS──> nginx ──> gunicorn ──> app.py (Flask)
 
 Two auth modes, one per box: **mtls/CAC** (trusts `X-Client-Verify` /
 `X-Client-DN` headers from nginx) or **local** (username/password session).
-CSRF is enforced via the `X-Requested-With: certinel` header on writes.
+CSRF is enforced via the `X-Requested-With: certheim` header on writes.
 
 ## Backend (`backend/`)
 
@@ -65,7 +65,7 @@ Static SPA served by nginx. `app.js` is split into ordered, independently-parsin
 Styles in `app.css`; markup in `index.html`.
 
 ## Ops & packaging
-- `deploy.sh` — installs repo files to live paths from a `MANIFEST` (idempotent, validates units/nginx, restarts `certinel-api`, checks served VERSION). **Edit the MANIFEST by hand** (a quoting slip via `sed` once corrupted the array).
+- `deploy.sh` — installs repo files to live paths from a `MANIFEST` (idempotent, validates units/nginx, restarts `certheim-api`, checks served VERSION). **Edit the MANIFEST by hand** (a quoting slip via `sed` once corrupted the array).
 - `verify.sh` — diffs a repo clone against the live box (`PAIRS`); `ok / missing / drift` counts.
 - `tests/test_smoke.py` — Flask test-client smoke net: asserts route **registration** (url_map) + auth + response shapes across every blueprint. Run: `python -m pytest tests/test_smoke.py -q`.
 - `.gitlab-ci.yml` — `lint` (py_compile `backend/*.py`, bash -n, node --check JS) + `test` (**hard** smoke-tests gate).
@@ -76,7 +76,7 @@ Any structural refactor must prove it changed no behavior:
 1. **url_map route+method set identical** pre/post (import old vs new, diff the rule list).
 2. **pyflakes clean** — no undefined names (catches a helper that didn't move with its caller).
 3. **smoke harness 24/24** green.
-4. deploy to **csr-dev** → `verify.sh` clean (`missing=0 drift=0`) → certinel-api active.
+4. deploy to **csr-dev** → `verify.sh` clean (`missing=0 drift=0`) → certheim-api active.
 
 ## Deployment modes (design floor = air-gapped)
 A customer runs exactly one: SaaS/cloud, on-prem-with-internet, or air-gapped/STIG.

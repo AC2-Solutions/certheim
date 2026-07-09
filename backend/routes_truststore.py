@@ -81,7 +81,7 @@ def _register():
             return jsonify(error="trust store is empty"), 404
         return Response(bundle, mimetype="application/x-pem-file",
                         headers={"Content-Disposition":
-                                 "attachment; filename=certinel-trust-bundle.pem"})
+                                 "attachment; filename=certheim-trust-bundle.pem"})
 
     @bp.post("/api/admin/truststore/install-local")
     @require_admin

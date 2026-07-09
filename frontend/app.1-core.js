@@ -1,6 +1,6 @@
 // Certheim frontend - Linux-only flow with jobs DB
 const API = "/csr/api";
-const CSRF = { "X-Requested-With": "certinel", "Content-Type": "application/json" };
+const CSRF = { "X-Requested-With": "certheim", "Content-Type": "application/json" };
 const PAGE_SIZE = 50;
 
 // ===== Login banner (configurable; a modal opened from a link on the gate) =====
@@ -912,7 +912,7 @@ const ENTRY_RE = /^[A-Za-z0-9._@+:-]+$/;
 // domain is configured yet.
 function applyConfiguredDomain(suffix) {
   const dom = (suffix || "").trim().replace(/^\.+/, "");
-  window.CSR_DOMAIN = dom;                       // "" until an admin configures it
+  window.CERTHEIM_DOMAIN = dom;                       // "" until an admin configures it
   const shown = dom || "example.com";
   const dEl = document.getElementById("hint-domain");
   const eEl = document.getElementById("hint-example");
@@ -930,7 +930,7 @@ function addRequestRow(cn = "", sans = "") {
   const row = document.createElement("div");
   row.className = "request-row";
 
-  const _dom = (window.CSR_DOMAIN || "example.com");
+  const _dom = (window.CERTHEIM_DOMAIN || "example.com");
   const cnInput = document.createElement("input");
   cnInput.type = "text";
   cnInput.className = "form-input req-cn";

@@ -208,9 +208,9 @@
       fields: [
         { key: "addr", label: "OpenBao address", ph: "https://openbao.example.com" },
         { key: "pki", label: "PKI mount", ph: "pki_csr" },
-        { key: "role", label: "Signing role", ph: "certinel" },
-        { key: "approle", label: "AppRole name", ph: "certinel-signer" },
-        { key: "policy", label: "Policy name", ph: "certinel-sign" },
+        { key: "role", label: "Signing role", ph: "certheim" },
+        { key: "approle", label: "AppRole name", ph: "certheim-signer" },
+        { key: "policy", label: "Policy name", ph: "certheim-sign" },
         { key: "ttl", label: "Max cert TTL (hours)", ph: "8760" },
         { key: "cafile", label: "OpenBao CA file path (optional, TLS pin)", ph: "" },
         { key: "revoke", label: "Also allow in-UI revoke", ph: "", type: "checkbox" },
@@ -244,16 +244,16 @@ bao write auth/approle/role/${ar} \\
     secret_id_ttl=0 secret_id_num_uses=0
 bao read  -field=role_id      auth/approle/role/${ar}/role-id
 bao write -f -field=secret_id auth/approle/role/${ar}/secret-id` },
-          { h: "2 - In Certheim: /etc/certinel/certinel.env" },
+          { h: "2 - In Certheim: /etc/certheim/certheim.env" },
           { p: "The AppRole credentials live ONLY in the env file (never in the app database). Paste the role_id/secret_id from step 1, then restart:" },
           { code:
-`CSR_CAP_OPENBAO=1
-CSR_OPENBAO_ADDR=${addr}
-CSR_OPENBAO_ROLE_ID=<role_id from step 1>
-CSR_OPENBAO_SECRET_ID=<secret_id from step 1>${ca ? `\nCSR_OPENBAO_CA_FILE=${ca}` : ""}
+`CERTHEIM_CAP_OPENBAO=1
+CERTHEIM_OPENBAO_ADDR=${addr}
+CERTHEIM_OPENBAO_ROLE_ID=<role_id from step 1>
+CERTHEIM_OPENBAO_SECRET_ID=<secret_id from step 1>${ca ? `\nCSR_OPENBAO_CA_FILE=${ca}` : ""}
 
 # then:
-sudo systemctl restart certinel-api` },
+sudo systemctl restart certheim-api` },
           { h: "3 - In Certheim: Administration -> Signing / CA" },
           { p: "Set the non-secret connection fields and test:" },
           { code:
@@ -274,7 +274,7 @@ Default role     : ${role}` },
       fields: [
         { key: "kv", label: "KV v2 mount", ph: "secret" },
         { key: "base", label: "Base path for certs", ph: "csr-certs" },
-        { key: "policy", label: "Policy to extend", ph: "certinel-sign" },
+        { key: "policy", label: "Policy to extend", ph: "certheim-sign" },
       ],
       gen(v) {
         const kv = V(v, this.fields[0]), base = V(v, this.fields[1]), pol = V(v, this.fields[2]);
@@ -303,7 +303,7 @@ Destination path : ${base}/<host>      (leave blank to use the base path)` },
       blurb: "Generated private keys are stored in OpenBao instead of on the host disk; the host copy is shredded immediately.",
       fields: [
         { key: "kv", label: "KV v2 mount", ph: "secret" },
-        { key: "policy", label: "Policy to extend", ph: "certinel-sign" },
+        { key: "policy", label: "Policy to extend", ph: "certheim-sign" },
         { key: "mode", label: "Policy: vault (keep) or return_once (destroy after first fetch)", ph: "vault" },
       ],
       gen(v) {
@@ -332,7 +332,7 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
       fields: [
         { key: "url", label: "Conjur base URL", ph: "https://conjur.example.com" },
         { key: "account", label: "Conjur account", ph: "my-account" },
-        { key: "login", label: "Service login (host id)", ph: "host/certinel" },
+        { key: "login", label: "Service login (host id)", ph: "host/certheim" },
         { key: "variable", label: "Target variable id", ph: "apps/myapp/certificate" },
         { key: "shipkey", label: "Also store the private key (at <variable>/key)", ph: "", type: "checkbox" },
         { key: "cafile", label: "Conjur CA cert PEM path (optional)", ph: "" },
@@ -346,9 +346,9 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
         const keyPerm = ship ? `\n    - !variable ${variable}/key` : "";
         return [
           { h: "1 - In CyberArk Conjur (load a policy as an admin)" },
-          { p: "Create the service host, the cert variable(s), and grant the host update access. Save as certinel.yml and load it:" },
+          { p: "Create the service host, the cert variable(s), and grant the host update access. Save as certheim.yml and load it:" },
           { code:
-`# certinel.yml  ->  conjur policy load -b root -f certinel.yml
+`# certheim.yml  ->  conjur policy load -b root -f certheim.yml
 - !host ${hostId}
 - !variable ${variable}${keyVar}
 - !permit
@@ -358,12 +358,12 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
     - !variable ${variable}${keyPerm}` },
           { p: "Then mint the API key Certheim will authenticate with:" },
           { code: `conjur host rotate-api-key -i ${hostId}` },
-          { h: "2 - In Certheim: /etc/certinel/certinel.env (secrets only here)" },
+          { h: "2 - In Certheim: /etc/certheim/certheim.env (secrets only here)" },
           { code:
-`CSR_CYBERARK_API_KEY=<api key from step 1>${ca ? `\nCSR_CYBERARK_CA_CERT=${ca}` : ""}
+`CERTHEIM_CYBERARK_API_KEY=<api key from step 1>${ca ? `\nCSR_CYBERARK_CA_CERT=${ca}` : ""}
 
 # then:
-sudo systemctl restart certinel-api` },
+sudo systemctl restart certheim-api` },
           { h: "3 - In Certheim: Administration -> Signing / CA (CyberArk connection)" },
           { code:
 `CyberArk base URL : ${url}

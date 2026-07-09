@@ -506,7 +506,7 @@
       </div>
       <p class="hint">Certheim runs on <b>SQLite</b> (single node, zero-setup) or
         <b>PostgreSQL</b> (for high availability / Kubernetes). The backend is chosen
-        by the <code>CSR_DB_URL</code> environment variable; switching is a one-time
+        by the <code>CERTHEIM_DB_URL</code> environment variable; switching is a one-time
         migrate&nbsp;+&nbsp;restart, laid out below.</p>
 
       <p>Current backend: <b id="admin-db-backend">…</b></p>
@@ -517,7 +517,7 @@
         <h3>Move to PostgreSQL</h3>
         <label>Target PostgreSQL connection (DSN)
           <input type="text" id="admin-db-dsn" class="form-input"
-                 placeholder="postgresql://certinel:PASSWORD@dbhost:5432/certinel" autocomplete="off">
+                 placeholder="postgresql://certheim:PASSWORD@dbhost:5432/certheim" autocomplete="off">
         </label>
         <div class="row">
           <button id="admin-db-test-btn" type="button">Test connection</button>
@@ -529,10 +529,10 @@
           <p class="hint">Run these on the server with the app briefly stopped, so nothing
             writes during the copy. <b>Back up your data first.</b></p>
           <ol>
-            <li><code>sudo systemctl stop certinel-api</code></li>
+            <li><code>sudo systemctl stop certheim-api</code></li>
             <li><code id="admin-db-cmd-migrate"></code></li>
-            <li>Add <code id="admin-db-cmd-env"></code> to <code>/etc/certinel/certinel.env</code></li>
-            <li><code>sudo systemctl start certinel-api</code> — it now runs on PostgreSQL.</li>
+            <li>Add <code id="admin-db-cmd-env"></code> to <code>/etc/certheim/certheim.env</code></li>
+            <li><code>sudo systemctl start certheim-api</code> — it now runs on PostgreSQL.</li>
           </ol>
         </div>
       </div>
@@ -788,7 +788,7 @@
                Turn on <strong>Socket Mode</strong> in your Slack app and paste its
                <strong>app-level token</strong> (<code>xapp-…</code>, scope
                <code>connections:write</code>). Handled by the
-               <code>certinel-slack-listener</code> service.</p>
+               <code>certheim-slack-listener</code> service.</p>
             <label for="slack-app-token" class="textarea-label">App-level token (xapp-)
               <span class="hint" id="slack-apptoken-hint"></span></label>
             <input type="password" id="slack-app-token" class="form-input" autocomplete="new-password">
@@ -808,7 +808,7 @@
         <button id="admin-email-test-btn" class="secondary" type="button">Send test email</button>
       </div>
       <p class="hint">Notification delivery method &amp; settings, read from
-         <code>/etc/certinel/email.conf</code>.
+         <code>/etc/certheim/email.conf</code>.
          Changes here are written back to that file and take effect
          immediately &mdash; no service restart needed.</p>
       <p id="email-config-state" class="status"></p>
@@ -1074,7 +1074,7 @@
         </label>
         <p class="hint" style="margin:2px 0 6px">
           When on, issued certs nearing expiry whose template opts into auto-renew are
-          re-signed automatically by the daily <code>certinel-auto-renew</code> timer.
+          re-signed automatically by the daily <code>certheim-auto-renew</code> timer.
           Templates control which certs participate.</p>
         <label for="signing-cfg-renewdays" class="textarea-label">Default renewal window
           <span class="hint">(days before expiry; templates may override)</span></label>
@@ -2126,8 +2126,8 @@
                 <li>Fill in <em>OpenBao address</em>, <em>PKI mount</em>, and
                     <em>Default role</em> here.</li>
                 <li>Put the credential in the service env:
-                    <code>CSR_OPENBAO_ROLE_ID</code> / <code>CSR_OPENBAO_SECRET_ID</code>
-                    (optional <code>CSR_OPENBAO_CA_FILE</code> to pin the TLS CA).</li>
+                    <code>CERTHEIM_OPENBAO_ROLE_ID</code> / <code>CERTHEIM_OPENBAO_SECRET_ID</code>
+                    (optional <code>CERTHEIM_OPENBAO_CA_FILE</code> to pin the TLS CA).</li>
                 <li><strong>Test connection</strong> — it proves the AppRole login and that the
                     mount answers with a CA certificate.</li>
               </ol>
@@ -2144,7 +2144,7 @@
                     step-ca) and an <em>account contact email</em>. The account key is created
                     and stored automatically on first use.</li>
                 <li>If your CA requires External Account Binding, set the <em>EAB key id</em>
-                    field and <code>CSR_ACME_EAB_HMAC</code> in the service env.</li>
+                    field and <code>CERTHEIM_ACME_EAB_HMAC</code> in the service env.</li>
                 <li>Pick the <em>challenge type</em>:
                     <ul>
                       <li><strong>http-01</strong> — set the <em>webroot path</em>; your web
@@ -2152,11 +2152,11 @@
                           <code>/.well-known/acme-challenge/</code> for every name you issue.</li>
                       <li><strong>dns-01</strong> — pick a DNS provider.
                           <em>rfc2136</em> (any BIND-style server): update server, TSIG key name +
-                          algorithm here, secret in <code>CSR_ACME_DNS_TSIG_SECRET</code>.
+                          algorithm here, secret in <code>CERTHEIM_ACME_DNS_TSIG_SECRET</code>.
                           Cloud solvers (Commercial): <em>cloudflare</em>
-                          (<code>CSR_ACME_DNS_API_TOKEN</code>), <em>route53</em>
-                          (<code>CSR_ACME_DNS_ACCESS_KEY</code>/<code>SECRET_KEY</code>),
-                          <em>azure</em> (<code>CSR_ACME_DNS_CLIENT_ID</code>/<code>CLIENT_SECRET</code>
+                          (<code>CERTHEIM_ACME_DNS_API_TOKEN</code>), <em>route53</em>
+                          (<code>CERTHEIM_ACME_DNS_ACCESS_KEY</code>/<code>SECRET_KEY</code>),
+                          <em>azure</em> (<code>CERTHEIM_ACME_DNS_CLIENT_ID</code>/<code>CLIENT_SECRET</code>
                           + tenant field), plus the zone / id field.</li>
                     </ul></li>
                 <li><strong>Test connection</strong> fetches the directory and verifies the
@@ -2176,8 +2176,8 @@
                     <em>SSH user</em>, and — for an Enterprise (domain-joined) CA — the
                     <em>certificate template</em> to issue against (leave blank for a
                     standalone CA).</li>
-                <li>Point <code>CSR_WINCA_SSH_KEY</code> at the private key file in the service
-                    env (optional <code>CSR_WINCA_KNOWN_HOSTS</code> to pin the host key).</li>
+                <li>Point <code>CERTHEIM_WINCA_SSH_KEY</code> at the private key file in the service
+                    env (optional <code>CERTHEIM_WINCA_KNOWN_HOSTS</code> to pin the host key).</li>
                 <li><strong>Test connection</strong> runs a harmless <code>certutil</code> probe
                     over SSH. In-UI revocation is supported.</li>
               </ol>
@@ -2189,8 +2189,8 @@
                 <li>Enable the EJBCA REST API and create an enrollment end-entity.</li>
                 <li>Fill in <em>base URL</em>, <em>CA name</em>, <em>certificate profile</em>,
                     <em>end-entity profile</em>, and the <em>enrollment username</em>.</li>
-                <li>Secret in the service env: <code>CSR_EJBCA_PASSWORD</code>, or client-cert
-                    auth via <code>CSR_EJBCA_CLIENT_CERT</code>.</li>
+                <li>Secret in the service env: <code>CERTHEIM_EJBCA_PASSWORD</code>, or client-cert
+                    auth via <code>CERTHEIM_EJBCA_CLIENT_CERT</code>.</li>
                 <li><strong>Test connection</strong> before pointing templates at it.</li>
               </ol>
             </div>
@@ -2202,7 +2202,7 @@
                     policy folder you'll issue from.</li>
                 <li>Fill in the <em>TPP base URL</em> and the <em>policy folder DN</em>
                     (e.g. <code>\VED\Policy\Certificates\Certheim</code>).</li>
-                <li>Put the OAuth bearer token in <code>CSR_VENAFI_TOKEN</code> in the service
+                <li>Put the OAuth bearer token in <code>CERTHEIM_VENAFI_TOKEN</code> in the service
                     env.</li>
                 <li><strong>Test connection</strong> to confirm the token and folder.</li>
               </ol>
@@ -2215,9 +2215,9 @@
                     <code>IssueCertificate</code> / <code>GetCertificate</code> on it.</li>
                 <li>Fill in the <em>CA ARN</em>, <em>region</em>, <em>signing algorithm</em>
                     (e.g. <code>SHA256WITHRSA</code>), and <em>validity days</em>.</li>
-                <li>Credentials in the service env: <code>CSR_AWS_PCA_ACCESS_KEY</code> /
-                    <code>CSR_AWS_PCA_SECRET_KEY</code> (plus
-                    <code>CSR_AWS_PCA_SESSION_TOKEN</code> for temporary credentials).</li>
+                <li>Credentials in the service env: <code>CERTHEIM_AWS_PCA_ACCESS_KEY</code> /
+                    <code>CERTHEIM_AWS_PCA_SECRET_KEY</code> (plus
+                    <code>CERTHEIM_AWS_PCA_SESSION_TOKEN</code> for temporary credentials).</li>
                 <li><strong>Test connection</strong> describes the CA to prove access.</li>
               </ol>
             </div>
@@ -2233,7 +2233,7 @@
                     <em>mode</em> (engine or provider), <em>token label</em>, <em>key label</em>
                     (or hex key id), <em>validity days</em>, and paste the <em>CA certificate
                     (PEM)</em>.</li>
-                <li>Put the HSM PIN in <code>CSR_HSM_PIN</code> in the service env — never in
+                <li>Put the HSM PIN in <code>CERTHEIM_HSM_PIN</code> in the service env — never in
                     the database.</li>
                 <li>Verify outside the app first (e.g.
                     <code>pkcs11-tool --module &lt;.so&gt; --list-objects</code>), then sign a
@@ -2245,7 +2245,7 @@
               <h4>CyberArk <span class="guide-ed">Commercial / Government</span></h4>
               <p>A configurable slot: enter the <em>base URL</em>, <em>issuing CA / policy id</em>,
                  and <em>application id</em>, with the API token in
-                 <code>CSR_CYBERARK_TOKEN</code>. The connection settings are saved, but the
+                 <code>CERTHEIM_CYBERARK_TOKEN</code>. The connection settings are saved, but the
                  signing API call is not wired in this release — use OpenBao for automated
                  signing, or contact support about enabling your CyberArk integration.</p>
             </div>

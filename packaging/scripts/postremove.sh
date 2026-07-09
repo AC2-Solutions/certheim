@@ -12,15 +12,15 @@ cat <<'EOF'
   Certheim package removed (/usr/share/certheim is gone). Runtime data and
   configuration were left in place:
 
-      /opt/certinel        app runtime + venv (placed by certheim-setup)
-      /var/opt/certinel    issued certs, generated requests
-      /var/lib/certinel    database
-      /etc/certinel        configuration + license pointer
+      /opt/certheim        app runtime + venv (placed by certheim-setup)
+      /var/opt/certheim    issued certs, generated requests
+      /var/lib/certheim    database
+      /etc/certheim        configuration + license pointer
 
   To remove them too, run the bundled uninstaller before it disappears, or
   delete the paths above by hand:
 
-      sudo certinel-uninstall
+      sudo certheim-uninstall
 
 EOF
 fi

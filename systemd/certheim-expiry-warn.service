@@ -1,0 +1,12 @@
+[Unit]
+Description=Certheim - send certificate expiry warnings
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=certheim
+Group=certheim
+WorkingDirectory=/opt/certheim
+EnvironmentFile=-/etc/certheim/certheim.env
+ExecStart=/opt/certheim/venv/bin/python3 -c 'import app; s,e = app.run_expiry_warnings(); print(f"expiry warnings: sent={s} errors={e}")'
+Environment=PYTHONUNBUFFERED=1
