@@ -1,5 +1,27 @@
 # Certheim Community edition — changelog
 
+## 6.0.1 — 2026-07-10
+
+_Released 2026-07-10. 4 changes since community-v6.0.0._
+
+### Fixes & improvements
+
+- drop certinel->certheim env dual-read shim (Phase 5) (`1bf0a10`)
+  Remove the Phase-1 backwards-compat shim now that every install's env file, the container image's
+  baked env, and the entrypoint all use the canonical CERTHEIM_* spelling:
+  - backend/envcompat.py: candidates()/getenv() read only the exact name (no CSR_/CERTINEL_
+    fallback). Thin API kept so call sites are unchanged.
+  - backend/app.py _load_env_file: drop the legacy twin-bridge loop.
+  - tests/test_envcompat.py: rewritten to assert canonical-only (no fallback).
+  Portal /api/v1/certinel/* routes and the container/deploy migration tooling (intentional legacy
+  old-refs) are unaffected. refactor: => PATCH release.
+
+### Other changes
+
+- **rename:** bake canonical CERTHEIM_* env in container image (Phase 5) (`171c615`)
+- **keystore:** update smoke assertions to certheim/_shared/keys path (`d8ed0a2`)
+- **keystore:** move vault key path certinel-keys -> certheim/_shared/keys (`3b0c446`)
+
 ## 6.0.0 — 2026-07-09
 
 _Released 2026-07-09. 1 change since community-v5.1.0._
