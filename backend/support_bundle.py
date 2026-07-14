@@ -149,6 +149,14 @@ def build(get_setting, db, app_version, edition, log_event=None):
 
     audit_tail = _safe(_audit, "(unavailable)")
 
+    # --- diagnostics: config self-checks (see diagnostics.py) ---
+    def _diag():
+        import diagnostics
+        return diagnostics.run_all(get_setting, db)
+
+    diag = _safe(_diag, {"overall": "error", "checks": [],
+                         "generated_at": stamp})
+
     # --- assemble the zip ---
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -161,6 +169,12 @@ def build(get_setting, db, app_version, edition, log_event=None):
                    "# Generated " + stamp + "\n\n" + settings_txt)
         z.writestr("audit-tail.txt",
                    "# Last audit events (oldest first).\n\n" + audit_tail)
+        z.writestr("diagnostics.json", json.dumps(diag, indent=2))
+        try:
+            import diagnostics as _dg
+            z.writestr("diagnostics.txt", _dg.to_text(diag))
+        except Exception:                   # noqa: BLE001
+            pass
         z.writestr("README.txt", _README % (stamp, app_version, edition))
     buf.seek(0)
     if log_event:
@@ -185,6 +199,8 @@ Contents:
   schema.json        DB table names + row COUNTS (no row data)
   settings.txt       app settings with all secret VALUES redacted
   audit-tail.txt     recent audit events
+  diagnostics.txt    configuration self-check results (start here)
+  diagnostics.json   the same checks, machine-readable
 
 What this bundle does NOT contain: private keys, the sealed keystore contents,
 the license blob, passwords, API tokens, or CSR/certificate material. It is safe

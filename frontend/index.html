@@ -484,6 +484,7 @@
       <div class="card-header">
         <h2>Service overview</h2>
         <div class="row">
+          <button id="admin-health-check-btn" class="secondary" type="button">Run health check</button>
           <button id="admin-support-bundle-btn" class="secondary" type="button">Download support bundle</button>
           <button id="admin-test-email-btn" class="secondary" type="button">Send test email</button>
         </div>
@@ -495,6 +496,8 @@
         deployment's version, capability/FIPS posture, DB schema shape, redacted
         settings, and a recent audit tail — safe to attach to a support ticket
         (no keys, tokens, license, or certificate material).</p>
+      <div id="admin-health-check-out" class="diag-out" hidden></div>
+      <p id="admin-health-check-status" class="status"></p>
       <p id="admin-support-bundle-status" class="status"></p>
       <p id="admin-test-email-status" class="status"></p>
     </section>
