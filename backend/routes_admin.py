@@ -1142,6 +1142,12 @@ def run_expiry_warnings():
     """Send tiered expiry warnings (30/14/7 days) for issued certs. Each
     threshold fires at most once per job (tracked in jobs.expiry_warned).
     Safe to call repeatedly. Returns (sent, errors)."""
+    # Record that the pass fired at all - diagnostics uses this to detect a
+    # dead timer/CronJob, the most common silent failure.
+    try:
+        set_setting("last_expiry_warn_at", str(time.time()))
+    except Exception:                       # noqa: BLE001
+        pass
     # When the inventory alerting engine is present (Commercial+) and licensed it
     # supersedes this jobs-only pass with an inventory-wide one, so there's a
     # single alert path and no double-notification. In the Community build the
@@ -1772,6 +1778,19 @@ FEEDBACK_CATEGORIES = ("bug", "feature", "general")
 # ============================================================
 # Admin: support bundle (redacted diagnostics for tickets)
 # ============================================================
+@bp.get("/api/admin/diagnostics")
+@require_admin
+def admin_diagnostics():
+    """Run the configuration self-checks on demand (same battery the support
+    bundle embeds), so an operator can rule out the obvious causes before
+    opening a ticket."""
+    import diagnostics
+    report = diagnostics.run_all(get_setting, db)
+    log_event("diagnostics", report.get("overall", "error"),
+              checks=len(report.get("checks", [])))
+    return jsonify(report)
+
+
 @bp.get("/api/admin/support-bundle")
 @require_admin
 def admin_support_bundle():

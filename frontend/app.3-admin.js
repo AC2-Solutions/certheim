@@ -1171,6 +1171,34 @@ document.getElementById("admin-test-email-btn").addEventListener("click", async 
 
 // Support bundle: fetch as a blob so a server-side error (JSON) surfaces
 // instead of downloading a broken zip.
+// Health check: run the config self-checks (same battery the support bundle
+// embeds) and render pass/warn/fail per check, worst first.
+document.getElementById("admin-health-check-btn")?.addEventListener("click", async () => {
+  const st = document.getElementById("admin-health-check-status");
+  const out = document.getElementById("admin-health-check-out");
+  setStatus(st, "Running checks…");
+  const r = await jsonReq("/admin/diagnostics");
+  if (!r.ok || !r.body || !r.body.checks) {
+    setStatus(st, "Health check failed to run", "err");
+    return;
+  }
+  const sev = { fail: 0, error: 1, warn: 2, ok: 3, skip: 4 };
+  const icon = { ok: "✅", warn: "⚠️", fail: "❌", error: "❌", skip: "➖" };
+  const checks = r.body.checks.slice().sort((a, b) =>
+    (sev[a.status] ?? 5) - (sev[b.status] ?? 5));
+  out.innerHTML = checks.map((c) => `
+    <div class="diag-row diag-${escapeHtml(c.status)}">
+      <span class="diag-icon">${icon[c.status] || "•"}</span>
+      <span><strong>${escapeHtml(c.id)}</strong> — ${escapeHtml(c.summary)}
+        ${c.hint ? `<div class="muted diag-hint">${escapeHtml(c.hint)}</div>` : ""}</span>
+    </div>`).join("");
+  out.hidden = false;
+  const n = checks.filter((c) => c.status === "warn" || c.status === "fail"
+                                  || c.status === "error").length;
+  setStatus(st, n ? `${n} finding(s) — details above` : "All checks passed",
+            r.body.overall === "ok" ? "ok" : (r.body.overall === "warn" ? "" : "err"));
+});
+
 document.getElementById("admin-support-bundle-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("admin-support-bundle-status");
   setStatus(status, "Building bundle…");

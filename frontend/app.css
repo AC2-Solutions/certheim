@@ -787,3 +787,12 @@ body.guide-open { overflow: hidden; }
 #pane-zoom-reset { min-width: 54px; font-size: 13px; font-weight: 600;
   font-variant-numeric: tabular-nums;
   border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+/* ===== Health check (diagnostics) results ===== */
+.diag-out { margin: 10px 0; display: grid; gap: 6px; }
+.diag-row { display: flex; gap: 8px; align-items: flex-start; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.diag-row.diag-fail, .diag-row.diag-error { border-color: var(--danger); }
+.diag-row.diag-warn { border-color: var(--warning); }
+.diag-icon { flex: 0 0 auto; }
+.diag-hint { font-size: 12px; margin-top: 2px; }
