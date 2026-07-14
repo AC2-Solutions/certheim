@@ -1,5 +1,20 @@
 # Certheim Community edition — changelog
 
+## 6.2.0 — 2026-07-14
+
+_Released 2026-07-14. 1 change since community-v6.1.0._
+
+### Features
+
+- **support:** configuration self-checks in the bundle + on-demand health check (`f69dd37`)
+  A diagnostics battery (db writable, disk space, email, auth sanity, license/build mismatch,
+  signing-backend reachability, scheduler staleness, stuck requests, delivery failures, helper,
+  fleet freshness) embedded in every support bundle as diagnostics.json/.txt and exposed via GET
+  /api/admin/diagnostics + a Run health check button, so obvious misconfigurations surface before a
+  ticket is opened. Premium surfaces probe via import/table guards; every check is exception-proofed
+  and secret-free. The expiry-warn pass now records last_expiry_warn_at so a dead timer/CronJob is
+  detectable.
+
 ## 6.1.0 — 2026-07-14
 
 _Released 2026-07-14. 1 change since community-v6.0.1._
