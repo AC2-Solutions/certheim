@@ -2339,6 +2339,14 @@
   </div>
 </div>
 
+<!-- Pane zoom: scales only the content pane (.panel-body), leaving the nav +
+     header at native size. Level persists in localStorage. -->
+<div id="pane-zoom" class="pane-zoom" hidden aria-label="Content zoom">
+  <button id="pane-zoom-out" type="button" title="Zoom out content (Ctrl+-)" aria-label="Zoom out">−</button>
+  <button id="pane-zoom-reset" type="button" title="Reset to 100%">100%</button>
+  <button id="pane-zoom-in" type="button" title="Zoom in content (Ctrl++)" aria-label="Zoom in">+</button>
+</div>
+
 <script src="app.1-core.js"></script>
 <script src="app.2-jobs.js"></script>
 <script src="app.3-admin.js"></script>
