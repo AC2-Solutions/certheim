@@ -153,10 +153,23 @@ def check_auth(get_setting, db):
                            "you will be locked out at session expiry; set an "
                            "admin password or bootstrap one")
     if envcompat.getenv("CERTHEIM_BOOTSTRAP_FIRST_ADMIN", "") in ("1", "true", "on"):
+        # The flag is self-disabling: both bootstrap paths only fire while the
+        # users table is EMPTY, so on a populated install it is inert - the
+        # risk is latent (a reset/lost data store would silently crown the
+        # first identity to appear), not active.
+        with db() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if total == 0:
+            return _result("auth", "access", "ok",
+                           "CERTHEIM_BOOTSTRAP_FIRST_ADMIN is set and waiting "
+                           "to make the first account an admin (expected "
+                           "during initial setup)")
         return _result("auth", "access", "warn",
-                       "CERTHEIM_BOOTSTRAP_FIRST_ADMIN is still enabled",
-                       "the next new identity to sign in becomes an admin - "
-                       "unset it now that setup is done")
+                       "CERTHEIM_BOOTSTRAP_FIRST_ADMIN is still set (inert: "
+                       "%d account(s) already exist)" % total,
+                       "it only ever fires on an EMPTY user table, so it does "
+                       "nothing today - but unset it so a reset or lost data "
+                       "store can't silently make the first sign-in an admin")
     return _result("auth", "access", "ok", "auth mode '%s' looks sane" % mode)
 
 
