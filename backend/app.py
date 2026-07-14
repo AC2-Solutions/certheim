@@ -54,7 +54,11 @@ _ENV_DEFAULTS = {
     # user exists. Default off - on a box where mTLS isn't fully locked down,
     # auto-promoting "whoever logs in first" is a risk; enable it deliberately
     # for first-time setup, then turn it off (or it simply never fires again).
-    "CERTHEIM_BOOTSTRAP_FIRST_ADMIN": "0",
+    # First account ever created becomes an admin (self-disabling: both code
+    # paths only fire while the users table is EMPTY). On by default so the
+    # out-of-the-box experience is "register once, you're the admin"; hardened
+    # sites set 0 and use the certheim-bootstrap-admin CLI instead.
+    "CERTHEIM_BOOTSTRAP_FIRST_ADMIN": "1",
     # Container mode: when "1"/"true", the app runs as a single user inside a
     # container (the container, not sudo, is the privilege boundary). The helper
     # is invoked directly (no `sudo -n`), and mTLS is terminated at the ingress
@@ -1319,9 +1323,9 @@ LOGIN_BANNERS = {
 
 # --- instance settings (key/value) -----------------------------------------
 _SETTINGS_DEFAULTS = {
-    # "mtls" = CAC required (current/default behavior). "local" = username/
-    # password auth (set by installer when mTLS isn't available).
-    "auth_mode": "mtls",
+    # auth_mode has NO static default here: auth_mode() decides and seeds the
+    # setting on first read (fresh install -> CERTHEIM_AUTH_MODE, default local
+    # in every shipped artifact; populated install with no row -> mtls frozen).
     # Optional filter for self-registration: if set, only emails at this exact
     # domain may register. Empty = no domain restriction (any valid email).
     "trusted_email_domain": "",
@@ -1380,7 +1384,34 @@ else:
         return (0, 0, 0)
 
 def auth_mode():
-    return get_setting("auth_mode") or "mtls"
+    """The active auth mode. An explicit app_settings row always wins. When no
+    row exists yet, the FIRST call decides and seeds one, so the choice is
+    stable and visible from then on:
+
+      * empty user table (fresh install)  -> the install-time default from
+        CERTHEIM_AUTH_MODE (every shipped artifact - container entrypoint, VM
+        installer - sets "local", making username/password the out-of-the-box
+        experience everywhere; CAC/mTLS is an explicit opt-in),
+      * accounts already exist (upgrade)  -> "mtls", freezing the historical
+        fallback so a header-auth install can never be silently flipped into
+        a mode that would lock its operators out.
+    """
+    mode = get_setting("auth_mode")
+    if mode:
+        return mode
+    with db() as conn:
+        empty = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+    if empty:
+        mode = envcompat.getenv("CERTHEIM_AUTH_MODE", "").strip().lower()
+        if mode not in ("local", "mtls"):
+            mode = "mtls"
+    else:
+        mode = "mtls"
+    try:
+        set_setting("auth_mode", mode)
+    except Exception:                       # noqa: BLE001 - read-only DB etc.
+        pass
+    return mode
 
 def current_banner():
     """Resolve the configured login banner to a render-ready dict, or None.

@@ -106,6 +106,11 @@ async function bootstrapAuth() {
     document.getElementById("login-cac-row").hidden = true;
     document.getElementById("login-cac").hidden = true;
     document.getElementById("login-register-link-wrap").hidden = !authInfo.registration_open;
+    // Fresh install: the first account registered becomes the admin - say so.
+    if (authInfo.first_run) {
+      const link = document.getElementById("login-show-register");
+      if (link) link.textContent = "Create the first admin account";
+    }
     document.getElementById("login-sub").textContent =
       "Sign in with your username and password";
   }
