@@ -62,9 +62,11 @@ def test_report_shape_and_never_raises(env):
 def test_core_checks_pass_on_healthy_fixture(env):
     checks = _by_id(_report(env))
     assert checks["database"]["status"] == "ok"
-    # test env keeps the bootstrap flag on -> auth must call that out
+    # test env keeps the bootstrap flag on with users present -> the check
+    # must call it out as set-but-INERT (it only fires on an empty user table)
     assert checks["auth"]["status"] == "warn"
     assert "BOOTSTRAP" in checks["auth"]["summary"]
+    assert "inert" in checks["auth"]["summary"]
     # no email config in the fixture -> warn with guidance, not a crash
     assert checks["email"]["status"] == "warn"
 
