@@ -17,6 +17,13 @@ set -e
 # helper, ingress-terminated mTLS) unless explicitly overridden.
 export CERTHEIM_CONTAINER="${CERTHEIM_CONTAINER:-${CERTINEL_CONTAINER:-1}}"
 
+# Install-time auth default: username/password everywhere out of the box.
+# Only consulted on a FRESH database (no accounts yet) - an existing install's
+# stored auth_mode setting always wins, so upgrades never flip modes. CAC/mTLS
+# is an explicit opt-in (set CERTHEIM_AUTH_MODE=mtls or switch in Admin ->
+# Authentication).
+export CERTHEIM_AUTH_MODE="${CERTHEIM_AUTH_MODE:-local}"
+
 # Rename compat (Phase 2): an existing deployment may still mount its volumes at
 # the pre-rename paths. If the old DB exists and no explicit override was given,
 # keep reading the mounted data rather than starting empty at the new default.

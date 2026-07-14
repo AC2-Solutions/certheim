@@ -32,13 +32,21 @@ def auth_info():
     mode = auth_mode()
     domains = parse_trusted_domains(get_setting("trusted_email_domain"))
     banner = current_banner()
+    with db() as conn:
+        first_run = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
     return jsonify(
         auth_mode=mode,
         local_enabled=(mode == "local"),
+        # True until the very first account exists - the login gate uses it to
+        # offer "create the first admin account" on a fresh install.
+        first_run=(mode == "local" and first_run),
         # Self-registration is its own toggle now, independent of the (optional)
         # email-domain filter - a domain is "not always going to be a thing".
+        # The first-run window opens it regardless, so the first admin can be
+        # created from the login page.
         registration_open=(mode == "local"
-                           and get_setting("allow_registration") == "1"),
+                           and (get_setting("allow_registration") == "1"
+                                or first_run)),
         # `trusted_email_domain` (joined string) kept for backward compat;
         # `trusted_email_domains` is the canonical list the UI should use.
         trusted_email_domain=", ".join(domains),
@@ -122,7 +130,13 @@ def auth_register():
     if auth_mode() != "local":
         return jsonify(error="registration not available"), 403
     if get_setting("allow_registration") != "1":
-        return jsonify(error="self-registration is disabled"), 403
+        # First-run window: with no accounts at all, the first registration is
+        # allowed even though self-registration is off, so a fresh install can
+        # create its admin from the login page (BOOTSTRAP_FIRST_ADMIN makes
+        # that account the admin). Closes itself the moment one account exists.
+        with db() as conn:
+            if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+                return jsonify(error="self-registration is disabled"), 403
     # Optional email-domain filter (empty = any valid email may register;
     # one OR MORE trusted domains may be configured).
     domains = parse_trusted_domains(get_setting("trusted_email_domain"))
