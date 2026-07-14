@@ -1,5 +1,21 @@
 # Certheim Community edition — changelog
 
+## 6.3.0 — 2026-07-14
+
+_Released 2026-07-14. 1 change since community-v6.2.1._
+
+### Features
+
+- **auth:** username/password is the default first-setup everywhere (`f09200d`)
+  auth_mode() self-seeds on first read: fresh install (no accounts) -> CERTHEIM_AUTH_MODE, which
+  every shipped artifact (container entrypoint, VM installer) now defaults to 'local'; populated
+  install with no stored mode -> 'mtls' FROZEN, so an upgraded header-auth install can never be
+  flipped into a lockout. CAC/mTLS is a deliberate opt-in.
+  First-run experience: with zero accounts, the login page offers 'Create the first admin account'
+  (registration window opens even when self-registration is off, closes after one account) and
+  BOOTSTRAP_FIRST_ADMIN now defaults ON (self-disabling, empty-table-only) so that account is the
+  admin. Hardened sites set the env to 0 and use the CLI bootstrap instead.
+
 ## 6.2.1 — 2026-07-14
 
 _Released 2026-07-14. 2 changes since community-v6.2.0._
