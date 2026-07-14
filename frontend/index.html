@@ -2286,6 +2286,55 @@
             <p>This is part of first-run setup (the OOBE) on a fresh deployment.</p>
           </section>
 
+          <section data-page="admin-database" data-title="Database" data-group="Administration" hidden>
+            <h3>Admin · Database</h3>
+            <p>Certheim runs on <strong>SQLite</strong> (the default — single node, zero setup,
+               one file to back up) or <strong>PostgreSQL</strong> (for high availability and
+               Kubernetes, where several replicas or a managed database make sense). This page
+               shows which backend is active and its health; the choice itself is made by the
+               <code>CERTHEIM_DB_URL</code> environment variable, not from the UI.</p>
+            <h4>Staying on SQLite</h4>
+            <p>Nothing to do. The database lives in the data directory; back it up like any
+               file. Watch free disk space — SQLite fails writes long before the volume is
+               actually full (the health check on the Service overview page warns early).</p>
+            <h4>Moving to PostgreSQL</h4>
+            <p>Provision an empty database and a role, set <code>CERTHEIM_DB_URL</code>
+               (e.g. <code>postgresql://certheim:…@db.example.com/certheim</code>) in the
+               service environment, run the bundled migrate step, and restart. Migration is a
+               one-time copy; the SQLite file stays behind as a fallback snapshot of that
+               moment. Credentials live in the environment file only — never in the UI or the
+               database itself.</p>
+            <h4>Gotchas</h4>
+            <p>Point several app replicas at the SAME PostgreSQL database only — two instances
+               on separate SQLite files silently diverge. After switching backends, re-run one
+               manual scheduler pass (Service overview → health check) to confirm timers write
+               to the new store.</p>
+          </section>
+
+          <section data-page="admin-truststore" data-title="Trust store" data-group="Administration" hidden>
+            <h3>Admin · Trust store</h3>
+            <p>Build your organization's CA trust bundle inside Certheim instead of hand-editing
+               trust anchors over SSH. Upload root and intermediate certificates, and Certheim
+               maintains a single ordered bundle you can install locally, push to fleet hosts,
+               or download for other tooling.</p>
+            <h4>Building the bundle</h4>
+            <p>Upload each CA certificate (PEM). Certheim validates that each file is a CA
+               certificate, dedupes by fingerprint, and keeps roots and intermediates
+               distinguishable. Remove an anchor and the bundle is rebuilt immediately —
+               distribution targets pick up the change on their next install/push.</p>
+            <h4>Distributing it</h4>
+            <p><em>Install on this host</em> drops the bundle into the OS trust store via the
+               privileged helper (VM installs). <em>Push over SSH</em> sends it to fleet hosts
+               using a delivery credential. Container installs typically mount the downloaded
+               bundle or bake it into the image instead.</p>
+            <h4>Gotchas</h4>
+            <p>The bundle is trust ANCHORS only — leaf certificates don't belong here and are
+               rejected. Rotating your internal root? Upload the new root alongside the old
+               one, distribute, and remove the old root only after every consumer trusts the
+               new chain.</p>
+          </section>
+
+
           <section data-page="admin-cleanup" data-title="Job cleanup" data-group="Administration" hidden>
             <h3>Admin · Job cleanup</h3>
             <p>Keep the job list tidy by retiring old, completed jobs according to a retention
