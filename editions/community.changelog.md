@@ -1,5 +1,17 @@
 # Certheim Community edition — changelog
 
+## 6.1.0 — 2026-07-14
+
+_Released 2026-07-14. 1 change since community-v6.0.1._
+
+### Features
+
+- **ui:** sticky header, independent pane scroll, content-pane zoom + image cache-bust (`c830c2f`)
+  - header is now position:sticky so it stays visible on scroll
+  - sidebar nav pinned below header, scrolls in its own region (--header-h)
+  - floating pane-zoom control scales only .panel-body (CSS zoom), persisted
+  - Containerfile stamps a content-hash ?v= on assets (K8s path parity with deploy.sh)
+
 ## 6.0.1 — 2026-07-10
 
 _Released 2026-07-10. 4 changes since community-v6.0.0._
