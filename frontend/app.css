@@ -70,7 +70,8 @@
          margin: 0; background: var(--bg); color: var(--fg); }
 
   header { background: var(--header-bg); color: var(--header-fg); padding: 14px 20px;
-           display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+           display: flex; align-items: center; justify-content: space-between; gap: 16px;
+           position: sticky; top: 0; z-index: 50; }
   header h1 { margin: 0; font-size: 18px; font-weight: 600; }
   /* Edition / license watermark badge (header). Muted by default (Community),
      accent when licensed, warning when a binding tripwire fires. */
@@ -469,9 +470,9 @@
     flex: 0 0 auto;
     width: var(--sidebar-w, 210px);
     box-sizing: border-box;
-    position: sticky; top: 0;
+    position: sticky; top: var(--header-h, 56px);
     align-self: flex-start;
-    height: 100vh; overflow-y: auto;
+    height: calc(100vh - var(--header-h, 56px)); overflow-y: auto;
     display: flex; flex-direction: column; gap: 4px;
     padding: 18px 12px;
     background: var(--bg);
@@ -765,3 +766,24 @@ body.guide-open { overflow: hidden; }
 .eku-help:hover .eku-tip, .eku-help:focus-visible .eku-tip, .eku-help.show .eku-tip {
   opacity: 1; visibility: visible;
 }
+
+/* ===== Pane zoom (scales only the content pane, not nav/header) ===== */
+.panel-body { zoom: var(--pane-zoom, 1); }
+.pane-zoom {
+  position: fixed; right: 20px; bottom: 20px; z-index: 60;
+  display: inline-flex; align-items: stretch; gap: 0;
+  background: var(--card, #1b1f27); border: 1px solid var(--accent);
+  border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  overflow: hidden; opacity: 0.92; transition: opacity 0.15s, box-shadow 0.15s;
+}
+.pane-zoom:hover, .pane-zoom:focus-within { opacity: 1; box-shadow: 0 6px 22px rgba(0,0,0,0.55); }
+.pane-zoom button {
+  background: none; border: none; color: var(--fg);
+  font-size: 18px; font-weight: 600; line-height: 1; cursor: pointer; padding: 9px 14px;
+}
+.pane-zoom button:hover { background: var(--accent); color: #fff; }
+#pane-zoom-in, #pane-zoom-out { color: var(--accent); }
+#pane-zoom-in:hover, #pane-zoom-out:hover { color: #fff; }
+#pane-zoom-reset { min-width: 54px; font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border); }

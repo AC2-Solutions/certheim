@@ -222,6 +222,61 @@ document.getElementById("user-template-create-btn")?.addEventListener("click", a
   refreshUserTemplates();
 });
 
+// Keep --header-h in sync with the sticky header's real height so the sidebar
+// pins right below it and scrolls in its own region (header wraps on narrow
+// widths, so a static value would drift).
+(function trackHeaderHeight() {
+  const header = document.querySelector("header");
+  if (!header) return;
+  const sync = () => document.documentElement.style.setProperty(
+    "--header-h", header.offsetHeight + "px");
+  sync();
+  if (window.ResizeObserver) new ResizeObserver(sync).observe(header);
+  else window.addEventListener("resize", sync);
+  window.addEventListener("load", sync);
+})();
+
+// Pane zoom: scales only the content pane (.panel-body via --pane-zoom), so the
+// user can enlarge dense tables/forms without blowing up the nav + header the
+// way browser zoom does. Level persists per-browser in localStorage.
+(function paneZoom() {
+  const KEY = "certheim.paneZoom";
+  const MIN = 0.5, MAX = 2.0, STEP = 0.1;
+  const clamp = (z) => Math.min(MAX, Math.max(MIN, Math.round(z * 10) / 10));
+  let level = 1;
+  try {
+    const saved = parseFloat(localStorage.getItem(KEY));
+    if (saved) level = clamp(saved);
+  } catch (e) { /* private mode / disabled storage */ }
+
+  const label = () => document.getElementById("pane-zoom-reset");
+  function apply() {
+    document.documentElement.style.setProperty("--pane-zoom", String(level));
+    const l = label();
+    if (l) l.textContent = Math.round(level * 100) + "%";
+    try { localStorage.setItem(KEY, String(level)); } catch (e) { /* ignore */ }
+  }
+  function set(z) { level = clamp(z); apply(); }
+
+  const bar = document.getElementById("pane-zoom");
+  if (bar) {
+    bar.hidden = false;
+    document.getElementById("pane-zoom-in").addEventListener("click", () => set(level + STEP));
+    document.getElementById("pane-zoom-out").addEventListener("click", () => set(level - STEP));
+    label().addEventListener("click", () => set(1));
+  }
+  // Ctrl +/-/0 drive the PANE zoom instead of the browser's whole-page zoom.
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) return;
+    if (e.key === "=" || e.key === "+") { e.preventDefault(); set(level + STEP); }
+    else if (e.key === "-" || e.key === "_") { e.preventDefault(); set(level - STEP); }
+    else if (e.key === "0") { e.preventDefault(); set(1); }
+  });
+  apply();
+})();
+
 // Boot: always show the login gate first; it decides CAC vs password and
 // runs init() once the user is authenticated.
 bootstrapAuth();

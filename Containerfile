@@ -52,6 +52,18 @@ COPY helper/   /opt/certheim/helper/
 COPY frontend/ /var/www/csr/
 COPY container/entrypoint.sh /usr/local/bin/entrypoint.sh
 
+# Cache-bust: stamp a content hash onto the JS/CSS refs in the baked index.html
+# so browsers fetch fresh assets after every image change (the source keeps bare
+# refs; the served copy is stamped once at build). Mirrors deploy.sh for VMs. The
+# nginx sidecar serves this stamped copy via the copy-frontend init container.
+RUN set -e; \
+    stamp="$(cat /var/www/csr/app.*.js /var/www/csr/app.css | sha256sum | cut -c1-10)"; \
+    sed -i -E "s#(href=\"app\.css)(\?v=[0-9a-f]+)?\"#\1?v=${stamp}\"#; \
+               s#(src=\"app\.[0-9][^\"?]*\.js)(\?v=[0-9a-f]+)?\"#\1?v=${stamp}\"#g" \
+        /var/www/csr/index.html; \
+    echo "certheim: stamped assets ?v=${stamp}"
+
+
 # Create a non-root user (uid/gid 10001) and own the app + writable data paths.
 # useradd ships on both bases (UBI + Debian slim); fall back to numeric-only if
 # absent. The chown runs BEFORE the VOLUME declaration so a fresh named volume
