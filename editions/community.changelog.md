@@ -1,5 +1,22 @@
 # Certheim Community edition — changelog
 
+## 6.2.1 — 2026-07-14
+
+_Released 2026-07-14. 2 changes since community-v6.2.0._
+
+### Fixes & improvements
+
+- **diagnostics:** bootstrap-flag check must say the flag is inert (`9cdbfcf`)
+  Both bootstrap paths only fire while the users table is EMPTY (the flag is self-disabling), so on
+  a populated install the old hint ('the next new identity to sign in becomes an admin') was simply
+  false - live validation on a populated install confirmed a new sign-in gets the uniform 401. Now:
+  flag set + empty table = ok (expected setup state); flag set + accounts exist = warn as INERT with
+  the real residual risk (a reset/lost data store would crown the first identity to appear).
+
+### Other changes
+
+- **guide:** add Database + Trust store guide pages (`7cf8d3c`)
+
 ## 6.2.0 — 2026-07-14
 
 _Released 2026-07-14. 1 change since community-v6.1.0._
