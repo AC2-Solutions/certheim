@@ -286,7 +286,7 @@ Default role     : ${role}` },
 path "${kv}/data/${base}/*"     { capabilities = ["create","update"] }
 path "${kv}/metadata/${base}/*" { capabilities = ["read","delete"] }` },
           { note: "No new credentials - delivery reuses the same OpenBao AppRole/env from the signing setup." },
-          { h: "2 - In Certheim: Administration -> Templates -> (edit a template) -> Delivery" },
+          { h: "2 - In Certheim: Administration -> Automation -> Delivery" },
           { code:
 `Delivery backend : OpenBao
 Key handling     : destination (cert only) | ship (cert + key) | vault (store key in OpenBao)
@@ -369,7 +369,7 @@ sudo systemctl restart certheim-api` },
 `CyberArk base URL : ${url}
 Conjur account    : ${acct}
 Service login     : ${login}` },
-          { h: "4 - In Certheim: Templates -> (edit a template) -> Delivery" },
+          { h: "4 - In Certheim: Administration -> Automation -> Delivery" },
           { code:
 `Delivery backend : CyberArk
 Destination      : ${variable}${ship ? `\nKey handling     : ship  (key written to ${variable}/key)` : ""}` },

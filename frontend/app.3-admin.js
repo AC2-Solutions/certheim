@@ -179,17 +179,17 @@ function applyCommunityGating(root) {
   root = root || document;
   // Signing / CA backends — both the global picker and the per-template one.
   // OpenBao + ACME stay free (upgrade=false), so they're never gated here.
-  _gateOptions(root, "#signing-cfg-backend option, .sig-backend option",
+  _gateOptions(root, "#signing-cfg-backend option, .sig-backend option, .a-backend option",
     v => (v && v !== "manual") ? "ca.signing." + v : null);
   // Automated delivery destinations.
-  _gateOptions(root, ".sig-deliver option",
+  _gateOptions(root, ".sig-deliver option, .a-deliver option",
     v => (v && v !== "none") ? "delivery." + v : null);
   // Global toggles: automated renewal + the ACME server.
   _gateControl("signing-cfg-autorenew", "lifecycle.auto_renew");
   _gateControl("signing-cfg-acmesrv", "ca.server.acme");
   // Per-template auto-renew checkboxes.
   if (capUpgrade("lifecycle.auto_renew")) {
-    root.querySelectorAll(".sig-renew").forEach(el => {
+    root.querySelectorAll(".sig-renew, .a-autorenew").forEach(el => {
       el.disabled = true;
       const l = el.closest("label");
       if (l) { l.classList.add("upgrade-locked"); l.title = "Automated renewal is a Commercial feature"; }
@@ -219,7 +219,7 @@ async function refreshAdminTemplates() {
         <td><code>${escapeHtml(t.name)}</code>${t.description ? `<br><span class="status">${escapeHtml(t.description)}</span>` : ""}</td>
         <td>${certTypePill(t.cert_types)}</td>
         <td>${scopeLabel(t)}</td>
-        <td class="tmpl-sign" data-id="${t.id}">${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button></td>
+        <td class="tmpl-sign" data-id="${t.id}">${signingBadge(t)} <button type="button" class="link-btn tmpl-goto-automation">Manage →</button></td>
         <td class="status">${t.created_by_dn === "system" ? "system" : escapeHtml(shortDN(t.created_by_dn || ""))}</td>
         <td><button class="link-btn admin-template-del" data-id="${t.id}" data-name="${escapeHtml(t.name)}" style="color:var(--danger)">Delete</button></td>
       </tr>`).join("");
@@ -231,10 +231,9 @@ async function refreshAdminTemplates() {
         else alert("Delete failed: " + ((r.body && r.body.error) || "unknown"));
       });
     });
-    tbody.querySelectorAll(".admin-template-sign").forEach(b => {
+    tbody.querySelectorAll(".tmpl-goto-automation").forEach(b => {
       b.addEventListener("click", () => {
-        const t = myTemplates.find(x => String(x.id) === b.dataset.id);
-        if (t) editTemplateSigning(b.closest(".tmpl-sign"), t);
+        document.querySelector('#admin-nav button[data-panel="automation"]')?.click();
       });
     });
   }
@@ -268,131 +267,169 @@ const SIGNING_BACKENDS = [
   ["ejbca", "EJBCA"], ["venafi", "Venafi"], ["aws_pca", "AWS Private CA"],
 ];
 
-function editTemplateSigning(td, t) {
+// ===== Admin: Automation (per-template lifecycle: issuance / delivery / renewals) =====
+// The per-template signing/delivery/renewal controls live here (own admin area
+// with sub-tabs), not buried in the template editor. All three save through the
+// same PUT /admin/templates/<id>/signing, merging so editing one phase never
+// nulls another.
+
+// Delivery destinations a template may ship to (besides "none"). Edition-specific
+// endpoint-push providers (F5 / NetScaler / A10 / IIS in Commercial+) extend this.
+const DELIVERY_BACKENDS = [
+  ["openbao", "OpenBao KV"], ["ssh", "SSH host"], ["pull", "Pull token"],
+  ["k8s", "Kubernetes Secret"], ["webhook", "Webhook receiver"], ["cyberark", "CyberArk"],
+];
+const DELIVERY_TARGET_HINT = {
+  openbao: "KV base (csr-certs)", ssh: "remote dir (/etc/ssl/delivered)",
+  k8s: "namespace/secret", webhook: "https://receiver/hook",
+  cyberark: "Conjur variable id", pull: "",
+};
+
+function _rowEl(html) { const tr = document.createElement("tr"); tr.innerHTML = html; return tr; }
+
+async function saveTemplateLifecycle(t, patch, statusEl) {
+  const body = {
+    signer_backend: t.signer_backend || "manual",
+    openbao_role: t.openbao_role || "",
+    max_ttl: (t.max_ttl === undefined || t.max_ttl === null || t.max_ttl === "") ? null : t.max_ttl,
+    auto_sign: !!t.auto_sign,
+    auto_renew: !!t.auto_renew,
+    renew_before_days: (t.renew_before_days === undefined || t.renew_before_days === null || t.renew_before_days === "") ? null : t.renew_before_days,
+    delivery_backend: t.delivery_backend || "none",
+    key_mode: t.key_mode || "destination",
+    delivery_target: t.delivery_target || "",
+    delivery_reload: t.delivery_reload || "",
+    key_storage: t.key_storage || "default",
+    ...patch,
+  };
+  if (statusEl) setStatus(statusEl, "Saving…");
+  const r = await jsonReq(`/admin/templates/${t.id}/signing`, { method: "PUT", body: JSON.stringify(body) });
+  if (!r.ok) { if (statusEl) setStatus(statusEl, (r.body && r.body.error) || "Save failed", "err"); return false; }
+  return true;
+}
+
+// --- Issuance row: signer backend / role / TTL / auto-sign / key storage ---
+function _autoIssuanceRow(t) {
   const cur = t.signer_backend || "manual";
-  const notManual = cur !== "manual";
-  const opts = SIGNING_BACKENDS.map(([v, lbl]) =>
-    `<option value="${v}"${cur === v ? " selected" : ""}>${lbl}</option>`).join("");
-  td.innerHTML = `
-    <select class="sig-backend form-input" style="width:auto;display:inline-block">
-      <option value="manual"${!notManual ? " selected" : ""}>Inherit global</option>
-      ${opts}
-    </select>
-    <span class="sig-auto-wrap"${notManual ? "" : " hidden"}>
-      <span class="sig-ob"${cur === "openbao" ? "" : " hidden"}>
-        <input class="sig-role form-input" style="width:130px;display:inline-block"
-               placeholder="role (optional)" value="${escapeHtml(t.openbao_role || "")}">
-        <input class="sig-ttl form-input" type="number" min="1" style="width:90px;display:inline-block"
-               placeholder="TTL s" value="${t.max_ttl || ""}">
-      </span>
-      <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-auto"${t.auto_sign ? " checked" : ""}> auto-sign</label>
-      <label class="status" style="margin-left:4px"><input type="checkbox" class="sig-renew"${t.auto_renew ? " checked" : ""}> auto-renew</label>
-      <input class="sig-renew-days form-input" type="number" min="1" max="365" style="width:70px;display:inline-block"
-             placeholder="days" title="Days before expiry to renew (blank = global default)" value="${t.renew_before_days || ""}">
-    </span>
-    <span class="sig-deliver-wrap" style="margin-left:8px">
-      <select class="sig-deliver form-input" style="width:auto;display:inline-block" title="Deliver the issued certificate to a destination">
-        <option value="none">No delivery</option>
-        <option value="openbao">Deliver → OpenBao KV</option>
-        <option value="ssh">Deliver → SSH host</option>
-        <option value="pull">Deliver → pull token</option>
-        <option value="k8s">Deliver → Kubernetes Secret</option>
-        <option value="webhook">Deliver → webhook receiver</option>
-        <option value="cyberark">Deliver → CyberArk</option>
-      </select>
-      <span class="sig-deliver-cfg" hidden>
-        <select class="sig-keymode form-input" style="width:auto;display:inline-block" title="Private-key handling">
-          <option value="destination">key: at destination</option>
-          <option value="ship">key: ship</option>
-          <option value="vault">key: vault</option>
-        </select>
-        <input class="sig-deliver-target form-input" style="width:150px;display:inline-block"
-               placeholder="KV path / remote dir" value="${escapeHtml(t.delivery_target || "")}">
-        <input class="sig-deliver-reload form-input sig-ssh-only" style="width:150px;display:inline-block"
-               placeholder="reload cmd (ssh)" title="Optional: run on the host after delivery (ssh only)"
-               value="${escapeHtml(t.delivery_reload || "")}">
-      </span>
-    </span>
-    <span class="sig-keystore-wrap" style="margin-left:8px"
-          title="Private-key storage for keys this template generates (overrides the global policy)">
-      <select class="sig-keystore form-input" style="width:auto;display:inline-block">
-        <option value="default">key store: default</option>
-        <option value="vault">key store: vault</option>
-        <option value="return_once">key store: return once</option>
-        <option value="host">key store: host</option>
-      </select>
-    </span>
-    <button class="btn sig-save" style="padding:2px 10px">Save</button>
-    <button class="link-btn sig-cancel">Cancel</button>
-    <span class="sig-status status"></span>`;
-  applyCommunityGating(td);   // Community: gray out paid backends/delivery/renew
-  const backSel = td.querySelector(".sig-backend");
-  const obWrap = td.querySelector(".sig-auto-wrap");
-  const obFields = td.querySelector(".sig-ob");
-  backSel.addEventListener("change", () => {
-    obWrap.hidden = backSel.value === "manual";        // auto-sign/renew for any automated backend
-    obFields.hidden = backSel.value !== "openbao";     // role/TTL are OpenBao-specific
+  const opts = SIGNING_BACKENDS.map(([v, l]) => `<option value="${v}"${cur === v ? " selected" : ""}>${l}</option>`).join("");
+  const stores = ["default", "vault", "return_once", "host"]
+    .map(v => `<option value="${v}"${(t.key_storage || "default") === v ? " selected" : ""}>key store: ${v}</option>`).join("");
+  const tr = _rowEl(`
+    <td><code>${escapeHtml(t.name)}</code></td>
+    <td><select class="a-backend form-input" style="width:auto">
+      <option value="manual"${cur === "manual" ? " selected" : ""}>Inherit global</option>${opts}</select></td>
+    <td><span class="a-ob"${cur === "openbao" ? "" : " hidden"}>
+      <input class="a-role form-input" style="width:110px;display:inline-block" placeholder="role" value="${escapeHtml(t.openbao_role || "")}">
+      <input class="a-ttl form-input" type="number" min="1" style="width:80px;display:inline-block" placeholder="TTL s" value="${t.max_ttl || ""}"></span></td>
+    <td style="text-align:center"><input type="checkbox" class="a-autosign"${t.auto_sign ? " checked" : ""}></td>
+    <td><select class="a-keystore form-input" style="width:auto">${stores}</select></td>
+    <td><button type="button" class="btn a-save" style="padding:2px 10px">Save</button> <span class="a-status status"></span></td>`);
+  const back = tr.querySelector(".a-backend");
+  back.addEventListener("change", () => { tr.querySelector(".a-ob").hidden = back.value !== "openbao"; });
+  tr.querySelector(".a-save").addEventListener("click", async () => {
+    const ttl = (tr.querySelector(".a-ttl").value || "").trim();
+    const ok = await saveTemplateLifecycle(t, {
+      signer_backend: back.value,
+      openbao_role: (tr.querySelector(".a-role").value || "").trim(),
+      max_ttl: ttl === "" ? null : parseInt(ttl, 10),
+      auto_sign: tr.querySelector(".a-autosign").checked,
+      key_storage: tr.querySelector(".a-keystore").value,
+    }, tr.querySelector(".a-status"));
+    if (ok) loadAutomation();
   });
-  // Delivery: where the issued cert (and per key_mode, the key) is shipped.
-  const delSel = td.querySelector(".sig-deliver");
-  const delCfg = td.querySelector(".sig-deliver-cfg");
-  delSel.value = t.delivery_backend || "none";
-  td.querySelector(".sig-keymode").value = t.key_mode || "destination";
-  td.querySelector(".sig-keystore").value = t.key_storage || "default";
-  const sshOnly = td.querySelector(".sig-ssh-only");
-  const delTarget = td.querySelector(".sig-deliver-target");
-  // Per-backend meaning of the "target" field; pull needs none.
-  const TARGET_HINT = {
-    openbao: "KV base (csr-certs)",
-    ssh: "remote dir (/etc/ssl/delivered)",
-    k8s: "namespace/secret",
-    webhook: "https://receiver/hook",
-    cyberark: "Conjur variable id",
-    pull: "",
+  return tr;
+}
+
+// --- Delivery row: destination / key handling / target / reload ---
+function _autoDeliveryRow(t) {
+  const cur = t.delivery_backend || "none";
+  const opts = DELIVERY_BACKENDS.map(([v, l]) => `<option value="${v}"${cur === v ? " selected" : ""}>Deliver → ${l}</option>`).join("");
+  const modes = [["destination", "key: at destination"], ["ship", "key: ship"], ["vault", "key: vault"]]
+    .map(([v, l]) => `<option value="${v}"${(t.key_mode || "destination") === v ? " selected" : ""}>${l}</option>`).join("");
+  const tr = _rowEl(`
+    <td><code>${escapeHtml(t.name)}</code></td>
+    <td><select class="a-deliver form-input" style="width:auto">
+      <option value="none"${cur === "none" ? " selected" : ""}>No delivery</option>${opts}</select></td>
+    <td><select class="a-keymode form-input" style="width:auto">${modes}</select></td>
+    <td><input class="a-target form-input" style="width:180px;display:inline-block" value="${escapeHtml(t.delivery_target || "")}"></td>
+    <td><input class="a-reload form-input" style="width:160px;display:inline-block" placeholder="reload cmd (ssh)" value="${escapeHtml(t.delivery_reload || "")}"></td>
+    <td><button type="button" class="btn a-save" style="padding:2px 10px">Save</button> <span class="a-status status"></span></td>`);
+  const sel = tr.querySelector(".a-deliver");
+  const target = tr.querySelector(".a-target");
+  const reload = tr.querySelector(".a-reload");
+  const toggle = () => {
+    const v = sel.value;
+    tr.querySelectorAll(".a-keymode, .a-target, .a-reload").forEach(el => { el.disabled = (v === "none"); });
+    target.style.visibility = (v === "none" || v === "pull") ? "hidden" : "visible";
+    target.placeholder = DELIVERY_TARGET_HINT[v] || "target";
+    reload.style.visibility = (v === "ssh") ? "visible" : "hidden";
   };
-  const _delToggle = () => {
-    delCfg.hidden = delSel.value === "none";
-    if (sshOnly) sshOnly.hidden = delSel.value !== "ssh";   // reload cmd is ssh-only
-    if (delTarget) {
-      delTarget.hidden = delSel.value === "pull";           // pull has no destination target
-      delTarget.placeholder = TARGET_HINT[delSel.value] || "target";
-    }
-  };
-  _delToggle();
-  delSel.addEventListener("change", _delToggle);
-  td.querySelector(".sig-cancel").addEventListener("click", () => {
-    td.innerHTML = `${signingBadge(t)} <button class="link-btn admin-template-sign" data-id="${t.id}">Edit</button>`;
-    td.querySelector(".admin-template-sign").addEventListener("click", () => editTemplateSigning(td, t));
+  toggle();
+  sel.addEventListener("change", toggle);
+  tr.querySelector(".a-save").addEventListener("click", async () => {
+    const ok = await saveTemplateLifecycle(t, {
+      delivery_backend: sel.value,
+      key_mode: tr.querySelector(".a-keymode").value,
+      delivery_target: (target.value || "").trim(),
+      delivery_reload: (reload.value || "").trim(),
+    }, tr.querySelector(".a-status"));
+    if (ok) loadAutomation();
   });
-  td.querySelector(".sig-save").addEventListener("click", async () => {
-    const ttlEl = td.querySelector(".sig-ttl");
-    const roleEl = td.querySelector(".sig-role");
-    const ttlRaw = ttlEl ? ttlEl.value.trim() : "";
-    const renewRaw = td.querySelector(".sig-renew-days").value.trim();
-    const body = {
-      signer_backend: backSel.value,
-      openbao_role: roleEl ? roleEl.value.trim() : "",
-      max_ttl: ttlRaw === "" ? null : parseInt(ttlRaw, 10),
-      auto_sign: td.querySelector(".sig-auto").checked,
-      auto_renew: td.querySelector(".sig-renew").checked,
-      renew_before_days: renewRaw === "" ? null : parseInt(renewRaw, 10),
-      delivery_backend: delSel.value,
-      key_mode: td.querySelector(".sig-keymode").value,
-      delivery_target: td.querySelector(".sig-deliver-target").value.trim(),
-      delivery_reload: td.querySelector(".sig-deliver-reload").value.trim(),
-      key_storage: td.querySelector(".sig-keystore").value,
-    };
-    setStatus(td.querySelector(".sig-status"), "Saving…");
-    const r = await jsonReq(`/admin/templates/${t.id}/signing`, {
-      method: "PUT", body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      setStatus(td.querySelector(".sig-status"), (r.body && r.body.error) || "Save failed", "err");
+  return tr;
+}
+
+// --- Renewal row: auto-renew / lead days ---
+function _autoRenewalRow(t) {
+  const tr = _rowEl(`
+    <td><code>${escapeHtml(t.name)}</code></td>
+    <td style="text-align:center"><input type="checkbox" class="a-autorenew"${t.auto_renew ? " checked" : ""}></td>
+    <td><input class="a-renewdays form-input" type="number" min="1" max="365" style="width:110px;display:inline-block"
+        placeholder="global default" value="${t.renew_before_days || ""}"></td>
+    <td><button type="button" class="btn a-save" style="padding:2px 10px">Save</button> <span class="a-status status"></span></td>`);
+  tr.querySelector(".a-save").addEventListener("click", async () => {
+    const d = (tr.querySelector(".a-renewdays").value || "").trim();
+    const ok = await saveTemplateLifecycle(t, {
+      auto_renew: tr.querySelector(".a-autorenew").checked,
+      renew_before_days: d === "" ? null : parseInt(d, 10),
+    }, tr.querySelector(".a-status"));
+    if (ok) loadAutomation();
+  });
+  return tr;
+}
+
+const _AUTOMATION_TABS = { issuance: _autoIssuanceRow, delivery: _autoDeliveryRow, renewals: _autoRenewalRow };
+
+function renderAutomation() {
+  Object.keys(_AUTOMATION_TABS).forEach(name => {
+    const tb = document.getElementById(`automation-${name}-tbody`);
+    if (!tb) return;
+    tb.innerHTML = "";
+    if (!myTemplates.length) {
+      const cols = name === "renewals" ? 4 : 6;
+      tb.innerHTML = `<tr><td colspan="${cols}" class="status">No templates yet — create one under Templates.</td></tr>`;
       return;
     }
-    refreshAdminTemplates();
+    myTemplates.forEach(t => tb.appendChild(_AUTOMATION_TABS[name](t)));
   });
+  applyCommunityGating(document.querySelector('[data-panel="automation"]') || document);
 }
+
+async function loadAutomation() {
+  await loadTemplates();   // refreshes myTemplates
+  renderAutomation();
+}
+
+// Sub-tab switch (Issuance / Delivery / Renewals) — mirrors the shared pattern.
+document.querySelectorAll("#automation-subtabs .subtab").forEach(b => {
+  b.addEventListener("click", () => {
+    const name = b.dataset.subtab;
+    document.querySelectorAll("#automation-subtabs .subtab").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll('[data-panel="automation"] [data-subtabpanel]')
+      .forEach(p => { p.hidden = (p.dataset.subtabpanel !== name); });
+  });
+});
+document.querySelector('#admin-nav button[data-panel="automation"]')?.addEventListener("click", loadAutomation);
+document.getElementById("automation-refresh")?.addEventListener("click", loadAutomation);
 
 document.getElementById("admin-templates-refresh")?.addEventListener("click", refreshAdminTemplates);
 
