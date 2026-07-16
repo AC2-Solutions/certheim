@@ -313,8 +313,8 @@ Destination path : ${base}/<host>      (leave blank to use the base path)` },
           { p: "Certheim stores keys under a dedicated path; grant the AppRole full lifecycle there:" },
           { code:
 `# append to ${pol}, then re-run: bao policy write ${pol} <file>
-path "${kv}/data/certinel-keys/*"     { capabilities = ["create","read","update","delete"] }
-path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
+path "${kv}/data/certheim/_shared/keys/*"     { capabilities = ["create","read","update","delete"] }
+path "${kv}/metadata/certheim/_shared/keys/*" { capabilities = ["delete"] }` },
           { h: "2 - In Certheim: Administration -> Signing / CA -> Key storage" },
           { code: `Key storage policy : ${mode}` },
           { p: mode === "return_once"
