@@ -457,6 +457,7 @@
       <div class="nav-group">
         <span class="nav-group-label">Issuance</span>
         <button type="button" data-panel="templates">Templates</button>
+        <button type="button" data-panel="automation">Automation</button>
         <button type="button" data-panel="signingca">Signing / CA</button>
         <button type="button" data-panel="truststore">Trust store</button>
         <button type="button" data-panel="csrsubject">CSR Subject</button>
@@ -737,6 +738,47 @@
       </div>
     </section>
 
+    <section class="card admin-panel" data-panel="automation" hidden>
+      <div class="card-header">
+        <h2>Automation</h2>
+        <button id="automation-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Per-template certificate lifecycle: how each template is <strong>signed</strong>,
+        where its issued certificate is <strong>delivered</strong>, and when it is <strong>renewed</strong>.
+        Template definitions (name, subject, SANs) live under <em>Templates</em>; the deployment-wide signing
+        backend and the global renewal default live under <em>Signing / CA</em>.</p>
+      <div class="subtabs" id="automation-subtabs">
+        <button type="button" class="subtab active" data-subtab="issuance">Issuance</button>
+        <button type="button" class="subtab" data-subtab="delivery">Delivery</button>
+        <button type="button" class="subtab" data-subtab="renewals">Renewals</button>
+      </div>
+      <div data-subtabpanel="issuance">
+        <p class="hint">Which signing backend produces each template's certificate, and whether approved
+          requests are signed automatically. Leave a template on <em>Inherit global</em> to use the default
+          backend configured under Signing / CA.</p>
+        <table>
+          <thead><tr><th>Template</th><th>Signing backend</th><th>OpenBao role / TTL</th><th>Auto-sign</th><th>Key storage</th><th></th></tr></thead>
+          <tbody id="automation-issuance-tbody"></tbody>
+        </table>
+      </div>
+      <div data-subtabpanel="delivery" hidden>
+        <p class="hint">Where each template's issued certificate (and, per key-handling, its private key) is
+          shipped after issuance. Destination credentials (SSH keys, tokens) live in your secret manager —
+          see the Connection setup wizard / guide.</p>
+        <table>
+          <thead><tr><th>Template</th><th>Destination</th><th>Key handling</th><th>Target</th><th>Reload (SSH)</th><th></th></tr></thead>
+          <tbody id="automation-delivery-tbody"></tbody>
+        </table>
+      </div>
+      <div data-subtabpanel="renewals" hidden>
+        <p class="hint">Automated renewal before expiry. The global on/off switch and default lead time live
+          under <em>Signing / CA</em>; override the lead time per template here (blank = use the global default).</p>
+        <table>
+          <thead><tr><th>Template</th><th>Auto-renew</th><th>Days before expiry</th><th></th></tr></thead>
+          <tbody id="automation-renewals-tbody"></tbody>
+        </table>
+      </div>
+    </section>
     <section class="card admin-panel" data-panel="webhooks">
       <div class="card-header">
         <h2>Integrations <span class="hint">(chat & webhooks)</span></h2>
