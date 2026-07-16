@@ -1,5 +1,17 @@
 # Certheim Community edition — changelog
 
+## 6.3.1 — 2026-07-16
+
+_Released 2026-07-16. 1 change since community-v6.3.0._
+
+### Fixes & improvements
+
+- **guide:** correct OpenBao/CyberArk env-var names and document container installs (`e7b64d2`)
+  CSR_OPENBAO_CA_FILE -> CERTHEIM_OPENBAO_CA_FILE and CSR_CYBERARK_CA_CERT ->
+  CERTHEIM_CYBERARK_CA_CERT (stale pre-rename prefixes the app never reads), and generalize the
+  signing setup's step 2 to cover container/K8s installs, not just /etc/certheim/certheim.env +
+  systemctl.
+
 ## 6.3.0 — 2026-07-14
 
 _Released 2026-07-14. 1 change since community-v6.2.1._
