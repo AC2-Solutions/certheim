@@ -1,5 +1,18 @@
 # Certheim Community edition — changelog
 
+## 6.3.2 — 2026-07-16
+
+_Released 2026-07-16. 1 change since community-v6.3.1._
+
+### Fixes & improvements
+
+- **guide:** correct key-storage KV path to match app (certheim/_shared/keys) (`ea229ec`)
+  The private-key-storage wizard granted the AppRole on '<kv>/data/certinel-keys/*'
+  - a stale brand name AND the wrong path. keystore.py writes keys under
+    <kv>/certheim/_shared/keys/<job_id>, so following the guide gave the AppRole no access to
+    where keys actually land (permission-denied on storage).
+  Follow-up to !100 (that commit was stranded when the branch merged).
+
 ## 6.3.1 — 2026-07-16
 
 _Released 2026-07-16. 1 change since community-v6.3.0._
