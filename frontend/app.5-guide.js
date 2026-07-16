@@ -244,16 +244,16 @@ bao write auth/approle/role/${ar} \\
     secret_id_ttl=0 secret_id_num_uses=0
 bao read  -field=role_id      auth/approle/role/${ar}/role-id
 bao write -f -field=secret_id auth/approle/role/${ar}/secret-id` },
-          { h: "2 - In Certheim: /etc/certheim/certheim.env" },
-          { p: "The AppRole credentials live ONLY in the env file (never in the app database). Paste the role_id/secret_id from step 1, then restart:" },
+          { h: "2 - Set the AppRole credentials in Certheim's environment" },
+          { p: "The AppRole credentials live ONLY in the environment (never in the app database). Set these variables wherever your install reads its environment - paste the role_id/secret_id from step 1:" },
           { code:
 `CERTHEIM_CAP_OPENBAO=1
 CERTHEIM_OPENBAO_ADDR=${addr}
 CERTHEIM_OPENBAO_ROLE_ID=<role_id from step 1>
-CERTHEIM_OPENBAO_SECRET_ID=<secret_id from step 1>${ca ? `\nCSR_OPENBAO_CA_FILE=${ca}` : ""}
-
-# then:
-sudo systemctl restart certheim-api` },
+CERTHEIM_OPENBAO_SECRET_ID=<secret_id from step 1>${ca ? `\nCERTHEIM_OPENBAO_CA_FILE=${ca}` : ""}` },
+          { p: "VM / systemd install: put them in /etc/certheim/certheim.env, then restart:" },
+          { code: `sudo systemctl restart certheim-api` },
+          { note: "Container / Kubernetes: there is no certheim.env - set the same variables in the container environment instead (Docker Compose environment:/env_file, or a Kubernetes Secret referenced with env.valueFrom.secretKeyRef), then roll the pod. Keep ROLE_ID/SECRET_ID in your platform's secret store, never baked into the image or committed to git." },
           { h: "3 - In Certheim: Administration -> Signing / CA" },
           { p: "Set the non-secret connection fields and test:" },
           { code:
@@ -360,7 +360,7 @@ path "${kv}/metadata/certinel-keys/*" { capabilities = ["delete"] }` },
           { code: `conjur host rotate-api-key -i ${hostId}` },
           { h: "2 - In Certheim: /etc/certheim/certheim.env (secrets only here)" },
           { code:
-`CERTHEIM_CYBERARK_API_KEY=<api key from step 1>${ca ? `\nCSR_CYBERARK_CA_CERT=${ca}` : ""}
+`CERTHEIM_CYBERARK_API_KEY=<api key from step 1>${ca ? `\nCERTHEIM_CYBERARK_CA_CERT=${ca}` : ""}
 
 # then:
 sudo systemctl restart certheim-api` },
