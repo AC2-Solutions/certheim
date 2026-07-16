@@ -1,5 +1,16 @@
 # Certheim Community edition — changelog
 
+## 6.4.0 — 2026-07-16
+
+_Released 2026-07-16. 1 change since community-v6.3.2._
+
+### Features
+
+- **ui:** dedicated Automation admin area (Issuance/Delivery/Renewals subtabs) (`377a4cf`)
+  Move per-template lifecycle config (signing, delivery, renewal) out of the Templates editor into a
+  new Automation panel with three sub-tabs. Templates row now shows a read-only signing summary + a
+  'Manage in Automation' link. Guides updated to point at Automation -> Delivery.
+
 ## 6.3.2 — 2026-07-16
 
 _Released 2026-07-16. 1 change since community-v6.3.1._
