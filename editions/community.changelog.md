@@ -1,5 +1,19 @@
 # Certheim Community edition — changelog
 
+## 6.5.0 — 2026-07-19
+
+_Released 2026-07-19. 1 change since community-v6.4.2._
+
+### Features
+
+- **ui:** header search bar; move license to Overview; widen Delivery pane (`aa155f8`)
+  - Replace the top-bar edition/license watermark with a search box: live-filters issued
+    certificates, Enter also searches the fleet inventory.
+  - Surface edition + Licensed-to + version + days-remaining as admin Overview tiles (customers
+    don't need the license shown app-wide). Version and a new Days-remaining tile are separate.
+  - Widen the admin panel body (1100->1400px) so the Delivery destinations table fits without a
+    horizontal scrollbar.
+
 ## 6.4.2 — 2026-07-19
 
 _Released 2026-07-19. 1 change since community-v6.4.1._
