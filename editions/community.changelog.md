@@ -1,5 +1,21 @@
 # Certheim Community edition — changelog
 
+## 6.4.2 — 2026-07-19
+
+_Released 2026-07-19. 1 change since community-v6.4.1._
+
+### Fixes & improvements
+
+- **ui:** load Automation data on entry + fix cramped Delivery tables (`cd9d87c`)
+  Two Automation-page bugs:
+  - refreshAdminView (runs when the admin view is entered) never called loadAutomation, so
+    Issuance/Delivery/Renewals were blank on page refresh until the user clicked Refresh. Add
+    loadAutomation() to the initial load.
+  - The Delivery destinations + agents tables were not wrapped in .table-wrap (the overflow-x:auto
+    scroll wrapper every other table uses), so the wide 8-column destination row overflowed and
+    looked cramped. Wrap both and give them a min-width so columns render at a readable size and
+    scroll instead.
+
 ## 6.4.1 — 2026-07-19
 
 _Released 2026-07-19. 3 changes since community-v6.4.0._
