@@ -34,17 +34,19 @@ def main():
     ap.add_argument("--edition", default="commercial",
                     choices=["community", "commercial", "unlimited", "government"],
                     help="edition tier; the app expands it to capabilities. "
-                         "commercial/unlimited share the same capabilities but "
-                         "differ in the domain cap (see --max-domains); government "
-                         "adds the public-sector pack (default commercial)")
+                         "commercial/unlimited share the same capabilities and "
+                         "are both uncapped by default; government adds the "
+                         "public-sector pack (default commercial)")
     ap.add_argument("--entitlements", default="",
                     help="optional EXTRA capability keys (comma-separated) on top "
                          "of the edition's bundle")
     ap.add_argument("--max-domains", type=int, default=None,
                     help="cap on distinct registrable (eTLD+1) domains the "
-                         "deployment may sign for; 0 = unlimited. Default by "
-                         "edition: commercial=1, everything else=0. Use this to "
-                         "sell a commercial customer extra domains (e.g. 3)")
+                         "deployment may sign for; 0 = unlimited, which is the "
+                         "default for EVERY edition. Commercial is a flat plan "
+                         "with unlimited domains, so leave this unset for normal "
+                         "licenses; set a positive N only to cap a specific "
+                         "deployment on request")
     ap.add_argument("--days", type=int, default=365, help="validity in days (default 365)")
     ap.add_argument("--bind-host", default="",
                     help="optional: bind the license to a deployment hostname. A "
@@ -58,7 +60,10 @@ def main():
     issued = int(a.issued if a.issued is not None else time.time())
     max_domains = a.max_domains
     if max_domains is None:
-        max_domains = 1 if a.edition == "commercial" else 0
+        # Every edition is uncapped by default: this matches the app's
+        # licensing._default_max_domains and the Commercial flat-plan promise of
+        # unlimited domains. A positive cap is opt-in per deployment.
+        max_domains = 0
     payload = {
         "customer": a.customer,
         "edition": a.edition,
