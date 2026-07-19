@@ -71,6 +71,17 @@
       <button id="login-cac-btn" class="full" type="button" disabled>Continue with CAC</button>
     </div>
 
+    <!-- Enterprise SSO (OIDC) - shown only when configured + entitled -->
+    <div class="auth-block sso" id="login-sso" hidden>
+      <div class="sso-or" id="login-sso-or" hidden><span>or</span></div>
+      <button id="login-sso-btn" class="full secondary" type="button" disabled>Sign in with SSO</button>
+    </div>
+
+    <!-- SAML SSO - shown only when configured + the library is installed -->
+    <div class="auth-block saml" id="login-saml" hidden>
+      <button id="login-saml-btn" class="full secondary" type="button" disabled>Sign in with SAML</button>
+    </div>
+
     <!-- Registration (local mode, self-registration open) -->
     <div class="auth-block local" id="register-block" hidden>
       <label for="reg-first">First name</label>
@@ -369,7 +380,7 @@
     </div>
     <table>
       <thead>
-        <tr><th>Host</th><th>CN</th><th>Types</th><th>Issuer</th><th>Expires</th><th>Seen</th><th></th></tr>
+        <tr><th>Host</th><th>CN</th><th>Types</th><th>Issuer</th><th>Expires</th><th>Seen</th><th>Assigned</th><th></th></tr>
       </thead>
       <tbody id="fleet-tbody">
         <tr><td colspan="7" class="status">Loading&hellip;</td></tr>
@@ -449,18 +460,29 @@
         <button type="button" data-panel="overview" class="active">Overview</button>
       </div>
       <div class="nav-group">
+        <span class="nav-group-label">Visibility</span>
+        <button type="button" data-panel="inventory">Inventory</button>
+      </div>
+      <div class="nav-group">
         <span class="nav-group-label">Access</span>
         <button type="button" data-panel="users">Users</button>
         <button type="button" data-panel="groups">Groups</button>
+        <button type="button" data-panel="roles">Roles &amp; access</button>
+        <button type="button" data-panel="tenants">Tenants</button>
         <button type="button" data-panel="authentication">Authentication</button>
+        <button type="button" data-panel="sso">Single sign-on</button>
+        <button type="button" data-panel="scim">Provisioning (SCIM)</button>
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Issuance</span>
         <button type="button" data-panel="templates">Templates</button>
         <button type="button" data-panel="automation">Automation</button>
         <button type="button" data-panel="signingca">Signing / CA</button>
+        <button type="button" data-panel="sealedkeystore">Encrypted keystore</button>
+        <button type="button" data-panel="enrollsign">Enrollment &amp; signing</button>
         <button type="button" data-panel="truststore">Trust store</button>
         <button type="button" data-panel="csrsubject">CSR Subject</button>
+        <button type="button" data-panel="policy">Issuance policy</button>
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Notifications</span>
@@ -474,6 +496,11 @@
         <button type="button" data-panel="orphans">Orphaned files</button>
         <button type="button" data-panel="audit">Audit log</button>
         <button type="button" data-panel="feedback">Feedback</button>
+        <button type="button" data-panel="observability">Observability</button>
+        <button type="button" data-panel="apitokens">Automation API</button>
+        <button type="button" data-panel="cbom">Crypto posture</button>
+        <button type="button" data-panel="sshca">SSH CA</button>
+        <button type="button" data-panel="dnssec">DNSSEC (NetScaler)</button>
         <button type="button" data-panel="license">License</button>
       </div>
     </nav>
@@ -762,13 +789,41 @@
         </table>
       </div>
       <div data-subtabpanel="delivery" hidden>
-        <p class="hint">Where each template's issued certificate (and, per key-handling, its private key) is
-          shipped after issuance. Destination credentials (SSH keys, tokens) live in your secret manager —
-          see the Connection setup wizard / guide.</p>
-        <table>
-          <thead><tr><th>Template</th><th>Destination</th><th>Key handling</th><th>Target</th><th>Reload (SSH)</th><th></th></tr></thead>
-          <tbody id="automation-delivery-tbody"></tbody>
+        <p class="hint"><strong>Destinations</strong> are named delivery targets. Issued certificates fan out to
+          every destination attached to their template, and each (certificate, destination) pair is tracked
+          through <em>desired → delivered → verified</em> — with periodic drift checks that re-deliver
+          automatically when an endpoint stops serving what was delivered. Destination credentials
+          (SSH keys, tokens) live in your secret manager — see the Connection setup wizard / guide.</p>
+        <div class="table-wrap">
+        <table style="min-width:980px">
+          <thead><tr><th>Destination</th><th>Transport</th><th>Target</th><th>Key handling</th><th>Verify TLS</th><th>Templates</th><th>Status</th><th></th></tr></thead>
+          <tbody id="automation-destinations-tbody"></tbody>
         </table>
+        </div>
+        <h3 style="font-size:13px;margin:14px 0 6px">New destination</h3>
+        <div class="bulk-row" id="automation-dest-new" style="flex-wrap:wrap;gap:8px;align-items:end"></div>
+        <span id="automation-dest-status" class="status"></span>
+
+        <h3 style="font-size:13px;margin:18px 0 6px">Delivery agents</h3>
+        <p class="hint">Outbound-only endpoints run the <strong>Certheim agent</strong>: it enrolls once with a
+          one-time token, then pulls, installs, verifies, and drift-checks its certificates - nothing is pushed
+          to the host and no inbound access is needed. Point an <em>agent</em>-transport destination's
+          "agent name" at an enrolled agent. Download: <a href="/csr/api/admin/agent-download">certheim-agent</a>
+          (or install the <code>certheim-agent</code> RPM).</p>
+        <div class="table-wrap">
+        <table style="min-width:720px">
+          <thead><tr><th>Agent</th><th>Seen</th><th>Version</th><th>Pairs</th><th>Enrolled</th><th></th></tr></thead>
+          <tbody id="automation-agents-tbody"></tbody>
+        </table>
+        </div>
+        <div class="bulk-row" style="flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px">
+          <label class="textarea-label" style="margin:0">Agent name
+            <input id="agent-token-name" class="form-input" style="width:150px" placeholder="edge1"></label>
+          <label class="textarea-label" style="margin:0">Pin to hostname <span class="hint">(optional)</span>
+            <input id="agent-token-pin" class="form-input" style="width:190px" placeholder="edge1.example.com"></label>
+          <button id="agent-token-mint" class="btn" type="button">Mint enrollment token</button>
+        </div>
+        <div id="agent-token-minted" class="status" style="margin-top:6px"></div>
       </div>
       <div data-subtabpanel="renewals" hidden>
         <p class="hint">Automated renewal before expiry. The global on/off switch and default lead time live
@@ -1141,11 +1196,257 @@
         <input type="text" id="signing-cfg-acmesrv-url" class="form-input"
                style="max-width:420px" placeholder="https://host/csr/acme">
         <p id="signing-acmesrv-dir" class="status" style="margin-top:4px"></p>
+        <label class="checkbox-row" style="margin-top:8px">
+          <input type="checkbox" id="signing-cfg-acmesrv-eab"> Require External Account Binding (EAB)
+        </label>
+        <p class="hint" style="margin:2px 0 6px">
+          With EAB on, every ACME client must register with an admin-minted credential
+          that pins its account to a <strong>template</strong> (whose signing backend issues its
+          certs) and an <strong>allowed-domain list</strong> enforced on every order. This turns the
+          ACME server into a policy-bound delivery plane - endpoints enroll and renew
+          themselves; nothing has to be pushed to them.</p>
+        <div id="signing-eab-wrap" style="margin-top:6px">
+          <table>
+            <thead><tr><th>Credential</th><th>Template</th><th>Allowed domains</th><th>Bound</th><th></th></tr></thead>
+            <tbody id="signing-eab-tbody"></tbody>
+          </table>
+          <div class="bulk-row" style="flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px">
+            <label class="textarea-label" style="margin:0">Name
+              <input id="signing-eab-name" class="form-input" style="width:140px" placeholder="edge-nginx"></label>
+            <label class="textarea-label" style="margin:0">Template
+              <select id="signing-eab-template" class="form-input" style="min-width:150px"></select></label>
+            <label class="textarea-label" style="margin:0">Allowed domains
+              <input id="signing-eab-domains" class="form-input" style="width:220px"
+                     placeholder="*.example.com, host.example.com"></label>
+            <button id="signing-eab-mint" class="btn" type="button">Mint EAB credential</button>
+          </div>
+          <div id="signing-eab-minted" class="status" style="margin-top:6px"></div>
+        </div>
       </div>
 
       <div class="bulk-row" style="margin-top:10px">
         <button id="signing-cfg-save-btn" type="button">Save</button>
         <span id="signing-cfg-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="sealedkeystore" hidden>
+      <div class="card-header">
+        <h2>Encrypted keystore</h2>
+        <button id="sk-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">A built-in, encrypted place to keep signing keys and secrets
+         when you don't run an external credential manager (OpenBao / CyberArk).
+         Secrets are stored with <strong>envelope encryption</strong> &mdash; only
+         ciphertext is ever written to the database. The keystore boots
+         <em>sealed</em>; an admin unseals it after each restart, so a stolen disk
+         or database backup reveals nothing. Choose <em>Signing / CA →
+         key&nbsp;storage → Encrypted keystore</em> to route generated keys here.</p>
+
+      <!-- status -->
+      <div id="sk-status-banner" class="hint" style="margin:10px 0;padding:10px;border-radius:6px;background:var(--surface-2)"></div>
+
+      <!-- initialize (only when uninitialized) -->
+      <div id="sk-init-card" hidden>
+        <h3>Initialize the keystore</h3>
+        <p class="hint">Pick how the master key is protected. This is a one-time
+           choice. You can lose the master key forever if you don't record the
+           material shown after init &mdash; store it somewhere safe and offline.</p>
+        <div class="bulk-row">
+          <label class="textarea-label" style="margin:0">Protection model
+            <select id="sk-init-mode" class="form-input" style="max-width:340px">
+              <option value="passphrase">Passphrase + recovery code (simple)</option>
+              <option value="shamir">Split key — N shares, K to unseal (Shamir)</option>
+            </select>
+          </label>
+        </div>
+        <div class="bulk-row" style="margin-top:8px">
+          <label class="textarea-label" style="margin:0">Encryption cipher
+            <span class="hint">(security scale — highest first)</span>
+            <select id="sk-init-cipher" class="form-input" style="max-width:460px"></select>
+          </label>
+        </div>
+        <p id="sk-init-cipher-note" class="hint" style="margin:4px 0 0"></p>
+        <div id="sk-init-passphrase" class="bulk-row" style="margin-top:8px">
+          <input id="sk-init-pass1" type="password" class="form-input" style="max-width:260px" placeholder="Passphrase (min 8 chars)">
+          <input id="sk-init-pass2" type="password" class="form-input" style="max-width:260px" placeholder="Confirm passphrase">
+        </div>
+        <div id="sk-init-shamir" class="bulk-row" style="margin-top:8px" hidden>
+          <label class="hint" style="margin:0">Total shares (N)
+            <input id="sk-init-n" type="number" min="2" max="16" value="5" class="form-input" style="max-width:90px"></label>
+          <label class="hint" style="margin:0">Needed to unseal (K)
+            <input id="sk-init-k" type="number" min="2" max="16" value="3" class="form-input" style="max-width:90px"></label>
+        </div>
+        <div class="bulk-row" style="margin-top:8px">
+          <button id="sk-init-btn" type="button">Initialize keystore</button>
+          <span id="sk-init-status" class="status"></span>
+        </div>
+      </div>
+
+      <!-- one-time secret material -->
+      <div id="sk-material-card" hidden style="margin-top:12px;padding:12px;border:1px solid var(--danger);border-radius:6px">
+        <h3 style="margin-top:0;color:var(--danger)">Record this now — shown once</h3>
+        <p class="hint">This is the only time this material is displayed. It is not
+           stored anywhere on the server. Copy it to a safe, offline location. Lose
+           it and stored secrets cannot be recovered.</p>
+        <pre id="sk-material-out" class="code-block" style="white-space:pre-wrap"></pre>
+        <div class="bulk-row">
+          <button id="sk-material-copy" class="secondary" type="button">Copy</button>
+          <button id="sk-material-done" type="button">I've saved it</button>
+        </div>
+      </div>
+
+      <!-- unseal (when sealed) -->
+      <div id="sk-unseal-card" hidden style="margin-top:12px">
+        <h3>Unseal</h3>
+        <div id="sk-unseal-passphrase" class="bulk-row">
+          <input id="sk-unseal-pass" type="password" class="form-input" style="max-width:300px" placeholder="Passphrase (or recovery code below)">
+        </div>
+        <div id="sk-unseal-recovery" class="bulk-row" style="margin-top:6px">
+          <input id="sk-unseal-rec" type="text" class="form-input" style="max-width:420px" placeholder="…or recovery code">
+        </div>
+        <div id="sk-unseal-shamir" class="bulk-row" style="margin-top:6px" hidden>
+          <label class="textarea-label" style="margin:0;width:100%">Unseal shares (one per line, K required)
+            <textarea id="sk-unseal-shares" class="form-input" rows="4" placeholder="paste K shares, one per line"></textarea></label>
+        </div>
+        <div class="bulk-row" style="margin-top:8px">
+          <button id="sk-unseal-btn" type="button">Unseal</button>
+          <span id="sk-unseal-status" class="status"></span>
+        </div>
+      </div>
+
+      <!-- unsealed: secrets + lifecycle -->
+      <div id="sk-unsealed-card" hidden style="margin-top:12px">
+        <div class="bulk-row">
+          <button id="sk-seal-btn" class="secondary" type="button">Seal (lock) keystore</button>
+          <span id="sk-seal-status" class="status"></span>
+        </div>
+
+        <h3 style="margin-top:16px">Stored secrets</h3>
+        <table class="data-table" style="margin-top:6px">
+          <thead><tr><th>Name</th><th>Updated</th><th></th></tr></thead>
+          <tbody id="sk-secret-rows"><tr><td colspan="3" class="hint">None yet.</td></tr></tbody>
+        </table>
+        <div class="bulk-row" style="margin-top:10px">
+          <input id="sk-secret-name" class="form-input" style="max-width:220px" placeholder="Secret name">
+          <input id="sk-secret-value" type="password" class="form-input" style="max-width:320px" placeholder="Secret value">
+          <button id="sk-secret-add-btn" type="button">Store secret</button>
+          <span id="sk-secret-status" class="status"></span>
+        </div>
+
+        <h3 style="margin-top:18px">Offline backup (escrow)</h3>
+        <p class="hint">Export every stored secret re-encrypted under a fresh
+           passphrase &mdash; a self-contained bundle that restores on any Certheim
+           without the original unseal material. Keep it offline; it is your
+           insurance against data loss.</p>
+        <div class="bulk-row">
+          <input id="sk-backup-pass" type="password" class="form-input" style="max-width:260px" placeholder="Backup passphrase (min 8)">
+          <button id="sk-backup-btn" class="secondary" type="button">Export backup</button>
+          <button id="sk-restore-btn" class="secondary" type="button">Restore…</button>
+          <span id="sk-backup-status" class="status"></span>
+        </div>
+        <textarea id="sk-backup-out" class="form-input" rows="5" style="margin-top:8px;display:none;font-family:monospace"
+                  placeholder="paste a backup bundle here to restore"></textarea>
+      </div>
+      <p id="cap-note-sealedkeystore" class="hint" style="color:var(--danger)" hidden></p>
+    </section>
+
+    <section class="card admin-panel" data-panel="enrollsign" hidden>
+      <div class="card-header">
+        <h2>Enrollment &amp; signing</h2>
+        <button id="esn-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Extra certificate-type services that reuse your CA:
+         <strong>EST</strong> auto-enrolls devices (RFC 7030), the
+         <strong>code-signing</strong> service produces CMS signatures over
+         artifacts, and the <strong>timestamping</strong> authority (RFC 3161)
+         makes those signatures verifiable after the signing cert expires.</p>
+      <p id="cap-note-enrollsign" class="hint" style="color:var(--danger)" hidden></p>
+
+      <!-- EST -->
+      <h3 style="margin-top:8px">EST device enrollment</h3>
+      <label class="status" style="display:block"><input type="checkbox" id="est-enabled"> Enable EST server
+        <span class="hint">(serve /.well-known/est/*; ingress must forward this path)</span></label>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="est-user" class="form-input" style="max-width:180px" placeholder="Basic-auth user (est)">
+        <input id="est-secret" type="password" class="form-input" style="max-width:240px" placeholder="Set/replace enroll secret">
+        <button id="est-save" type="button">Save EST</button>
+        <span id="est-status" class="status"></span>
+      </div>
+      <p class="hint" id="est-info" style="margin:4px 0 0"></p>
+
+      <!-- Code-signing -->
+      <h3 style="margin-top:18px">Code-signing service</h3>
+      <label class="status" style="display:block"><input type="checkbox" id="cs-enabled"> Enable code-signing
+        <span class="hint">(cert needs the codeSigning EKU; key from the encrypted keystore)</span></label>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="cs-keyref" class="form-input" style="max-width:220px" placeholder="Keystore secret name (key)">
+        <button id="cs-save" type="button">Save</button>
+        <span id="cs-status" class="status"></span>
+      </div>
+      <label for="cs-cert" class="textarea-label" style="margin-top:6px">Signer certificate + chain (PEM)</label>
+      <textarea id="cs-cert" class="form-input" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="cs-artifact" type="file">
+        <button id="cs-sign" class="secondary" type="button">Sign artifact → .p7s</button>
+        <span id="cs-sign-status" class="status"></span>
+      </div>
+
+      <!-- TSA -->
+      <h3 style="margin-top:18px">Timestamping authority (RFC 3161)</h3>
+      <label class="status" style="display:block"><input type="checkbox" id="tsa-enabled"> Enable TSA
+        <span class="hint">(serve POST /tsa; cert needs the timeStamping EKU)</span></label>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="tsa-keyref" class="form-input" style="max-width:220px" placeholder="Keystore secret name (key)">
+        <input id="tsa-policy" class="form-input" style="max-width:220px" placeholder="Policy OID (optional)">
+        <button id="tsa-save" type="button">Save</button>
+        <span id="tsa-status" class="status"></span>
+      </div>
+      <label for="tsa-cert" class="textarea-label" style="margin-top:6px">Signer certificate + chain (PEM)</label>
+      <textarea id="tsa-cert" class="form-input" rows="3" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+      <p class="hint" id="tsa-info" style="margin:4px 0 0"></p>
+
+      <!-- SCEP -->
+      <h3 style="margin-top:18px">SCEP device enrollment</h3>
+      <label class="status" style="display:block"><input type="checkbox" id="scep-enabled"> Enable SCEP server
+        <span class="hint">(serve /scep for MDM / network devices; ingress must forward /scep)</span></label>
+      <p id="scep-asn1-warn" class="hint" style="color:var(--danger)" hidden>
+        ⚠ asn1crypto is not installed — SCEP is unavailable in this build.</p>
+      <div class="bulk-row" style="margin-top:6px">
+        <button id="scep-genra" class="secondary" type="button">Generate RA keypair</button>
+        <input id="scep-challenge" type="password" class="form-input" style="max-width:220px" placeholder="Challenge password (optional)">
+        <input id="scep-keyref" class="form-input" style="max-width:200px" placeholder="Keystore secret name (RA key)">
+        <button id="scep-save" type="button">Save</button>
+        <span id="scep-status" class="status"></span>
+      </div>
+      <p class="hint" id="scep-info" style="margin:4px 0 0"></p>
+
+      <!-- CMP -->
+      <h3 style="margin-top:18px">CMP enrollment (RFC 4210)</h3>
+      <label class="status" style="display:block"><input type="checkbox" id="cmp-enabled"> Enable CMP server
+        <span class="hint">(serve POST /cmp for EJBCA/telecom clients; ingress must forward /cmp)</span></label>
+      <p id="cmp-asn1-warn" class="hint" style="color:var(--danger)" hidden>
+        ⚠ asn1crypto is not installed — CMP is unavailable in this build.</p>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="cmp-secret" type="password" class="form-input" style="max-width:280px" placeholder="Shared secret (12+ chars, PBM auth)">
+        <button id="cmp-save" type="button">Save</button>
+        <span id="cmp-status" class="status"></span>
+      </div>
+      <p class="hint" id="cmp-info" style="margin:4px 0 0"></p>
+
+      <!-- S/MIME -->
+      <h3 style="margin-top:18px">S/MIME user certificates</h3>
+      <p class="hint">Issue a personal email-protection certificate via the Local CA and
+        hand it back as a passphrase-protected PKCS#12. The private key is generated for
+        this request only and never stored — re-issue rather than recover.</p>
+      <p id="smime-note" class="hint" style="color:var(--danger)" hidden></p>
+      <div class="bulk-row" style="margin-top:6px">
+        <input id="smime-name" class="form-input" style="max-width:190px" placeholder="Display name (Ada Lovelace)">
+        <input id="smime-email" type="email" class="form-input" style="max-width:210px" placeholder="user@example.com">
+        <input id="smime-days" type="number" class="form-input" style="max-width:100px" value="365" title="Validity (days)">
+        <input id="smime-pass" type="password" class="form-input" style="max-width:190px" placeholder="P12 passphrase (8+)">
+        <button id="smime-issue" type="button">Issue &amp; download .p12</button>
+        <span id="smime-status" class="status"></span>
       </div>
     </section>
 
@@ -1309,6 +1610,82 @@
       </div>
     </section>
 
+    <section class="card admin-panel" data-panel="policy" hidden>
+      <div class="card-header">
+        <h2>Issuance policy</h2>
+        <button id="policy-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Guardrails enforced at issue time: allowed CA backends and
+         cert types, key type + minimum size, validity cap, SAN/CN allow/deny
+         globs, and required subject fields. Policies layer
+         <b>global → tenant → template</b> and can only ever <i>tighten</i>. A
+         request that violates the effective policy is refused before any CA is
+         touched.</p>
+      <p id="cap-note-policy" class="hint" style="color:var(--danger)" hidden></p>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="policy-block-request">
+        <span>Block non-compliant requests at submission</span>
+      </label>
+      <p class="hint">When off (default), a violating externally-submitted CSR is
+         still accepted and the requester sees the violations as a warning; the
+         authoritative refusal happens at issue time. When on, submission is
+         rejected immediately.</p>
+
+      <h3 style="margin:10px 0 6px;font-size:14px">Global policy</h3>
+      <p class="hint">JSON. Leave <code>{}</code> for no global constraints.
+         Keys: <code id="policy-known-keys" class="muted"></code></p>
+      <textarea id="policy-global" class="form-input" rows="10" spellcheck="false"
+                placeholder='{ "allowed_backends": ["openbao"], "key_rules": {"rsa": 3072, "ecdsa": 256}, "max_validity_days": 397, "san": {"deny": ["*.gov"]} }'></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="policy-global-save" type="button">Save global policy</button>
+        <span id="policy-global-status" class="status"></span>
+      </div>
+
+      <div id="policy-tenant-wrap" hidden>
+        <hr class="divider">
+        <h3 style="margin:0 0 6px;font-size:14px">Tenant policy</h3>
+        <p class="hint">An additional layer for one tenant (only tightens the
+           global policy). Multi-tenancy must be licensed.</p>
+        <div class="row">
+          <select id="policy-tenant-select" class="form-input" style="max-width:280px"></select>
+          <button id="policy-tenant-load" class="secondary" type="button">Load</button>
+        </div>
+        <textarea id="policy-tenant" class="form-input" rows="8" spellcheck="false"
+                  style="margin-top:8px" placeholder='{}'></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="policy-tenant-save" type="button">Save tenant policy</button>
+          <span id="policy-tenant-status" class="status"></span>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <h3 style="margin:0 0 6px;font-size:14px">Test a CSR against the policy</h3>
+      <p class="hint">Paste a CSR to dry-run it against the effective policy
+         (optionally as a specific template / cert type / validity). Nothing is
+         issued.</p>
+      <textarea id="policy-preview-csr" class="form-input" rows="6" spellcheck="false"
+                placeholder="-----BEGIN CERTIFICATE REQUEST-----&#10;...&#10;-----END CERTIFICATE REQUEST-----"></textarea>
+      <div class="form-grid-2" style="margin-top:8px">
+        <div><label for="policy-preview-template">Template ID (optional)</label>
+          <input type="text" id="policy-preview-template" class="form-input" placeholder="e.g. 3"></div>
+        <div><label for="policy-preview-certtype">Cert type (optional)</label>
+          <input type="text" id="policy-preview-certtype" class="form-input" placeholder="web"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="policy-preview-run" type="button">Test CSR</button>
+        <span id="policy-preview-status" class="status"></span>
+      </div>
+      <div id="policy-preview-result" class="table-wrap" style="margin-top:10px" hidden>
+        <p id="policy-preview-verdict" style="font-weight:600"></p>
+        <ul id="policy-preview-violations" class="pw-hints"></ul>
+        <details><summary class="link-btn" style="cursor:pointer">Effective policy + parsed request</summary>
+          <pre id="policy-preview-detail" style="white-space:pre-wrap;font-size:12px;
+               background:var(--code-bg);padding:8px;border-radius:4px;overflow:auto"></pre>
+        </details>
+      </div>
+    </section>
+
     <section class="card admin-panel" data-panel="audit">
       <div class="card-header">
         <h2>Audit log</h2>
@@ -1329,6 +1706,650 @@
         <button id="audit-more-btn" class="secondary" type="button" hidden>Load more</button>
         <span id="audit-status" class="status"></span>
       </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="inventory" hidden>
+      <div class="card-header">
+        <h2>Certificate inventory</h2>
+        <button id="inv-refresh-btn" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Every certificate Certheim knows about &mdash; issued,
+         discovered on the fleet, and ACME-server &mdash; with a risk score so the
+         ones that need attention surface first.</p>
+      <p id="cap-note-inventory" class="hint" style="color:var(--danger)" hidden></p>
+      <details class="card inv-alertcfg" style="margin:10px 0;padding:10px">
+        <summary><b>Alerting &amp; digests</b></summary>
+        <div class="details-body">
+          <label class="row"><input type="checkbox" id="ac-alerts-enabled"> Send expiry alerts</label>
+          <label>Alert thresholds — days before expiry, comma-separated
+            <input type="text" id="ac-thresholds" class="form-input" placeholder="30,14,7,1"></label>
+          <label>Default recipients — comma-separated, for certs with no owner
+            <input type="text" id="ac-recipients" class="form-input" placeholder="ops@example.com"></label>
+          <label class="row"><input type="checkbox" id="ac-digest-enabled"> Send a periodic digest rollup</label>
+          <label>Digest interval (days)
+            <input type="number" id="ac-digest-days" class="form-input" min="1" style="width:90px"></label>
+          <hr class="divider">
+          <label class="row"><input type="checkbox" id="ac-ct-enabled"> Monitor Certificate Transparency logs for shadow certs (internet egress required)</label>
+          <label>Monitored domains — comma or newline separated
+            <input type="text" id="ac-ct-domains" class="form-input" placeholder="example.com, corp.example.com"></label>
+          <label>CT poll interval (hours)
+            <input type="number" id="ac-ct-hours" class="form-input" min="1" style="width:90px"></label>
+          <div class="row"><button id="ac-save" type="button">Save</button>
+            <button id="ac-ct-poll" class="secondary" type="button">Poll CT now</button>
+            <span id="ac-status" class="status"></span></div>
+        </div>
+      </details>
+      <div id="inv-tiles" class="inv-tiles"></div>
+      <div class="inv-filters">
+        <input type="search" id="inv-q" class="form-input" placeholder="Search CN / SAN / issuer / location…">
+        <select id="inv-source" class="form-input">
+          <option value="">All sources</option>
+          <option value="managed">Managed</option>
+          <option value="fleet">Fleet scan</option>
+          <option value="acme">ACME server</option>
+          <option value="ct">CT log (shadow)</option>
+        </select>
+        <select id="inv-risk" class="form-input">
+          <option value="">Any risk</option>
+          <option value="low">Low+</option>
+          <option value="medium">Medium+</option>
+          <option value="high">High+</option>
+          <option value="critical">Critical only</option>
+        </select>
+        <select id="inv-expires" class="form-input">
+          <option value="">Any expiry</option>
+          <option value="7">Expires ≤ 7d</option>
+          <option value="30">Expires ≤ 30d</option>
+          <option value="90">Expires ≤ 90d</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Risk</th><th>Common name</th><th>Source</th><th>Issuer</th>
+            <th>Expires</th><th>Key</th><th>Location</th><th>Owner</th><th></th>
+          </tr></thead>
+          <tbody id="inv-tbody"></tbody>
+        </table>
+      </div>
+      <p id="inv-status" class="status"></p>
+    </section>
+
+    <section class="card admin-panel" data-panel="tenants" hidden>
+      <div class="card-header">
+        <h2>Tenants</h2>
+        <button id="tenants-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Hard-isolated tenants each get their own data store. This is
+         the registry; full per-tenant data routing is being rolled out. Until a
+         tenant is created, everything runs in the single default tenant.</p>
+      <p id="cap-note-tenants" class="hint" style="color:var(--danger)" hidden></p>
+      <div class="row">
+        <input type="text" id="tenant-name" class="form-input" placeholder="Tenant name (e.g. Acme Corp)">
+        <button id="tenant-create" type="button">Create tenant</button>
+        <span id="tenants-status" class="status"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Slug</th><th>Store</th><th>Active</th><th></th></tr></thead>
+          <tbody id="tenants-tbody"></tbody>
+        </table>
+      </div>
+      <hr class="divider">
+      <h3 style="margin:0 0 6px;font-size:14px">User assignments</h3>
+      <p class="hint">Bind each user to a tenant. A user in a tenant sees only
+         that tenant's certificate data; the <code>default</code> tenant is the
+         shared/original store.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Email</th><th>Admin</th><th>Tenant</th></tr></thead>
+          <tbody id="tenant-users-tbody"></tbody>
+        </table>
+      </div>
+      <p id="tenant-users-status" class="status"></p>
+    </section>
+
+    <section class="card admin-panel" data-panel="sso" hidden>
+      <div class="card-header">
+        <h2>Single sign-on</h2>
+        <button id="sso-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Federate login to your enterprise identity provider — pick the
+         protocol your IdP speaks.</p>
+
+      <div class="subtabs" id="sso-subtabs">
+        <button type="button" class="subtab active" data-subtab="oidc">OIDC</button>
+        <button type="button" class="subtab" data-subtab="saml">SAML 2.0</button>
+      </div>
+
+      <div data-subtabpanel="oidc">
+      <p class="hint">Let users sign in with your enterprise identity provider
+         (Keycloak, Entra ID, Okta, Ping, …) over OpenID Connect. When enabled and
+         complete, a "Sign in with SSO" button appears on the login screen.</p>
+      <p id="cap-note-sso" class="hint" style="color:var(--danger)" hidden></p>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="sso-enabled">
+        <span>Enable SSO login</span>
+      </label>
+      <p id="sso-ready-note" class="hint"></p>
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Provider</h3>
+      <label for="sso-issuer">Issuer URL</label>
+      <input type="text" id="sso-issuer" class="form-input"
+             placeholder="https://idp.example.com/realms/acme">
+      <p class="hint">Discovery is read from <code>&lt;issuer&gt;/.well-known/openid-configuration</code>.</p>
+      <label for="sso-client-id">Client ID</label>
+      <input type="text" id="sso-client-id" class="form-input" autocomplete="off">
+      <label for="sso-client-secret">Client secret</label>
+      <input type="password" id="sso-client-secret" class="form-input" autocomplete="new-password"
+             placeholder="(unchanged)">
+      <p class="hint" id="sso-secret-note"></p>
+      <label for="sso-redirect-uri">Redirect URI</label>
+      <input type="text" id="sso-redirect-uri" class="form-input"
+             placeholder="https://certheim.example.com/api/auth/sso/callback">
+      <p class="hint">Register this exact URL as a valid redirect URI in your IdP client.</p>
+      <label for="sso-scopes">Scopes</label>
+      <input type="text" id="sso-scopes" class="form-input" placeholder="openid profile email">
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Claim mapping</h3>
+      <p class="hint">Which ID-token claims become the user's identity, role and
+         tenant. Role and tenant are re-applied from the IdP on every login.</p>
+      <div class="form-grid-2">
+        <div><label for="sso-username-claim">Username claim</label>
+          <input type="text" id="sso-username-claim" class="form-input" placeholder="preferred_username"></div>
+        <div><label for="sso-email-claim">Email claim</label>
+          <input type="text" id="sso-email-claim" class="form-input" placeholder="email"></div>
+        <div><label for="sso-name-claim">Name claim</label>
+          <input type="text" id="sso-name-claim" class="form-input" placeholder="name"></div>
+        <div><label for="sso-role-claim">Role claim</label>
+          <input type="text" id="sso-role-claim" class="form-input" placeholder="groups (optional)"></div>
+      </div>
+      <label for="sso-role-map">Role map (IdP value → Certheim role), JSON</label>
+      <textarea id="sso-role-map" class="form-input" rows="3"
+                placeholder='{"cn=admins": "admin", "cn=ops": "operator"}'></textarea>
+      <div class="form-grid-2">
+        <div><label for="sso-tenant-claim">Tenant claim</label>
+          <input type="text" id="sso-tenant-claim" class="form-input" placeholder="groups (optional)"></div>
+        <div></div>
+      </div>
+      <label for="sso-tenant-map">Tenant map (IdP value → tenant slug), JSON</label>
+      <textarea id="sso-tenant-map" class="form-input" rows="3"
+                placeholder='{"cn=acme-team": "acme"}'></textarea>
+
+      <div class="row" style="margin-top:14px">
+        <button id="sso-save" type="button">Save SSO settings</button>
+        <span id="sso-status" class="status"></span>
+      </div>
+      </div><!-- /oidc sub-panel -->
+
+      <div data-subtabpanel="saml" hidden>
+      <p class="hint">SAML SSO for IdPs that don't speak OIDC (ADFS, Shibboleth,
+         many federal/enterprise IdPs). SAML needs an optional native library
+         (<code>python3-saml</code>/xmlsec); install it with
+         <code>pip install -r requirements-saml.txt</code> on the server. OIDC SSO
+         and the rest of Certheim don't require it.</p>
+      <p id="cap-note-saml" class="hint" style="color:var(--danger)" hidden></p>
+      <p id="saml-lib-note" class="hint" hidden></p>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="saml-enabled">
+        <span>Enable SAML login</span>
+      </label>
+      <p id="saml-ready-note" class="hint"></p>
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Identity provider (IdP)</h3>
+      <label for="saml-idp-entity-id">IdP entity ID</label>
+      <input type="text" id="saml-idp-entity-id" class="form-input"
+             placeholder="https://idp.example.com/idp/shibboleth">
+      <label for="saml-idp-sso-url">IdP SSO URL (HTTP-Redirect)</label>
+      <input type="text" id="saml-idp-sso-url" class="form-input"
+             placeholder="https://idp.example.com/idp/profile/SAML2/Redirect/SSO">
+      <label for="saml-idp-slo-url">IdP logout URL (optional)</label>
+      <input type="text" id="saml-idp-slo-url" class="form-input">
+      <label for="saml-idp-x509cert">IdP signing certificate (PEM)</label>
+      <textarea id="saml-idp-x509cert" class="form-input" rows="5"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Service provider (this app)</h3>
+      <label for="saml-sp-entity-id">SP entity ID</label>
+      <input type="text" id="saml-sp-entity-id" class="form-input">
+      <label for="saml-acs-url">Assertion Consumer Service (ACS) URL</label>
+      <input type="text" id="saml-acs-url" class="form-input">
+      <p class="hint">Register these in your IdP. SP metadata:
+         <a id="saml-metadata-link" href="#" target="_blank" rel="noopener">/api/auth/saml/metadata</a>
+         (available once the library is installed).</p>
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Attribute mapping</h3>
+      <p class="hint">Which SAML assertion attributes become the user's identity,
+         role and tenant. Role and tenant are re-applied from the IdP every login.</p>
+      <div class="form-grid-2">
+        <div><label for="saml-username-attr">Username attribute</label>
+          <input type="text" id="saml-username-attr" class="form-input" placeholder="(NameID if blank)"></div>
+        <div><label for="saml-email-attr">Email attribute</label>
+          <input type="text" id="saml-email-attr" class="form-input" placeholder="email"></div>
+        <div><label for="saml-name-attr">Name attribute</label>
+          <input type="text" id="saml-name-attr" class="form-input" placeholder="displayName"></div>
+        <div><label for="saml-role-attr">Role attribute</label>
+          <input type="text" id="saml-role-attr" class="form-input" placeholder="groups (optional)"></div>
+      </div>
+      <label for="saml-role-map">Role map (IdP value → Certheim role), JSON</label>
+      <textarea id="saml-role-map" class="form-input" rows="3"
+                placeholder='{"cn=admins": "admin", "cn=ops": "operator"}'></textarea>
+      <div class="form-grid-2">
+        <div><label for="saml-tenant-attr">Tenant attribute</label>
+          <input type="text" id="saml-tenant-attr" class="form-input" placeholder="groups (optional)"></div>
+        <div></div>
+      </div>
+      <label for="saml-tenant-map">Tenant map (IdP value → tenant slug), JSON</label>
+      <textarea id="saml-tenant-map" class="form-input" rows="3"
+                placeholder='{"cn=acme-team": "acme"}'></textarea>
+
+      <div class="row" style="margin-top:14px">
+        <button id="saml-save" type="button">Save SAML settings</button>
+        <span id="saml-status" class="status"></span>
+      </div>
+      </div><!-- /saml sub-panel -->
+    </section>
+
+    <section class="card admin-panel" data-panel="scim" hidden>
+      <div class="card-header">
+        <h2>Provisioning (SCIM 2.0)</h2>
+        <button id="scim-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Let your identity provider (Okta, Entra ID, Ping, …) create,
+         update and deactivate users and groups automatically over SCIM 2.0. Point
+         your IdP's SCIM connector at the base URL below and authenticate it with
+         the bearer token. SCIM only ever manages the principals it provisions —
+         it can never touch a local admin or CAC identity.</p>
+      <p id="cap-note-scim" class="hint" style="color:var(--danger)" hidden></p>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="scim-enabled">
+        <span>Enable SCIM provisioning</span>
+      </label>
+
+      <h3 style="margin:14px 0 6px;font-size:14px">Connection details</h3>
+      <label>SCIM base URL</label>
+      <div class="row">
+        <input type="text" id="scim-base-url" class="form-input" readonly style="flex:1">
+        <button id="scim-copy-url" class="secondary" type="button">Copy</button>
+      </div>
+      <p class="hint">Append <code>/Users</code> or <code>/Groups</code> as your IdP requires.</p>
+
+      <label>Bearer token</label>
+      <p id="scim-token-state" class="hint"></p>
+      <div class="row" id="scim-token-show" hidden>
+        <input type="text" id="scim-token-value" class="form-input" readonly style="flex:1">
+        <button id="scim-copy-token" class="secondary" type="button">Copy</button>
+      </div>
+      <p class="hint" id="scim-token-once" hidden style="color:var(--warning)">
+        Copy this token now — it is shown only once and cannot be retrieved later.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="scim-gen-token" type="button">Generate new token</button>
+        <button id="scim-revoke-token" class="danger" type="button">Revoke token</button>
+        <span id="scim-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="roles" hidden>
+      <div class="card-header">
+        <h2>Roles &amp; access</h2>
+        <button id="roles-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Bundle permissions into <strong>roles</strong>, then assign a role to a
+         user or attach it to a group (every member inherits it). Admins always keep
+         full access regardless of role.</p>
+      <p id="cap-note-roles" class="hint" style="color:var(--danger)" hidden></p>
+      <p id="roles-active" class="hint"></p>
+
+      <div id="rbac-ui" hidden>
+        <div class="rbac-tabs" role="tablist">
+          <button class="rbac-tab active" type="button" data-rtab="roles">Roles</button>
+          <button class="rbac-tab" type="button" data-rtab="assign">Assignments</button>
+          <button class="rbac-tab" type="button" data-rtab="explore">Who can do what</button>
+          <button class="rbac-tab" type="button" data-rtab="catalog">Permissions</button>
+        </div>
+
+        <!-- TAB: Roles -->
+        <div class="rbac-pane" data-rpane="roles">
+          <div class="rbac-pane-head">
+            <span class="hint">A role is a named set of permissions.</span>
+            <button id="rbac-new-role" type="button">+ New role</button>
+          </div>
+          <div id="rbac-roles-cards" class="rbac-cards"></div>
+          <span id="rbac-roles-status" class="status"></span>
+
+          <div id="rbac-editor" class="rbac-editor" hidden>
+            <h3 id="rbac-editor-title">New role</h3>
+            <label>Name
+              <input type="text" id="rbac-role-name" class="form-input" maxlength="64"
+                     placeholder="e.g. PKI Operators"></label>
+            <label>Description
+              <input type="text" id="rbac-role-desc" class="form-input" maxlength="512"
+                     placeholder="What this role is for"></label>
+            <p class="hint" id="rbac-editor-note" hidden></p>
+            <div id="rbac-perm-matrix" class="rbac-matrix"></div>
+            <div class="rbac-pane-head" style="margin-top:12px">
+              <span id="rbac-editor-status" class="status"></span>
+              <span>
+                <button id="rbac-cancel-role" class="secondary" type="button">Cancel</button>
+                <button id="rbac-save-role" type="button">Save role</button>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Assignments -->
+        <div class="rbac-pane" data-rpane="assign" hidden>
+          <h3 class="rbac-h3">Group access</h3>
+          <p class="hint">Attach roles to a group — every member gains those permissions.</p>
+          <div class="rbac-pane-head">
+            <label style="flex:1;margin:0">Group
+              <select id="rbac-group-picker" class="form-input"></select></label>
+            <button id="rbac-save-group-roles" type="button">Save</button>
+          </div>
+          <div id="rbac-group-roles" class="rbac-checks"></div>
+          <span id="rbac-group-roles-status" class="status"></span>
+
+          <h3 class="rbac-h3" style="margin-top:22px">Individual users</h3>
+          <p class="hint">Give a single user a role directly. Admins show as
+             <em>admin (flag)</em> and already have everything.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead>
+              <tbody id="roles-tbody"></tbody>
+            </table>
+          </div>
+          <p id="roles-status" class="status"></p>
+        </div>
+
+        <!-- TAB: Who can do what -->
+        <div class="rbac-pane" data-rpane="explore" hidden>
+          <p class="hint">Pick a user to see every permission they effectively hold
+             and exactly where it comes from.</p>
+          <div class="rbac-pane-head">
+            <select id="rbac-eff-user" class="form-input" style="flex:1"></select>
+            <button id="rbac-eff-lookup" type="button">Look up</button>
+          </div>
+          <div id="rbac-eff-out"></div>
+        </div>
+
+        <!-- TAB: Permissions (read-only catalog) -->
+        <div class="rbac-pane" data-rpane="catalog" hidden>
+          <p class="hint">The full permission vocabulary you can build roles from.</p>
+          <div id="rbac-catalog-out"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="observability" hidden>
+      <div class="card-header">
+        <h2>Observability — Prometheus metrics</h2>
+        <button id="metrics-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Expose a Prometheus <code>/metrics</code> endpoint (certificate
+         counts by status, expiry buckets, delivery state, pending approvals).
+         Scrapers authenticate with a bearer token.</p>
+      <p id="cap-note-metrics" class="hint" style="color:var(--danger)" hidden></p>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="metrics-enabled">
+        <span>Enable the /metrics endpoint</span>
+      </label>
+
+      <label>Scrape URL</label>
+      <div class="row">
+        <input type="text" id="metrics-url" class="form-input" readonly style="flex:1">
+        <button id="metrics-copy-url" class="secondary" type="button">Copy</button>
+      </div>
+      <label>Bearer token</label>
+      <p id="metrics-token-state" class="hint"></p>
+      <div class="row" id="metrics-token-show" hidden>
+        <input type="text" id="metrics-token-value" class="form-input" readonly style="flex:1">
+        <button id="metrics-copy-token" class="secondary" type="button">Copy</button>
+      </div>
+      <p class="hint" id="metrics-token-once" hidden style="color:var(--warning)">
+        Copy this token now — it is shown only once.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="metrics-gen-token" type="button">Generate scrape token</button>
+        <button id="metrics-revoke-token" class="danger" type="button">Revoke</button>
+        <span id="metrics-status" class="status"></span>
+      </div>
+      <details style="margin-top:10px"><summary class="link-btn" style="cursor:pointer">Prometheus scrape config</summary>
+        <pre style="white-space:pre-wrap;font-size:12px;background:var(--code-bg);padding:8px;border-radius:4px">scrape_configs:
+  - job_name: certheim
+    scheme: https
+    authorization:
+      credentials: &lt;the scrape token&gt;
+    static_configs:
+      - targets: ['&lt;certinel-host&gt;']</pre>
+      </details>
+
+      <hr class="divider">
+      <h3 style="margin:0 0 6px;font-size:14px">SIEM / syslog (CEF)</h3>
+      <p class="hint">Forward audit events to a SIEM (Splunk, Microsoft Sentinel,
+         any syslog collector) as CEF. Best-effort and inline — a collector
+         outage never affects Certheim.</p>
+      <label class="checkbox-row">
+        <input type="checkbox" id="siem-enabled">
+        <span>Forward audit events to a SIEM</span>
+      </label>
+      <div class="form-grid-2" style="margin-top:6px">
+        <div><label for="siem-host">Collector host</label>
+          <input type="text" id="siem-host" class="form-input" placeholder="siem.example.com"></div>
+        <div><label for="siem-port">Port</label>
+          <input type="text" id="siem-port" class="form-input" placeholder="514"></div>
+        <div><label for="siem-proto">Protocol</label>
+          <select id="siem-proto" class="form-input"><option value="udp">UDP</option><option value="tcp">TCP</option></select></div>
+        <div><label for="siem-hostname">Source hostname (optional)</label>
+          <input type="text" id="siem-hostname" class="form-input" placeholder="(auto)"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="siem-save" type="button">Save SIEM settings</button>
+        <button id="siem-test" class="secondary" type="button">Send test event</button>
+        <span id="siem-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="apitokens" hidden>
+      <div class="card-header">
+        <h2>Automation API tokens</h2>
+        <button id="apitok-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Bearer tokens for headless callers (Terraform, Ansible, CI,
+         cert-manager) of <code>POST /api/v1/certificates</code> and
+         <code>GET /api/v1/certificates/&lt;id&gt;</code>. Requests are bounded by the
+         token's allowed templates and the issuance policy.</p>
+      <p id="cap-note-apitok" class="hint" style="color:var(--danger)" hidden></p>
+
+      <div class="form-grid-2">
+        <div><label for="apitok-name">Token name</label>
+          <input type="text" id="apitok-name" class="form-input" placeholder="e.g. terraform-prod"></div>
+        <div><label for="apitok-templates">Allowed template IDs (optional, CSV)</label>
+          <input type="text" id="apitok-templates" class="form-input" placeholder="any if blank"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="apitok-create" type="button">Create token</button>
+        <span id="apitok-status" class="status"></span>
+      </div>
+      <div class="row" id="apitok-new-wrap" hidden style="margin-top:8px">
+        <input type="text" id="apitok-new-value" class="form-input" readonly style="flex:1">
+        <button id="apitok-copy" class="secondary" type="button">Copy</button>
+      </div>
+      <p class="hint" id="apitok-once" hidden style="color:var(--warning)">Copy this token now — it is shown only once.</p>
+
+      <div class="table-wrap" style="margin-top:12px">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Templates</th><th>Last used</th><th></th></tr></thead>
+          <tbody id="apitok-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="cbom" hidden>
+      <div class="card-header">
+        <h2>Crypto posture — CBOM &amp; PQC readiness</h2>
+        <button id="cbom-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">A Crypto Bill of Materials over your certificate inventory:
+         algorithm mix, quantum-vulnerable / deprecated counts, and the certs to
+         rotate first. Export a CycloneDX CBOM for SBOM/CBOM tooling.</p>
+      <p id="cap-note-cbom" class="hint" style="color:var(--danger)" hidden></p>
+
+      <div class="row" style="margin-top:8px">
+        <a id="cbom-export" class="secondary" href="/api/admin/cbom/export"
+           download="certheim-cbom.json" role="button">Export CycloneDX CBOM</a>
+        <span id="cbom-status" class="status"></span>
+      </div>
+
+      <div class="stats-grid" id="cbom-stats" style="margin-top:12px"></div>
+
+      <h3 style="margin-top:16px">By algorithm</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Algorithm</th><th>Count</th></tr></thead>
+          <tbody id="cbom-algos"></tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:16px">Migration worklist (rotate first)</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>CN</th><th>Algorithm</th><th>Expires</th><th>Reasons</th></tr></thead>
+          <tbody id="cbom-worklist"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="sshca" hidden>
+      <div class="card-header">
+        <h2>SSH certificate authority</h2>
+        <button id="sshca-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Sign user and host SSH certificates from a single CA key, so
+         fleets trust the CA instead of managing <code>authorized_keys</code> /
+         <code>known_hosts</code> by hand. Issued certs are inventoried and can be
+         revoked via a KRL.</p>
+      <p id="cap-note-sshca" class="hint" style="color:var(--danger)" hidden></p>
+
+      <div class="row" style="margin-top:8px">
+        <span id="sshca-castatus" class="status">CA: unknown</span>
+        <button id="sshca-generate" type="button">Generate CA key</button>
+        <a id="sshca-krl" class="secondary" href="/api/admin/ssh-ca/krl"
+           download="certheim-ssh.krl" role="button">Download KRL</a>
+        <span id="sshca-status" class="status"></span>
+      </div>
+      <div class="form-group" style="margin-top:8px">
+        <label for="sshca-capub">CA public key</label>
+        <textarea id="sshca-capub" class="form-input" rows="2" readonly
+                  placeholder="No CA key yet — generate one."></textarea>
+      </div>
+
+      <h3 style="margin-top:16px">Sign an SSH certificate</h3>
+      <div class="form-grid-2">
+        <div><label for="sshca-kind">Type</label>
+          <select id="sshca-kind" class="form-input">
+            <option value="user">User certificate</option>
+            <option value="host">Host certificate</option>
+          </select></div>
+        <div><label for="sshca-keyid">Key ID (label)</label>
+          <input type="text" id="sshca-keyid" class="form-input" placeholder="e.g. alice@corp"></div>
+        <div><label for="sshca-principals">Principals (comma/space separated)</label>
+          <input type="text" id="sshca-principals" class="form-input" placeholder="alice,bob  |  web1.ac2.lan"></div>
+        <div><label for="sshca-days">Validity (days)</label>
+          <input type="number" id="sshca-days" class="form-input" value="365" min="1"></div>
+      </div>
+      <div class="form-group" style="margin-top:8px">
+        <label for="sshca-pubkey">Public key to sign</label>
+        <textarea id="sshca-pubkey" class="form-input" rows="2"
+                  placeholder="ssh-ed25519 AAAA... user@host"></textarea>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="sshca-sign" type="button">Sign</button>
+      </div>
+      <div class="form-group" id="sshca-result-wrap" hidden style="margin-top:8px">
+        <label for="sshca-result">Issued certificate</label>
+        <textarea id="sshca-result" class="form-input" rows="2" readonly></textarea>
+        <button id="sshca-copy" class="secondary" type="button">Copy</button>
+      </div>
+
+      <h3 style="margin-top:16px">Issued certificates</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Key ID</th><th>Type</th><th>Serial</th><th>Principals</th>
+            <th>Expires</th><th>Status</th><th></th></tr></thead>
+          <tbody id="sshca-certs"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card admin-panel" data-panel="dnssec" hidden>
+      <div class="card-header">
+        <h2>DNSSEC key rollover (NetScaler)</h2>
+        <button id="dnssec-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Keep DNSSEC-signed zones on a Citrix NetScaler/ADC alive.
+         NetScaler doesn't roll its own keys — Certheim automates KSK/ZSK rollover
+         (RFC 6781 pre-publish / double-signature) over NITRO, so zones never
+         expire into SERVFAIL. Credentials live in OpenBao at
+         <code>secret/dnssec-netscaler/&lt;host&gt;</code>. New zones start in
+         <b>dry-run</b> (the plan is recorded but nothing is changed) until you
+         switch them live.</p>
+      <p id="cap-note-dnssec" class="hint" style="color:var(--danger)" hidden></p>
+
+      <h3 style="margin-top:12px">Automatic rollover</h3>
+      <p class="hint">Certheim runs the rollover check itself on the interval you
+         pick — no external cron or CronJob needed. Each zone still self-paces
+         from its own key TTL, so a short interval just means Certheim notices
+         sooner; it doesn't roll early.</p>
+      <div class="row" style="margin-top:6px;gap:12px;align-items:center;flex-wrap:wrap">
+        <label class="status"><input type="checkbox" id="dnssec-sched-enabled"> Enable automatic rollover</label>
+        <label class="status">Check every
+          <select id="dnssec-sched-interval" class="form-input" style="width:auto;display:inline-block">
+            <option value="15">15 minutes</option>
+            <option value="60">hourly</option>
+            <option value="360">every 6 hours</option>
+            <option value="1440">daily</option>
+          </select></label>
+        <button id="dnssec-sched-save" class="secondary" type="button">Save schedule</button>
+        <span id="dnssec-sched-info" class="status"></span>
+      </div>
+
+      <h3 style="margin-top:16px">Add a managed zone</h3>
+      <div class="form-grid-2">
+        <div><label for="dnssec-host">NetScaler host</label>
+          <input id="dnssec-host" class="form-input" placeholder="ns1.example.com"></div>
+        <div><label for="dnssec-zone">Zone</label>
+          <input id="dnssec-zone" class="form-input" placeholder="example.com"></div>
+        <div><label for="dnssec-alg">Algorithm</label>
+          <select id="dnssec-alg" class="form-input">
+            <option value="RSASHA256">RSASHA256</option>
+            <option value="ECDSAP256SHA256">ECDSAP256SHA256</option>
+            <option value="RSASHA512">RSASHA512</option>
+          </select></div>
+        <div><label for="dnssec-keysize">Key size</label>
+          <input id="dnssec-keysize" class="form-input" type="number" value="2048"></div>
+        <div><label for="dnssec-ttl">Zone DNSKEY TTL (s)</label>
+          <input id="dnssec-ttl" class="form-input" type="number" value="3600"></div>
+        <div><label for="dnssec-zsk">ZSK rollover lead (days)</label>
+          <input id="dnssec-zsk" class="form-input" type="number" value="21"></div>
+        <div><label for="dnssec-ksk">KSK rollover lead (days)</label>
+          <input id="dnssec-ksk" class="form-input" type="number" value="30"></div>
+        <div><label for="dnssec-cds" class="status" style="margin-top:22px">
+          <input type="checkbox" id="dnssec-cds" checked> Publish CDS/CDNSKEY for the parent (RFC 7344)</label></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="dnssec-add" type="button">Add zone</button>
+        <span id="dnssec-add-status" class="status"></span>
+      </div>
+
+      <h3 style="margin-top:16px">Managed zones</h3>
+      <table class="data-table" style="margin-top:6px">
+        <thead><tr><th>NetScaler</th><th>Zone</th><th>KSK</th><th>ZSK</th>
+          <th>Mode</th><th>State</th><th>Last run</th><th>Actions</th></tr></thead>
+        <tbody id="dnssec-zones"><tr><td colspan="8" class="status">Loading…</td></tr></tbody>
+      </table>
     </section>
 
     <section class="card admin-panel" data-panel="license" hidden>
@@ -1393,8 +2414,13 @@
     <label for="external-csr">CSR (PEM)</label>
     <textarea id="external-csr" spellcheck="false"
               placeholder="-----BEGIN CERTIFICATE REQUEST-----..."></textarea>
+    <div id="external-policy-result" class="hint" style="margin-top:8px" hidden>
+      <p id="external-policy-verdict" style="font-weight:600;margin:0 0 4px"></p>
+      <ul id="external-policy-violations" class="pw-hints" style="margin:0"></ul>
+    </div>
     <div class="row" style="justify-content:flex-end; margin-top:12px">
       <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="external-check-btn" class="secondary" type="button" hidden>Check against policy</button>
       <button id="external-submit-btn" type="button">Submit</button>
     </div>
     <div id="external-status" class="status" style="margin-top:8px"></div>
@@ -1583,6 +2609,22 @@
     <div id="uc-status" class="status" style="margin-top:8px"></div>
   </div>
 
+  <!-- Admin: assign an inventory certificate to users and/or groups -->
+  <div class="modal" id="inv-assign-modal" hidden>
+    <h2>Assign certificate</h2>
+    <p class="hint" id="inv-assign-subtitle" style="margin:0 0 10px">Assign this certificate to one or more users and/or groups.</p>
+    <label class="textarea-label" for="inv-assign-users">Users</label>
+    <select id="inv-assign-users" class="form-input" multiple size="6" style="width:100%"></select>
+    <label class="textarea-label" for="inv-assign-groups" style="margin-top:10px">Groups</label>
+    <select id="inv-assign-groups" class="form-input" multiple size="5" style="width:100%"></select>
+    <p class="hint" style="margin:6px 0 0">Hold Ctrl/Cmd (or Shift) to select more than one. Deselect everything to clear the assignment.</p>
+    <div class="row" style="justify-content:flex-end; margin-top:14px; gap:8px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="inv-assign-save" type="button">Save assignment</button>
+    </div>
+    <div id="inv-assign-status" class="status" style="margin-top:8px"></div>
+  </div>
+
   <div class="modal modal-wide" id="group-edit-modal" hidden>
     <h2 id="group-edit-title">Group</h2>
     <label for="group-edit-name" class="textarea-label">Name</label>
@@ -1614,6 +2656,24 @@
       <table>
         <thead><tr><th>Name</th><th>Email</th><th>Added</th><th></th></tr></thead>
         <tbody id="group-members-tbody"></tbody>
+      </table>
+    </div>
+
+    <hr class="divider" id="group-perms-divider" hidden>
+    <div id="group-perms-section" hidden>
+      <h2 style="font-size:14px; margin-bottom:8px">Permissions
+        <span class="hint" style="display:inline">— role-based access for this group (Commercial)</span></h2>
+      <p id="group-perms-note" class="hint" hidden></p>
+      <p class="hint"><strong>Base member permissions</strong> — every member of this group inherits these.</p>
+      <div id="group-perms-base" class="row" style="gap:14px; margin:4px 0 8px"></div>
+      <div class="row" style="justify-content:flex-end; margin-bottom:12px">
+        <button id="group-perms-base-save" class="secondary" type="button">Save base permissions</button>
+        <span id="group-perms-base-status" class="status"></span>
+      </div>
+      <p class="hint"><strong>Per-member grants</strong> — extra permissions beyond the base, for individual members.</p>
+      <table>
+        <thead><tr><th>Member</th><th>Role</th><th>Extra grants</th></tr></thead>
+        <tbody id="group-perms-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -1671,6 +2731,7 @@
       <option value="slack">Slack</option>
       <option value="teams">Microsoft Teams</option>
       <option value="discord">Discord</option>
+      <option value="servicenow">ServiceNow (Table API)</option>
       <option value="generic">Generic webhook (raw JSON)</option>
     </select>
     <p class="hint" id="webhook-edit-type-hint"></p>
@@ -1779,6 +2840,26 @@
                you're currently looking at. Use the contents on the left, the
                <em>Previous / Next</em> buttons, or the ← → arrow keys to move around;
                press <em>Esc</em> to close.</p>
+            <p class="guide-edition-note" data-when-edition="community">
+               You're running the <strong>Community</strong> edition — the free core for
+               requesting, signing, tracking, and renewing certificates. The
+               <strong>Commercial</strong> and <strong>Government</strong> editions add
+               single sign-on, an issuance policy engine, additional signing backends,
+               certificate inventory, and more.</p>
+            <p class="guide-edition-note" data-when-edition="commercial">
+               You're running the <strong>Commercial</strong> edition. Alongside the core
+               workflow, your administrators can configure single sign-on (OIDC / SAML /
+               SCIM), the issuance policy engine, multiple signing backends, automated
+               delivery, certificate inventory and CT monitoring, and role-based access —
+               each documented in the <em>Administration</em> section of this guide.</p>
+            <p class="guide-edition-note" data-when-edition="government">
+               You're running the <strong>Government</strong> edition. It includes everything
+               in Commercial plus the public-sector suite: CAC / PIV authentication,
+               public-sector CSR profiles, tamper-evident (WORM) audit, FIPS &amp; HSM key
+               ceremonies, separation of duties and dual control, Federal PKI trust anchors,
+               NIST 800-53 / OSCAL compliance evidence, STIG/SCAP self-assessment, CNSA 2.0
+               and post-quantum migration, and air-gapped CRL export — each documented in the
+               <em>Administration</em> and <em>Government</em> sections of this guide.</p>
           </section>
 
           <section data-page="create" data-title="Create requests" data-group="Dashboard" hidden>
@@ -1922,6 +3003,37 @@
               <li>Members then see group-assigned jobs on their Dashboard and can pick the
                   group when creating requests.</li>
             </ul>
+          </section>
+
+          <section data-page="admin-roles" data-title="Roles &amp; permissions" data-group="Administration" data-cap="governance.rbac" hidden>
+            <h3>Admin · Roles &amp; permissions</h3>
+            <p>Shape access control to your organization: define your own <strong>roles</strong>
+               as bundles of permissions, then grant them to people two ways.</p>
+            <ul>
+              <li><strong>The permission catalog</strong> — every action Certheim gates
+                  (view inventory, request, approve &amp; sign, revoke, manage templates,
+                  view the audit log, manage settings, and more), each with a plain-language
+                  description. This is the vocabulary your roles are built from.</li>
+              <li><strong>Roles</strong> — start from the four built-ins (admin, operator,
+                  auditor, member) or create your own, e.g. <em>PKI Operators</em>
+                  (request + approve &amp; sign, no revoke) or <em>Auditors</em>
+                  (read inventory and the audit log, change nothing). Clone an existing
+                  role to start close; a role can't be deleted while it's still in use.</li>
+              <li><strong>Assign to a user</strong> — pick a role in the user table. That
+                  user then holds exactly that role's permissions.</li>
+              <li><strong>Attach to a group</strong> — every member of the group holds the
+                  attached roles' permissions while they're a member. Onboarding a whole
+                  team becomes one assignment instead of many.</li>
+            </ul>
+            <p>A user's <strong>effective permissions</strong> are the <em>union</em> of their
+               own role plus every role attached to their groups — access only ever adds up.
+               Use the <em>Effective permissions</em> lookup to see exactly what someone can
+               do and <em>why</em> (which role granted it, via which group).</p>
+            <p class="note"><strong>Admins are always full-access</strong> — the admin flag sits
+               above roles and can't be locked out. A few sensitive areas (license, database,
+               the local-CA key ceremony, RBAC management itself) stay admin-only by design.
+               Role enforcement is a licensed feature (Commercial and above); without a license
+               everything falls back to admin-only, exactly as before.</p>
           </section>
 
           <section data-page="admin-templates" data-title="Templates" data-group="Administration" hidden>
@@ -2156,6 +3268,13 @@
               <p>Generating a new CA replaces the previous one, and its issued/revoked index
                  starts fresh. Prefer the HSM backend if you have hardware — a PKCS#11 key is
                  stronger than any software keystore.</p>
+              <p><strong>Revocation endpoints:</strong> set the <em>public base URL</em> in
+                 the Local CA panel and newly issued certs carry AIA/CDP pointers to
+                 <code>&lt;base&gt;/ocsp</code> and <code>&lt;base&gt;/crl</code> — Certheim
+                 answers OCSP checks and serves the CRL itself.
+                 <strong>Post-quantum:</strong> on OpenSSL&nbsp;3.5+ hosts the key-type
+                 picker also offers <code>ML-DSA-65/87</code>, for a CNSA&nbsp;2.0-aligned
+                 quantum-resistant CA.</p>
             </div>
 
             <div class="guide-ca-block" data-filter-tag="openbao">
@@ -2287,12 +3406,21 @@
             </div>
 
             <div class="guide-ca-block" data-filter-tag="cyberark">
-              <h4>CyberArk <span class="guide-ed">Commercial / Government</span></h4>
-              <p>A configurable slot: enter the <em>base URL</em>, <em>issuing CA / policy id</em>,
-                 and <em>application id</em>, with the API token in
-                 <code>CERTHEIM_CYBERARK_TOKEN</code>. The connection settings are saved, but the
-                 signing API call is not wired in this release — use OpenBao for automated
-                 signing, or contact support about enabling your CyberArk integration.</p>
+              <h4>CyberArk Certificate Manager <span class="guide-ed">Commercial / Government</span></h4>
+              <p>CyberArk Certificate Manager SaaS (formerly Venafi TLS Protect Cloud).
+                 Certheim requests through its REST API, polls until issued, and retrieves
+                 the PEM.</p>
+              <ol>
+                <li>In CyberArk, create an <em>Application</em> and an <em>issuing template</em>
+                    (CA/policy), and generate an API key.</li>
+                <li>Fill in the <em>base URL</em> (e.g. <code>https://api.venafi.cloud</code>),
+                    the <em>issuing template id</em> (CA/policy), and the <em>application id</em>.</li>
+                <li>Put the API key in <code>CERTHEIM_CYBERARK_TOKEN</code> in the service env.</li>
+                <li><strong>Test connection</strong> validates the key against the account
+                    endpoint. (Self-hosted TPP? use the <em>Venafi</em> backend instead —
+                    it speaks the <code>/vedsdk</code> API.)</li>
+              </ol>
+              <p>Revocation of CyberArk-issued certs is done at the CyberArk console.</p>
             </div>
 
             <div class="guide-ca-block" data-filter-tag="acme_server">
@@ -2313,6 +3441,481 @@
                <strong>Test connection</strong> before going live. Issued certificates can be
                <strong>revoked</strong> in-UI where the backend supports it.</p>
           </section>
+
+          <section data-page="admin-delivery" data-title="Delivery destinations" data-group="Administration" data-cap="delivery.pull" hidden>
+            <h3>Admin · Delivery destinations</h3>
+            <p>After a certificate is issued, Certheim can push it (and, per the template's
+               <em>key mode</em>, its private key) to where it's used. Delivery is set
+               <strong>per template</strong> (Admin&nbsp;→&nbsp;Templates): choose the
+               <em>delivery backend</em>, a <em>delivery target</em>, and an optional
+               <em>reload command</em>. Failed deliveries retry with backoff and raise a
+               <code>job.delivery_failed</code> event before being abandoned. Destination
+               credentials live in OpenBao KV, one secret per target — never in the
+               dashboard database.</p>
+            <p class="guide-filter-row">
+              <label for="guide-dlv-pick"><strong>Setup steps for:</strong></label>
+              <select id="guide-dlv-pick" data-guide-filter>
+                <option value="all" selected>All destinations</option>
+                <option value="openbao">OpenBao / Vault KV</option>
+                <option value="ssh">SSH push (Linux fleet)</option>
+                <option value="pull">Pull (scoped one-time token)</option>
+                <option value="k8s">Kubernetes TLS Secret</option>
+                <option value="webhook">Webhook receiver</option>
+                <option value="cyberark">CyberArk Conjur</option>
+                <option value="f5">F5 BIG-IP</option>
+                <option value="netscaler">Citrix NetScaler / ADC</option>
+                <option value="a10">A10 Thunder</option>
+                <option value="iis">Windows / IIS</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="openbao">
+              <h4>OpenBao / Vault KV</h4>
+              <p>Writes the issued bundle to KV&nbsp;v2 at
+                 <code>&lt;kv&nbsp;mount&gt;/&lt;base&gt;/&lt;target&nbsp;host&gt;</code>, so
+                 consumers (agents, CI, ESO) fetch it from the vault instead of from
+                 Certheim. Set the KV mount in the delivery settings; the app's own
+                 OpenBao credential needs write access to that path. Good default when the
+                 fleet already reads secrets from OpenBao.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="ssh">
+              <h4>SSH push (Linux fleet)</h4>
+              <ol>
+                <li>Create a delivery user on the destination host and authorise a key for
+                    it.</li>
+                <li>Store the credential in OpenBao at
+                    <code>secret/csr-delivery-ssh/&lt;host&gt;</code> with fields
+                    <code>username</code>, <code>private_key</code>, optional
+                    <code>port</code>.</li>
+                <li>On the template: backend <strong>ssh</strong>, target = the destination
+                    path, and an optional <em>reload command</em> (e.g.
+                    <code>systemctl reload nginx</code>) run after the copy.</li>
+              </ol>
+              <p>Whether the private key ships too follows the template's key mode — a
+                 cert-only push is the safer default when the host generated its own CSR.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="pull">
+              <h4>Pull (scoped one-time token)</h4>
+              <p>Nothing to reach into: Certheim stashes the bundle behind a random token
+                 and the <em>destination</em> fetches
+                 <code>GET /deliver/pull/&lt;token&gt;</code>. The token is the credential —
+                 short-lived (<code>delivery_pull_ttl</code>, default 1&nbsp;hour) and
+                 consumed on fetch (<code>delivery_pull_max_uses</code>, default 1). The
+                 token reaches the requester via the job's notification channel. Right
+                 choice when Certheim has no route or credential to the destination.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="k8s">
+              <h4>Kubernetes TLS Secret</h4>
+              <ol>
+                <li>Create a ServiceAccount in the destination cluster with permission to
+                    apply Secrets in the target namespace; mint a bearer token for it.</li>
+                <li>Store it in OpenBao at
+                    <code>secret/csr-delivery-k8s/&lt;cluster&gt;</code> with
+                    <code>api_server</code>, <code>token</code>, optional
+                    <code>ca_cert</code>.</li>
+                <li>Template target:
+                    <code>[&lt;cluster&gt;/]&lt;namespace&gt;/&lt;secret-name&gt;</code>.
+                    The bundle is server-side-applied as a
+                    <code>kubernetes.io/tls</code> Secret — pods pick it up on their normal
+                    reload path.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="webhook">
+              <h4>Webhook receiver</h4>
+              <p>POSTs the bundle as JSON to the template's target URL. With an OpenBao
+                 secret at <code>secret/csr-delivery-webhook/&lt;host&gt;</code>
+                 (<code>secret</code> for HMAC signing, optional <code>ca_cert</code> /
+                 <code>client_cert</code> / <code>client_key</code> for pinned TLS or mTLS)
+                 the POST is authenticated; without one it's a plain POST for receivers
+                 gated by network policy or mTLS alone.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="cyberark">
+              <h4>CyberArk Conjur</h4>
+              <p>Writes the cert to Conjur variable <code>&lt;target&gt;/cert</code> (and the
+                 key to <code>&lt;target&gt;/key</code> when shipped). Connection settings
+                 are admin-set; the API key is environment-only:
+                 <code>CERTHEIM_CYBERARK_URL</code>, <code>CERTHEIM_CYBERARK_LOGIN</code>,
+                 <code>CERTHEIM_CYBERARK_ACCOUNT</code>, <code>CERTHEIM_CYBERARK_API_KEY</code>
+                 (+ optional <code>CERTHEIM_CYBERARK_CA_CERT</code>).</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="f5">
+              <h4>F5 BIG-IP</h4>
+              <p>Uploads cert/key via the iControl REST API and can repoint a client-ssl
+                 profile (the template target, optional) at the new pair. Device credential
+                 in OpenBao at <code>secret/csr-delivery-f5/&lt;target&nbsp;host&gt;</code>:
+                 <code>{host?, username, password, ca_cert?}</code> — <code>host</code>
+                 defaults to the job's target host, set it when the management address
+                 differs.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="netscaler">
+              <h4>Citrix NetScaler / ADC</h4>
+              <p>Installs the certkey via the NITRO API. Credential in OpenBao at
+                 <code>secret/csr-delivery-netscaler/&lt;target&nbsp;host&gt;</code>:
+                 <code>{host?, username, password, ca_cert?}</code>. Pairs with the DNSSEC
+                 automation, which manages NetScaler zone keys through the same NITRO
+                 connection.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="a10">
+              <h4>A10 Thunder</h4>
+              <p>Pushes cert/key via aXAPI; the template target optionally names the
+                 client-ssl template to repoint. Credential in OpenBao at
+                 <code>secret/csr-delivery-a10/&lt;target&nbsp;host&gt;</code>, same field
+                 shape as F5/NetScaler.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="iis">
+              <h4>Windows / IIS</h4>
+              <p>Imports the cert+key into the Windows certificate store
+                 (<code>LocalMachine\My</code>) over OpenSSH-on-Windows, ready for IIS
+                 bindings. Credential in OpenBao at
+                 <code>secret/csr-delivery-iis/&lt;target&nbsp;host&gt;</code>:
+                 <code>{username?, private_key, port?}</code>. Enable the OpenSSH server
+                 feature on the destination and authorise the key for an admin user.</p>
+            </div>
+          </section>
+
+          <section data-page="admin-enrollsign" data-title="Enrollment &amp; signing" data-group="Administration" data-cap="enroll.est" hidden>
+            <h3>Admin · Enrollment &amp; signing services</h3>
+            <p>Standards-based endpoints that let devices and toolchains use Certheim
+               directly — enrollment over EST or SCEP, plus code-signing and RFC&nbsp;3161
+               timestamping. All of them issue through the signing backend you configured
+               under Signing&nbsp;/&nbsp;CA.</p>
+            <p class="guide-filter-row">
+              <label for="guide-es-pick"><strong>Setup steps for:</strong></label>
+              <select id="guide-es-pick" data-guide-filter>
+                <option value="all" selected>All services</option>
+                <option value="est">EST enrollment (RFC 7030)</option>
+                <option value="scep">SCEP enrollment (RFC 8894)</option>
+                <option value="cmp">CMP enrollment (RFC 4210)</option>
+                <option value="codesign">Code-signing (CMS)</option>
+                <option value="tsa">Timestamping (RFC 3161 TSA)</option>
+                <option value="smime">S/MIME user certificates</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="est">
+              <h4>EST enrollment (RFC 7030)</h4>
+              <ol>
+                <li>Enable EST on this panel and set the shared enrollment credential
+                    (user + secret). Clients authenticate with HTTP Basic over TLS.</li>
+                <li>Endpoints: <code>/.well-known/est/cacerts</code> (CA chain, no auth),
+                    <code>simpleenroll</code> / <code>simplereenroll</code> (POST the
+                    base64 DER PKCS#10, <code>Content-Type: application/pkcs10</code>),
+                    and <code>csrattrs</code>.</li>
+                <li>Client check without an EST client:<br>
+                    <code>openssl req -new -key k.pem -subj /CN=dev1 -outform DER | base64 |
+                    curl -u est:SECRET -H "Content-Type: application/pkcs10"
+                    --data-binary @- https://HOST/.well-known/est/simpleenroll</code></li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="scep">
+              <h4>SCEP enrollment (RFC 8894)</h4>
+              <ol>
+                <li>Enable SCEP; Certheim generates an <strong>RA keypair</strong> in-app —
+                    the RA private key is stored in the sealed keystore when it's unsealed.
+                    Optionally require a <em>challenge password</em>.</li>
+                <li>Endpoint: <code>/scep</code> (also answers
+                    <code>/scep/pkiclient.exe</code>) with the standard
+                    <code>GetCACaps</code> / <code>GetCACert</code> /
+                    <code>PKIOperation</code> operations.</li>
+                <li>Works with sscep, certmonger, and network gear that only speaks SCEP.
+                    sscep example:
+                    <code>sscep enroll -u https://HOST/scep -k k.pem -r req.csr
+                    -c ca.crt -l cert.crt</code></li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="codesign">
+              <h4>Code-signing (CMS)</h4>
+              <ol>
+                <li>Issue or import a signing certificate, then configure its key reference
+                    on this panel.</li>
+                <li>Sign artifacts from the panel or the admin API
+                    (<code>POST /api/admin/codesign/sign</code>) — output is a detached CMS
+                    signature.</li>
+                <li>Verify:
+                    <code>openssl cms -verify -binary -inform PEM -in sig.pem -content
+                    artifact -CAfile chain.pem -purpose any</code> — note
+                    <code>-purpose any</code>: openssl's default purpose check rejects
+                    codeSigning-EKU certs.</li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="tsa">
+              <h4>Timestamping (RFC 3161 TSA)</h4>
+              <ol>
+                <li>Enable the TSA and configure its signing key; the policy OID defaults to
+                    the Certheim policy (<code>1.3.6.1.4.1.55555.3.1</code>) and serials are
+                    issued from a monotonic counter.</li>
+                <li>Clients POST a timestamp query to <code>/tsa</code>:<br>
+                    <code>openssl ts -query -data file.bin -sha256 -cert | curl
+                    -H "Content-Type: application/timestamp-query" --data-binary @-
+                    https://HOST/tsa -o file.tsr</code></li>
+                <li>Verify: <code>openssl ts -verify -data file.bin -in file.tsr
+                    -CAfile chain.pem</code></li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="cmp">
+              <h4>CMP enrollment (RFC 4210)</h4>
+              <p>The enrollment protocol of the EJBCA / telecom (3GPP) world. Certheim
+                 implements the interoperable bootstrap subset: <code>p10cr</code>
+                 (a PKCS#10 inside a CMP envelope) protected by the shared-secret
+                 password-based MAC, answered with <code>cp</code>; plus
+                 <code>certConf</code>/<code>pkiconf</code>.</p>
+              <ol>
+                <li>Enable CMP and set the <em>shared secret</em> (12+ characters) —
+                    clients prove possession via the RFC 4210 password-based MAC, so the
+                    secret never crosses the wire.</li>
+                <li>Endpoint: <code>POST /cmp</code>
+                    (<code>Content-Type: application/pkixcmp</code>). Issuance goes through
+                    the configured signing backend, same as EST/SCEP.</li>
+                <li>openssl 3.x client example:
+                    <code>openssl cmp -cmd p10cr -server https://HOST/cmp -csr req.csr
+                    -secret pass:SECRET -ref certheim -certout cert.pem</code></li>
+              </ol>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="smime">
+              <h4>S/MIME user certificates</h4>
+              <p>Personal certificates for signing/encrypting email — the one certificate
+                 category that's about people, not servers. Issued by the
+                 <strong>Local CA</strong> under an <code>emailProtection</code> profile.</p>
+              <ol>
+                <li>Prerequisites: Local CA configured, sealed keystore unsealed.</li>
+                <li>Issue via the admin API: <code>POST /api/admin/smime/issue</code> with
+                    <code>{name, email, days, passphrase}</code> — the response is a
+                    passphrase-protected <strong>PKCS#12</strong> the user imports into
+                    Outlook / Thunderbird / Apple Mail.</li>
+                <li>The private key is generated for this call only and never stored —
+                    the returned PKCS#12 is the only copy. Lost file or forgotten
+                    passphrase: re-issue, and revoke the old certificate.</li>
+                <li>Distribute the Local CA certificate to recipients' trust stores so
+                    signatures validate (Trust Store page).</li>
+              </ol>
+            </div>
+
+            <p><strong>Reverse-proxy note:</strong> these services live at root-level paths —
+               <code>/.well-known/est/</code>, <code>/scep</code>, <code>/tsa</code>,
+               <code>/cmp</code>, and the Local CA's <code>/ocsp</code> + <code>/crl</code>.
+               If a proxy in front of Certheim only forwards the app path, add forwarding
+               rules for these, or devices will get the proxy's 404.</p>
+          </section>
+
+          <section data-page="admin-sealedkeystore" data-title="Encrypted keystore" data-group="Administration" data-cap="crypto.sealed_keystore" hidden>
+            <h3>Admin · Encrypted keystore</h3>
+            <p>A built-in sealed keystore for deployments without OpenBao/CyberArk: secrets
+               are envelope-encrypted (a per-secret data key wrapped by a master key that
+               only exists unwrapped while the store is <em>unsealed</em>). It protects
+               generated private keys (key storage mode <em>sealed</em>), the Local CA key,
+               the SCEP RA key, and the code-signing/TSA keys.</p>
+            <p class="guide-filter-row">
+              <label for="guide-sk-pick"><strong>Show:</strong></label>
+              <select id="guide-sk-pick" data-guide-filter>
+                <option value="all" selected>Everything</option>
+                <option value="protect">Choosing a protection mode</option>
+                <option value="cipher">Choosing a cipher</option>
+                <option value="ops">Day-to-day: unseal, seal, secrets</option>
+                <option value="backup">Backup &amp; restore</option>
+              </select>
+            </p>
+
+            <div class="guide-ca-block" data-filter-tag="protect">
+              <h4>Choosing a protection mode (one-time initialisation)</h4>
+              <ul>
+                <li><strong>Passphrase</strong> — one admin passphrase unseals the store; a
+                    one-time <em>recovery code</em> is shown at initialisation as the
+                    fallback. Simplest; right for a single-admin deployment.</li>
+                <li><strong>Shamir shares</strong> — the master key splits into
+                    <em>n</em> shares of which any <em>k</em> unseal (e.g. 5 shares,
+                    3 required). Distribute shares to separate custodians; no single person
+                    can unseal. Right for separation-of-duties requirements.</li>
+              </ul>
+              <p><strong>Record the recovery material immediately.</strong> It is shown
+                 once. Lose the passphrase/recovery code (or more than n−k shares) and the
+                 sealed contents are unrecoverable by design — there is no back door.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="cipher">
+              <h4>Choosing a cipher (security scale)</h4>
+              <ol>
+                <li><strong>AES-256-GCM, in-process</strong> — most secure; key material
+                    never leaves the Python process. Uses the bundled
+                    <code>cryptography</code> package.</li>
+                <li><strong>AES-256-CBC + HMAC, in-process</strong> — middle option; same
+                    in-process property with a more conservative construction.</li>
+                <li><strong>openssl subprocess</strong> — dependency-free fallback that
+                    shells out to the system openssl; works on any host, including minimal
+                    installs where <code>cryptography</code> is unavailable.</li>
+              </ol>
+              <p>Pick at initialisation. Stored blobs are self-describing, so existing
+                 secrets keep decrypting if the deployment's cipher availability changes.</p>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="ops">
+              <h4>Day-to-day: unseal, seal, secrets</h4>
+              <ul>
+                <li>The store starts <strong>sealed</strong> after every service restart —
+                    unseal it here (passphrase, recovery code, or k shares). Until then,
+                    anything needing a sealed secret (Local CA signing, SCEP RA, sealed key
+                    storage) refuses cleanly rather than failing oddly.</li>
+                <li>Unsealing once covers all workers; you don't unseal per process.</li>
+                <li><strong>Seal</strong> manually before maintenance you don't trust — it
+                    drops the master key from memory immediately.</li>
+                <li>The secrets list shows names and timestamps only; values are never
+                    displayed back.</li>
+              </ul>
+            </div>
+
+            <div class="guide-ca-block" data-filter-tag="backup">
+              <h4>Backup &amp; restore</h4>
+              <ul>
+                <li><strong>Export backup</strong> produces an encrypted bundle under a
+                    passphrase you choose at export; store it offline. The bundle is
+                    self-contained — restorable on a fresh install even before that install
+                    has <code>cryptography</code> available.</li>
+                <li><strong>Restore</strong> imports the bundle (with an overwrite toggle
+                    for name collisions).</li>
+                <li>Re-export after adding significant secrets (a new Local CA, a new
+                    signing key) — the backup is a snapshot, not a live mirror.</li>
+              </ul>
+            </div>
+          </section>
+
+          <section data-page="admin-tenants" data-title="Tenants" data-group="Administration" data-cap="governance.multitenancy" hidden>
+            <h3>Admin · Tenants <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Hard-isolated tenants give each business unit or customer its own data store
+               under one Certheim installation. This page is the tenant registry: create a
+               tenant, activate it, and its members work in a fully separate space — jobs,
+               templates, settings and inventory never cross tenants.</p>
+            <h4>Creating a tenant</h4>
+            <p>Add a tenant with a short slug (it becomes part of the data-store identity, so
+               pick it deliberately — slugs don't rename). New tenants start empty: bootstrap
+               an admin for the tenant the same way you bootstrapped the default one.</p>
+            <h4>Gotchas</h4>
+            <p>Everything before your first tenant lives in the <em>default</em> tenant and
+               stays there — creating tenants doesn't migrate existing data. Cross-tenant
+               reporting is deliberately absent; that isolation is the feature.</p>
+          </section>
+
+          <section data-page="admin-scim" data-title="Provisioning (SCIM)" data-group="Administration" data-cap="governance.scim" hidden>
+            <h3>Admin · Provisioning (SCIM 2.0) <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Let your identity provider (Okta, Entra ID, Ping, …) create, update and
+               deactivate Certheim users and groups automatically. Certheim exposes a standard
+               SCIM 2.0 endpoint; the IdP is the source of truth and pushes changes as they
+               happen — no more manual offboarding.</p>
+            <h4>Setup</h4>
+            <p>Enable SCIM here and copy the base URL plus the generated bearer token into your
+               IdP's SCIM connector. Assign the app to the users/groups you want provisioned.
+               The token is shown once — rotate it from this page if it leaks, then update the
+               IdP.</p>
+            <h4>Gotchas</h4>
+            <p>SCIM manages the LIFECYCLE (who exists, group membership); it does not sign
+               anyone in — pair it with SSO. Deactivation via SCIM disables the user but keeps
+               their history for audit. Locally-created users are left alone unless the IdP
+               claims the same identity.</p>
+          </section>
+
+          <section data-page="admin-observability" data-title="Observability" data-group="Administration" data-cap="integrations.siem" hidden>
+            <h3>Admin · Observability <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Expose a Prometheus <code>/metrics</code> endpoint with the numbers an on-call
+               actually wants: certificate counts by status, expiry buckets, delivery states,
+               pending approvals. Scrape it into Prometheus/Grafana and alert on trends instead
+               of waiting for individual expiry emails.</p>
+            <h4>Setup</h4>
+            <p>Enable the endpoint and copy the scrape token. In Prometheus, add a scrape job
+               with <code>authorization: credentials: &lt;token&gt;</code> (or the equivalent
+               bearer-token config in your agent). The token only grants <code>/metrics</code>
+               — nothing else.</p>
+            <h4>Gotchas</h4>
+            <p>Metrics are aggregate by design (no per-certificate labels that would explode
+               cardinality or leak inventory into your metrics store). Alert on
+               <em>expiry-bucket growth</em> and <em>delivery failures</em> first — those are
+               the two that page-worthy incidents grow from.</p>
+          </section>
+
+          <section data-page="admin-apitokens" data-title="Automation API tokens" data-group="Administration" data-cap="integrations.api" hidden>
+            <h3>Admin · Automation API tokens <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Bearer tokens for headless callers — Terraform, Ansible, CI pipelines,
+               cert-manager — against the automation API (<code>POST /api/v1/certificates</code>
+               and its status endpoint). Machines get scoped tokens instead of borrowing a
+               human's session.</p>
+            <h4>Setup</h4>
+            <p>Create a token per integration (not per team) and scope it to the templates it
+               may request against. The secret is shown once; store it in your secret manager.
+               Every token's requests still flow through the same issuance policy and audit
+               trail as interactive requests.</p>
+            <h4>Gotchas</h4>
+            <p>Scope tightly: a token limited to one template can't be repurposed quietly.
+               Rotate by creating the replacement first, cutting the caller over, then revoking
+               the old one — revocation is immediate.</p>
+          </section>
+
+          <section data-page="admin-cbom" data-title="Crypto posture (CBOM)" data-group="Administration" data-cap="crypto.cbom" hidden>
+            <h3>Admin · Crypto posture — CBOM &amp; PQC readiness <span class="guide-ed">Commercial / Government</span></h3>
+            <p>A Crypto Bill of Materials over your certificate inventory: the algorithm mix,
+               quantum-vulnerable and deprecated-crypto counts, and — most usefully — the list
+               of certificates to rotate FIRST. Export a CycloneDX CBOM for your SBOM/compliance
+               tooling.</p>
+            <h4>Reading it</h4>
+            <p>The posture cards summarize what your estate runs on (RSA sizes, EC curves,
+               signature algorithms). "Quantum-vulnerable" counts classical public-key certs —
+               which today is most of them; the point is the trend and the rotation order, not
+               the raw number. Weak/deprecated items (small keys, SHA-1) are the immediate
+               to-do list.</p>
+            <h4>Gotchas</h4>
+            <p>The CBOM covers what Certheim can see — grow the fleet scan/inventory first and
+               the CBOM gets truthful with it. PQC readiness is a journey: use the export to
+               brief security leadership, then track the vulnerable count DOWN release by
+               release.</p>
+          </section>
+
+          <section data-page="admin-sshca" data-title="SSH certificate authority" data-group="Administration" data-cap="crypto.ssh_ca" hidden>
+            <h3>Admin · SSH certificate authority <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Sign user and host SSH certificates from a single CA key, so your fleet trusts
+               the CA instead of sprawling <code>authorized_keys</code> and
+               <code>known_hosts</code> files. Issued certs are short-lived, inventoried, and
+               revocable via a key revocation list (KRL).</p>
+            <h4>Setup</h4>
+            <p>Generate (or import) the SSH CA key, then: on servers, set
+               <code>TrustedUserCAKeys</code> to the CA public key to accept user certs; on
+               clients, add <code>@cert-authority</code> to <code>known_hosts</code> to accept
+               host certs. Issue certificates from this page (or automation) with principals
+               and TTLs that match your access model.</p>
+            <h4>Gotchas</h4>
+            <p>Short TTLs are the security win — prefer hours-to-days and reissue, keeping
+               revocation exceptional. When you must revoke, publish the updated KRL to servers
+               (<code>RevokedKeys</code>); a KRL nobody distributes revokes nothing.</p>
+          </section>
+
+          <section data-page="admin-dnssec" data-title="DNSSEC rollover (NetScaler)" data-group="Administration" data-cap="crypto.dnssec" hidden>
+            <h3>Admin · DNSSEC key rollover (NetScaler) <span class="guide-ed">Commercial / Government</span></h3>
+            <p>Citrix NetScaler/ADC signs DNSSEC zones but never rolls its own keys — left
+               alone, signatures age out and the zone collapses into SERVFAIL for every
+               validating resolver. Certheim automates KSK/ZSK rollover over the NITRO API
+               using the RFC 6781 pre-publish / double-signature methods, on schedule.</p>
+            <h4>Setup</h4>
+            <p>Add the NetScaler with its NITRO endpoint (credentials come from the service
+               environment, not the database), select the signed zones, and set the rollover
+               cadence. Certheim tracks each zone's key ages and walks the multi-step rollover
+               automatically; the scheduler pass drives it, so keep the timer healthy (the
+               Service overview health check watches this).</p>
+            <h4>Gotchas</h4>
+            <p>KSK rollovers involve the parent zone: the new DS record must reach the
+               registrar/parent before the old KSK retires — the rollover pauses at that step
+               until the DS is live. Roll ZSKs freely; treat KSK cadence as a planned,
+               registrar-aware event.</p>
+          </section>
+
 
           <section data-page="admin-csrsubject" data-title="CSR Subject" data-group="Administration" hidden>
             <h3>Admin · CSR Subject</h3>
@@ -2405,6 +4008,68 @@
                incident investigation.</p>
           </section>
 
+          <section data-page="admin-sso" data-title="Single sign-on" data-group="Administration" data-cap="governance.sso" hidden>
+            <h3>Admin · Single sign-on</h3>
+            <p>Let users sign in with your identity provider instead of local passwords.
+               Both protocols live on one page, switched with the sub-tabs at the top:</p>
+            <ul>
+              <li><strong>OIDC</strong> — point Certheim at your provider's discovery URL and
+                  paste a client ID/secret (Keycloak, Entra ID, Okta, Google, …).</li>
+              <li><strong>SAML 2.0</strong> — exchange metadata with your IdP; needs the
+                  optional SAML library on the server.</li>
+              <li><strong>SCIM 2.0</strong> provisioning can auto-create and deactivate users
+                  and groups from your IdP, so access tracks your directory.</li>
+            </ul>
+            <p>Map IdP groups to Certheim roles so the right people land with the right access
+               on first login. Client secrets live in the server environment, not the database.</p>
+          </section>
+
+          <section data-page="admin-policy" data-title="Issuance policy" data-group="Administration" data-cap="policy.engine" hidden>
+            <h3>Admin · Issuance policy</h3>
+            <p>The policy engine puts guardrails on every request before it can be signed —
+               so self-service stays safe.</p>
+            <ul>
+              <li>Constrain <strong>key type and size</strong>, <strong>validity</strong>,
+                  allowed <strong>SAN</strong> patterns and name domains, and
+                  <strong>subject</strong> fields.</li>
+              <li>Rules can apply globally or per template; a request that violates policy is
+                  blocked with a clear reason rather than silently issued.</li>
+            </ul>
+            <p>Pair this with the self-service portal to let app teams request their own
+               certificates within boundaries you set.</p>
+          </section>
+
+          <section data-page="admin-roles" data-title="Roles &amp; access" data-group="Administration" data-cap="governance.rbac" hidden>
+            <h3>Admin · Roles &amp; access</h3>
+            <p>Go beyond the basic admin / user split with role-based access control: define
+               roles (e.g. approver, auditor, operator) and grant each only the actions it
+               needs — request, approve, sign, revoke, or read-only review.</p>
+            <p>Where licensed, <strong>multi-tenancy</strong> adds hard isolation so each
+               tenant sees only its own requests, certificates, and audit trail.</p>
+          </section>
+
+          <section data-page="admin-inventory" data-title="Inventory &amp; monitoring" data-group="Administration" data-cap="visibility.inventory" hidden>
+            <h3>Admin · Inventory &amp; monitoring</h3>
+            <p>A unified view of every certificate Certheim knows about — issued here, imported,
+               or discovered on the fleet — with risk intelligence (weak keys, soon-to-expire,
+               unexpected issuers) so nothing slips through.</p>
+            <ul>
+              <li><strong>CT monitoring</strong> watches Certificate Transparency logs for
+                  certificates issued for your domains outside Certheim — shadow / rogue certs
+                  you'd otherwise never see (needs internet egress).</li>
+              <li>Discovered certificates get the same expiry warnings and one-click renewal as
+                  requested ones.</li>
+            </ul>
+          </section>
+
+          <section data-page="admin-portal" data-title="Self-service portal" data-group="Administration" data-cap="selfservice.portal" hidden>
+            <h3>Admin · Self-service portal</h3>
+            <p>Give application teams a scoped, policy-bounded way to request their own
+               certificates without filing a ticket. RBAC decides who can request what, and the
+               policy engine keeps every request within the limits you set — so self-service
+               doesn't mean loss of control.</p>
+          </section>
+
           <section data-page="admin-license" data-title="License" data-group="Administration" hidden>
             <h3>Admin · License</h3>
             <p>Shows the active edition and installs your license.</p>
@@ -2421,6 +4086,93 @@
               <li>A renewal reminder appears here and in the header banner as a license nears
                   expiry.</li>
             </ul>
+          </section>
+
+          <section data-page="gov-cac" data-title="CAC / PIV sign-in" data-group="Government" data-cap="auth.cac" hidden>
+            <h3>Government · CAC / PIV authentication</h3>
+            <p>Authenticate users by client certificate (CAC / PIV) over mTLS instead of, or
+               alongside, passwords. Certheim reads the identity from the presented certificate
+               and maps it to a user.</p>
+            <ul>
+              <li>Recognises <strong>PIV / PIV-I / derived credentials</strong> — UPN, FASC-N,
+                  and PIV-Auth certificate OIDs — so the right account is matched.</li>
+              <li>Works behind the mTLS-terminating reverse proxy described in the setup guide.</li>
+            </ul>
+          </section>
+
+          <section data-page="gov-profiles" data-title="Public-sector profiles" data-group="Government" data-cap="profiles.public_sector" hidden>
+            <h3>Government · Public-sector profiles</h3>
+            <p>Government CSR subject profiles and consent / use-notification banners tailored
+               for public-sector deployments — agency OU conventions and the login banner text
+               required on federal systems, all selectable as first-run presets.</p>
+          </section>
+
+          <section data-page="admin-worm" data-title="Tamper-evident audit" data-group="Government" data-cap="audit.worm" hidden>
+            <h3>Government · Tamper-evident audit (WORM)</h3>
+            <p>A hash-chained, write-once audit log: each entry seals the one before it, so any
+               alteration or deletion is detectable. Run the built-in
+               <strong>integrity verification</strong> to prove the chain is intact — evidence
+               for NIST AU-9 / AU-10.</p>
+          </section>
+
+          <section data-page="admin-fips" data-title="FIPS &amp; key ceremony" data-group="Government" data-cap="assurance.fips_hsm" hidden>
+            <h3>Government · FIPS &amp; key ceremony</h3>
+            <p>A FIPS 140-3 posture probe checks the host kernel and OpenSSL FIPS provider and
+               reports whether the deployment meets your <em>FIPS required</em> setting.</p>
+            <p>The <strong>M-of-N key ceremony</strong> workflow records a quorum-witnessed
+               generation of HSM-backed CA keys, producing a signed ceremony record for your
+               key-management evidence.</p>
+          </section>
+
+          <section data-page="admin-access" data-title="Access control" data-group="Government" data-cap="access.separation_of_duties" hidden>
+            <h3>Government · Access control</h3>
+            <p><strong>Separation of duties</strong> enforces that whoever <em>requests</em> a
+               certificate cannot <em>approve or sign</em> their own request — a different
+               authorized user must (NIST AC-5). Violations are blocked at approval time with a
+               clear reason.</p>
+            <p><strong>Dual control</strong> (four-eyes) additionally requires
+               <strong>M-of-N approvals</strong> before sensitive actions — issuance and
+               revocation — take effect: the action holds pending until the quorum approves
+               (NIST AC-6).</p>
+          </section>
+
+          <section data-page="admin-fpki" data-title="Federal PKI trust" data-group="Government" data-cap="fpki.trust" hidden>
+            <h3>Government · Federal PKI trust</h3>
+            <p>Load and manage Federal PKI trust anchors — Common Policy, the Federal Bridge,
+               DoD, and ECA — and <strong>validate certificate chains</strong> against them, so
+               you can confirm a presented or issued certificate ties back to an approved
+               federal root.</p>
+            <p>Where licensed, Certheim also recognises <strong>PIV / PIV-I / derived
+               credentials</strong> over CAC / mTLS — reading the UPN, FASC-N, and PIV-Auth
+               certificate OIDs to match the right identity.</p>
+          </section>
+
+          <section data-page="admin-compliance" data-title="Compliance evidence" data-group="Government" data-cap="compliance.evidence" hidden>
+            <h3>Government · Compliance evidence</h3>
+            <p>Maps Certheim's controls to <strong>NIST 800-53</strong> and exports
+               <strong>OSCAL / eMASS</strong> evidence for your RMF package and System Security
+               Plan — turning the live configuration into accreditation artifacts instead of a
+               manual spreadsheet exercise.</p>
+            <p>A <strong>STIG / SCAP</strong> self-assessment runs against the <em>live</em>
+               configuration and exports a <strong>CKL checklist</strong>, so you can show where
+               the deployment stands against the benchmark and track remediation.</p>
+          </section>
+
+          <section data-page="admin-cnsa" data-title="CNSA 2.0 &amp; PQC" data-group="Government" data-cap="cnsa.report" hidden>
+            <h3>Government · CNSA 2.0 &amp; post-quantum migration</h3>
+            <p>Assesses the certificate inventory against the <strong>CNSA 2.0</strong>
+               algorithm suite and flags certificates that don't meet the post-quantum mandate,
+               giving you a prioritized list of what to re-issue.</p>
+            <p>A <strong>post-quantum migration</strong> planner and tracked worklist turn that
+               into a plan — inventory what's vulnerable, schedule the cutover, and follow
+               progress to completion.</p>
+          </section>
+
+          <section data-page="admin-airgap" data-title="Air-gapped CRL" data-group="Government" data-cap="airgap.revocation" hidden>
+            <h3>Government · Air-gapped CRL</h3>
+            <p>Generate <strong>offline CRLs</strong> and a static revocation manifest that can
+               be carried into a disconnected enclave, so relying parties on the far side of an
+               air gap can still check revocation without any network path back to Certheim.</p>
           </section>
 
         </div>
@@ -2446,6 +4198,5 @@
 <script src="app.3-admin.js"></script>
 <script src="app.4-misc-boot.js"></script>
 <script src="app.5-guide.js"></script>
-
 </body>
 </html>
