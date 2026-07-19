@@ -111,10 +111,12 @@
 
 <header>
   <h1>Certheim</h1>
-  <!-- Edition / license watermark. Populated from /api/me by loadMe(): shows the
-       edition and, when licensed, "Licensed to <customer>" so a leaked license
-       names its owner. "Community" when unlicensed. -->
-  <span id="edition-badge" class="edition-badge" hidden></span>
+  <!-- Header search: filters issued certificates live; Enter also searches the
+       fleet inventory. Replaces the edition/license watermark, which now lives in
+       the admin Overview (customers don't need the license surfaced app-wide). -->
+  <input type="search" id="header-search" class="header-search" autocomplete="off"
+         placeholder="Search certificates & fleet…"
+         title="Filter issued certificates; press Enter to also search the fleet inventory">
   <div class="header-actions">
     <button id="nav-dashboard" class="header-nav active" type="button">Dashboard</button>
     <button id="nav-tour" class="header-nav" type="button" title="Replay the tutorial">Tour</button>

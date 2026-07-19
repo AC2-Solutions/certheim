@@ -1338,6 +1338,16 @@ async function refreshAdminStats() {
   const sub = (obj) => Object.entries(obj || {})
     .map(([k,v]) => `${escapeHtml(k)}: ${v}`).join(" · ") || "none";
   const dbMB = (s.db.size_bytes / 1024 / 1024).toFixed(2);
+  // License / expiry — surfaced here (admin-only) instead of the top bar.
+  const lic = ((await jsonReq("/admin/license")).body) || {};
+  const licEd = (lic.valid ? (lic.edition || "commercial") : "community");
+  const licEdCap = licEd.charAt(0).toUpperCase() + licEd.slice(1);
+  const licDays = (lic.valid && lic.expires)
+    ? `${Math.max(0, Math.ceil((lic.expires * 1000 - Date.now()) / 86400000))} days`
+    : (lic.valid ? "Perpetual" : "—");
+  const licSub = lic.valid
+    ? `${licEdCap}${lic.customer ? " · Licensed to " + escapeHtml(lic.customer) : ""}`
+    : "unlicensed";
   grid.innerHTML = `
     <div class="stat-tile">
       <div class="label">Jobs total</div>
@@ -1372,6 +1382,11 @@ async function refreshAdminStats() {
       <div class="label">Version</div>
       <div class="value">v${escapeHtml((currentUser && currentUser.version) || "?")}</div>
       <div class="sub">running on this host</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Days remaining</div>
+      <div class="value">${escapeHtml(licDays)}</div>
+      <div class="sub">${licSub}</div>
     </div>
     <div class="stat-tile">
       <div class="label">Email</div>
