@@ -73,6 +73,32 @@ filterSearch.addEventListener("input", debounce(() => { currentPage = 0; refresh
 filterStatus.addEventListener("change", () => { currentPage = 0; refreshJobs(); });
 filterSource.addEventListener("change", () => { currentPage = 0; refreshJobs(); });
 
+// Header search bar (top bar). Live-filters the issued-certificate list; pressing
+// Enter also searches the fleet inventory. Both live on the Dashboard, so switch
+// there first. Mirrors into the per-list search inputs so state stays consistent
+// whichever box is used.
+const headerSearch = document.getElementById("header-search");
+if (headerSearch) {
+  const toDashboard = () => {
+    const b = document.getElementById("nav-dashboard");
+    if (b && !b.classList.contains("active")) b.click();
+  };
+  headerSearch.addEventListener("input", debounce(() => {
+    toDashboard();
+    if (filterSearch) filterSearch.value = headerSearch.value;
+    currentPage = 0; refreshJobs();
+  }, 300));
+  headerSearch.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    toDashboard();
+    const fs = document.getElementById("fleet-search");
+    if (fs && typeof refreshFleetCerts === "function") {
+      fs.value = headerSearch.value;
+      refreshFleetCerts();
+    }
+  });
+}
+
 document.getElementById("filter-expiring-btn")?.addEventListener("click", (e) => {
   expiringActive = !expiringActive;
   e.target.classList.toggle("active", expiringActive);

@@ -505,7 +505,12 @@
   .nav-group-label { font-size: 11px; text-transform: uppercase;
                      letter-spacing: .05em; color: var(--fg-muted);
                      font-weight: 700; padding: 0 12px; margin-bottom: 3px; opacity: .75; }
-  .panel-body { flex: 1 1 auto; min-width: 0; padding: 20px 24px; max-width: 1100px; }
+  .panel-body { flex: 1 1 auto; min-width: 0; padding: 20px 24px; max-width: 1400px; }
+  /* Header search (replaces the license/edition watermark in the top bar). */
+  .header-search { flex: 0 1 320px; min-width: 160px; padding: 6px 10px; font-size: 13px;
+                   background: var(--bg-input); color: var(--fg);
+                   border: 1px solid var(--border); border-radius: 6px; }
+  .header-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .panel-body [data-panel][hidden] { display: none !important; }
   @media (max-width: 760px) {
     .panel-layout { flex-direction: column; }
