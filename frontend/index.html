@@ -797,13 +797,12 @@
           automatically when an endpoint stops serving what was delivered. Destination credentials
           (SSH keys, tokens) live in your secret manager — see the Connection setup wizard / guide.</p>
         <div class="table-wrap">
-        <table style="min-width:980px">
-          <thead><tr><th>Destination</th><th>Transport</th><th>Target</th><th>Key handling</th><th>Verify TLS</th><th>Templates</th><th>Status</th><th></th></tr></thead>
+        <table>
+          <thead><tr><th>Destination</th><th>Transport</th><th>Target</th><th>Templates</th><th>Status</th><th></th></tr></thead>
           <tbody id="automation-destinations-tbody"></tbody>
         </table>
         </div>
-        <h3 style="font-size:13px;margin:14px 0 6px">New destination</h3>
-        <div class="bulk-row" id="automation-dest-new" style="flex-wrap:wrap;gap:8px;align-items:end"></div>
+        <button id="dest-new-btn" class="btn" type="button" style="margin-top:10px">+ New destination</button>
         <span id="automation-dest-status" class="status"></span>
 
         <h3 style="font-size:13px;margin:18px 0 6px">Delivery agents</h3>
@@ -2698,6 +2697,54 @@
       <button id="feedback-submit-btn" type="button">Submit</button>
     </div>
     <div id="feedback-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Admin: create / edit a delivery destination -->
+  <div class="modal" id="dest-edit-modal" hidden>
+    <h2 id="dest-modal-title">Destination</h2>
+    <label for="dest-f-name" class="textarea-label">Name</label>
+    <input type="text" id="dest-f-name" maxlength="64" placeholder="web-tier">
+    <div class="row" style="gap:10px; margin-top:10px">
+      <div style="flex:1">
+        <label for="dest-f-transport" class="textarea-label">Transport</label>
+        <select id="dest-f-transport" class="form-input"></select>
+      </div>
+      <div style="flex:1">
+        <label for="dest-f-keymode" class="textarea-label">Key handling</label>
+        <select id="dest-f-keymode" class="form-input">
+          <option value="destination">key: destination</option>
+          <option value="ship">key: ship</option>
+          <option value="vault">key: vault</option>
+        </select>
+      </div>
+    </div>
+    <div id="dest-row-target" style="margin-top:10px">
+      <label for="dest-f-target" class="textarea-label">Target</label>
+      <input type="text" id="dest-f-target" placeholder="target">
+    </div>
+    <div id="dest-row-reload" style="margin-top:10px">
+      <label for="dest-f-reload" class="textarea-label">Reload command <span class="hint">(SSH)</span></label>
+      <input type="text" id="dest-f-reload" placeholder="systemctl reload nginx">
+    </div>
+    <label for="dest-f-host" class="textarea-label" style="margin-top:10px">Host override
+      <span class="hint">(optional; the agent name for the agent transport)</span></label>
+    <input type="text" id="dest-f-host" placeholder="host override (optional)">
+    <div class="row" style="margin-top:12px; gap:18px; align-items:center">
+      <label><input type="checkbox" id="dest-f-verify"> Verify TLS after delivery</label>
+      <label class="textarea-label" style="margin:0">Port
+        <input type="number" id="dest-f-vport" min="1" max="65535" placeholder="443" style="width:80px"></label>
+      <label><input type="checkbox" id="dest-f-enabled"> Enabled</label>
+    </div>
+    <div id="dest-modal-templates-wrap" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
+      <label class="textarea-label">Attached templates</label>
+      <p class="hint" style="margin:0 0 6px">Certificates issued from these templates are delivered here. Changes apply immediately.</p>
+      <div id="dest-modal-templates" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
+    </div>
+    <div class="row" style="justify-content:flex-end; margin-top:14px; gap:8px">
+      <button class="secondary modal-cancel" type="button">Cancel</button>
+      <button id="dest-modal-save" type="button">Save</button>
+    </div>
+    <div id="dest-modal-status" class="status" style="margin-top:8px"></div>
   </div>
 
   <div class="modal modal-wide" id="feedback-detail-modal" hidden>
