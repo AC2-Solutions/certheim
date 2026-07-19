@@ -1,5 +1,18 @@
 # Certheim Community edition — changelog
 
+## 6.6.0 — 2026-07-19
+
+_Released 2026-07-19. 1 change since community-v6.5.0._
+
+### Features
+
+- **ui:** Delivery destinations as clean rows + Edit dialog (`bc2c1e1`)
+  The destinations table was a dense inline-edit grid (every field an editable widget, status +
+  Save/Delete crammed together) — confusing to scan. Replace it with read-only summary rows (Name,
+  Transport, Target, Template chips, Status) and an Edit/Delete per row; New destination and Edit
+  both open a labeled dialog (transport, target, reload, host, key handling, verify TLS + port,
+  enabled, template attach/detach). Reuses the app's modal system.
+
 ## 6.5.0 — 2026-07-19
 
 _Released 2026-07-19. 1 change since community-v6.4.2._
