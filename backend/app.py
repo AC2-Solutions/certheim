@@ -880,6 +880,10 @@ def init_db():
         conn.execute("ALTER TABLE jobs ADD COLUMN key_vault_path TEXT")
     if "key_storage" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN key_storage TEXT")
+    # The issuing-CA chain captured at sign time, so delivery can ship a
+    # fullchain (leaf + intermediates) without re-fetching the CA out-of-band.
+    if "chain_pem" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN chain_pem TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_group_id ON jobs(group_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_cert_type ON jobs(cert_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires ON jobs(expires_at)")
@@ -2133,7 +2137,8 @@ def _fleet_track_issued(conn, host, cert_pem, notify_email=None, job_id=None):
 
 
 def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
-                        approver_dn=None, log_action="attach_signed_cert"):
+                        approver_dn=None, log_action="attach_signed_cert",
+                        chain_pem=""):
     """Shared completion path for an issued certificate. Verifies the signed
     cert against the job's stored CSR (pubkey match), flips the job to 'issued',
     drops the cert to ISSUED_DIR, fires the job.issued webhook, and emails the
@@ -2142,6 +2147,8 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
 
     `signed_via` is recorded on the job ('manual' | 'openbao'); `approver_dn`
     (set only for an approval-gated sign) records who authorized it.
+    `chain_pem` (the issuing-CA chain, when the backend returns one) is stored
+    so delivery can ship a fullchain without re-fetching the CA out-of-band.
     Returns {"expires_at", "warnings", "target_host"}.
     Raises CompletionError(status, payload) on not-found/wrong-state/mismatch."""
     now = time.time()
@@ -2162,10 +2169,11 @@ def _attach_signed_cert(job_id, cert_pem, *, actor_dn, signed_via,
                 "Verify you uploaded the cert for the correct job."})
         expires_at = _cert_expiry(cert_pem)
         conn.execute(
-            "UPDATE jobs SET status='issued', cert_pem=?, completed_at=?, "
-            "completed_by_dn=?, expires_at=?, error=NULL, signed_via=?, "
-            "approved_by_dn=?, approved_at=? WHERE id=?",
-            (cert_pem, now, actor_dn, expires_at, signed_via, approver_dn,
+            "UPDATE jobs SET status='issued', cert_pem=?, chain_pem=?, "
+            "completed_at=?, completed_by_dn=?, expires_at=?, error=NULL, "
+            "signed_via=?, approved_by_dn=?, approved_at=? WHERE id=?",
+            (cert_pem, (chain_pem or "").strip() or None, now, actor_dn,
+             expires_at, signed_via, approver_dn,
              (now if approver_dn else None), job_id))
         # Auto-track the issued cert for fleet-wide expiry monitoring.
         _fleet_track_issued(conn, row["target_host"], cert_pem,

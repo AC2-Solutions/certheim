@@ -156,7 +156,8 @@ def sign_job(job_id):
     try:
         completed = _attach_signed_cert(
             job_id, result.cert_pem, actor_dn=actor_dn,
-            signed_via=backend, approver_dn=actor_dn, log_action="sign")
+            signed_via=backend, approver_dn=actor_dn, log_action="sign",
+            chain_pem=result.chain_pem)
     except CompletionError as e:
         return jsonify(**e.payload), e.status
 
