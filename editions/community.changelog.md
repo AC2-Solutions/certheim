@@ -1,5 +1,23 @@
 # Certheim Community edition — changelog
 
+## 6.4.1 — 2026-07-19
+
+_Released 2026-07-19. 3 changes since community-v6.4.0._
+
+### Fixes & improvements
+
+- default Commercial licenses to unlimited domains (max_domains=0) (`f6d7269`)
+  The mint tool stamped max_domains=1 into every Commercial license, but the flat-plan Commercial
+  tier promises unlimited domains (website: "unlimited domains and certificates, no per-domain
+  metering") and the app's licensing._default_max_domains already returns 0 for every edition. Align
+  the mint default so new Commercial licenses are uncapped; an explicit positive cap stays available
+  per deployment.
+
+### Other changes
+
+- delivery agent design (Wave 4 - pull agent) (`3d5b646`)
+- delivery-automation design (ACME-first, secret-store, agent, hardened push) (`6c96ea6`)
+
 ## 6.4.0 — 2026-07-16
 
 _Released 2026-07-16. 1 change since community-v6.3.2._
