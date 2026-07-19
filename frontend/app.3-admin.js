@@ -396,106 +396,30 @@ function _destTransportSelect(cls, cur) {
   return `<select class="${cls} form-input" style="width:auto">${opts}</select>`;
 }
 
-function _destFields(tr, d) {
-  const sel = tr.querySelector(".d-transport");
-  const target = tr.querySelector(".d-target");
-  const reload = tr.querySelector(".d-reload");
-  const toggle = () => {
-    target.style.visibility = (sel.value === "pull") ? "hidden" : "visible";
-    target.placeholder = DELIVERY_TARGET_HINT[sel.value] || "target";
-    reload.style.visibility = (sel.value === "ssh") ? "visible" : "hidden";
-  };
-  toggle();
-  sel.addEventListener("change", toggle);
-  return () => ({
-    name: tr.querySelector(".d-name").value.trim(),
-    transport: sel.value,
-    target: target.value.trim(),
-    reload_cmd: reload.value.trim(),
-    key_mode: tr.querySelector(".d-keymode").value,
-    host: tr.querySelector(".d-host").value.trim(),
-    verify_tls: tr.querySelector(".d-verify").checked,
-    verify_port: tr.querySelector(".d-vport").value.trim() || null,
-    enabled: tr.querySelector(".d-enabled").checked,
-  });
+function _destTransportLabel(v) {
+  const m = DELIVERY_BACKENDS.find(([x]) => x === v);
+  return m ? m[1] : v;
 }
 
-function _destRowHtml(d) {
-  const modes = ["destination", "ship", "vault"].map(v =>
-    `<option value="${v}"${(d.key_mode || "destination") === v ? " selected" : ""}>key: ${v}</option>`).join("");
-  const sys = d.created_by === "system"
-    ? ' <span class="pill pill-mute" title="Synced from the template\'s legacy delivery settings">synced</span>' : "";
-  return `
-    <td><input class="d-name form-input" style="width:130px" value="${escapeHtml(d.name || "")}">${sys}</td>
-    <td>${_destTransportSelect("d-transport", d.transport || "ssh")}</td>
-    <td><input class="d-target form-input" style="width:160px;display:block" value="${escapeHtml(d.target || "")}">
-        <input class="d-reload form-input" style="width:160px;display:block;margin-top:2px"
-               placeholder="reload cmd (ssh)" value="${escapeHtml(d.reload_cmd || "")}">
-        <input class="d-host form-input" style="width:160px;display:block;margin-top:2px"
-               placeholder="${(d.transport === "agent") ? "agent name (required)" : "host override (optional)"}"
-               title="For the agent transport this is the enrolled agent's name"
-               value="${escapeHtml(d.host || "")}"></td>
-    <td><select class="d-keymode form-input" style="width:auto">${modes}</select></td>
-    <td style="white-space:nowrap"><input type="checkbox" class="d-verify"${d.verify_tls ? " checked" : ""}
-          title="After delivery, probe the endpoint over TLS and require it to serve the delivered cert">
-        <input class="d-vport form-input" type="number" min="1" max="65535" style="width:70px;display:inline-block"
-               placeholder="443" value="${d.verify_port || ""}"></td>
-    <td class="d-templates"></td>
-    <td>${_destStatusCell(d.state_counts || {})}</td>
-    <td style="white-space:nowrap"><label class="status"><input type="checkbox" class="d-enabled"${d.enabled ? " checked" : ""}> on</label>
-        <button type="button" class="btn d-save" style="padding:2px 10px">Save</button>
-        <button type="button" class="link-btn d-del" style="color:var(--danger)">Delete</button>
-        <span class="d-status status"></span></td>`;
-}
-
-function _destTemplatesCell(tr, d) {
-  const cell = tr.querySelector(".d-templates");
-  cell.innerHTML = "";
-  (d.template_ids || []).forEach(tid => {
+// ---- Clean, read-only summary row (edit happens in a dialog) ----
+function _destRowEl(d) {
+  const chips = (d.template_ids || []).map(tid => {
     const t = myTemplates.find(x => x.id === tid);
-    const chip = document.createElement("span");
-    chip.className = "pill pill-blue";
-    chip.style.marginRight = "4px";
-    chip.innerHTML = `${escapeHtml(t ? t.name : "#" + tid)} <a href="#" title="Detach">×</a>`;
-    chip.querySelector("a").addEventListener("click", async (e) => {
-      e.preventDefault();
-      await jsonReq(`/admin/destinations/${d.id}/detach`, {
-        method: "POST", body: JSON.stringify({ template_id: tid }) });
-      loadAutomation();
-    });
-    cell.appendChild(chip);
-  });
-  const avail = myTemplates.filter(t => !(d.template_ids || []).includes(t.id));
-  if (avail.length) {
-    const sel = document.createElement("select");
-    sel.className = "form-input";
-    sel.style.width = "auto";
-    sel.innerHTML = '<option value="">+ attach template…</option>' +
-      avail.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
-    sel.addEventListener("change", async () => {
-      if (!sel.value) return;
-      await jsonReq(`/admin/destinations/${d.id}/attach`, {
-        method: "POST", body: JSON.stringify({ template_id: parseInt(sel.value, 10) }) });
-      loadAutomation();
-    });
-    cell.appendChild(sel);
-  }
-}
-
-function _destRow(d) {
-  const tr = _rowEl(_destRowHtml(d));
-  const read = _destFields(tr, d);
-  _destTemplatesCell(tr, d);
-  tr.querySelector(".d-save").addEventListener("click", async () => {
-    setStatus(tr.querySelector(".d-status"), "Saving…");
-    const r = await jsonReq(`/admin/destinations/${d.id}`, {
-      method: "PUT", body: JSON.stringify(read()) });
-    if (!r.ok) {
-      setStatus(tr.querySelector(".d-status"), (r.body && r.body.error) || "Save failed", "err");
-      return;
-    }
-    loadAutomation();
-  });
+    return `<span class="pill pill-blue" style="margin-right:4px">${escapeHtml(t ? t.name : "#" + tid)}</span>`;
+  }).join("") || '<span class="status">none</span>';
+  const sys = d.created_by === "system"
+    ? ' <span class="pill pill-mute" title="Synced from a template\'s legacy delivery settings">synced</span>' : "";
+  const off = d.enabled ? "" : ' <span class="pill pill-mute">off</span>';
+  const tr = _rowEl(`
+    <td><strong>${escapeHtml(d.name || "")}</strong>${sys}${off}</td>
+    <td>${escapeHtml(_destTransportLabel(d.transport || "ssh"))}</td>
+    <td>${d.target ? `<code>${escapeHtml(d.target)}</code>` : '<span class="status">—</span>'}</td>
+    <td>${chips}</td>
+    <td>${_destStatusCell(d.state_counts || {})}</td>
+    <td style="white-space:nowrap;text-align:right">
+      <button type="button" class="secondary d-edit" style="padding:3px 12px">Edit</button>
+      <button type="button" class="link-btn d-del" style="color:var(--danger);margin-left:6px">Delete</button></td>`);
+  tr.querySelector(".d-edit").addEventListener("click", () => openDestModal(d));
   tr.querySelector(".d-del").addEventListener("click", async () => {
     if (!confirm(`Delete destination "${d.name}"? Its delivery history is removed too.`)) return;
     const r = await jsonReq(`/admin/destinations/${d.id}`, { method: "DELETE" });
@@ -504,48 +428,120 @@ function _destRow(d) {
   return tr;
 }
 
+// ---- Edit / create dialog ----
+let _destModalId = null;   // null = creating a new destination
+function _destModalToggle() {
+  const v = document.getElementById("dest-f-transport").value;
+  document.getElementById("dest-f-target").placeholder = DELIVERY_TARGET_HINT[v] || "target";
+  document.getElementById("dest-row-target").style.display = (v === "pull") ? "none" : "";
+  document.getElementById("dest-row-reload").style.display = (v === "ssh") ? "" : "none";
+  document.getElementById("dest-f-host").placeholder =
+    (v === "agent") ? "agent name (required)" : "host override (optional)";
+}
+function _renderDestModalTemplates(d) {
+  const cell = document.getElementById("dest-modal-templates");
+  if (!cell) return;
+  cell.innerHTML = "";
+  if (!d) return;
+  (d.template_ids || []).forEach(tid => {
+    const t = myTemplates.find(x => x.id === tid);
+    const chip = document.createElement("span");
+    chip.className = "pill pill-blue"; chip.style.marginRight = "4px";
+    chip.innerHTML = `${escapeHtml(t ? t.name : "#" + tid)} <a href="#" title="Detach">×</a>`;
+    chip.querySelector("a").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await jsonReq(`/admin/destinations/${d.id}/detach`, { method: "POST", body: JSON.stringify({ template_id: tid }) });
+      d.template_ids = (d.template_ids || []).filter(x => x !== tid);
+      _renderDestModalTemplates(d);
+      loadDestinationsData().then(renderDestinations);
+    });
+    cell.appendChild(chip);
+  });
+  const avail = myTemplates.filter(t => !(d.template_ids || []).includes(t.id));
+  if (avail.length) {
+    const sel = document.createElement("select");
+    sel.className = "form-input"; sel.style.width = "auto";
+    sel.innerHTML = '<option value="">+ attach template…</option>' +
+      avail.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    sel.addEventListener("change", async () => {
+      if (!sel.value) return;
+      const tid = parseInt(sel.value, 10);
+      await jsonReq(`/admin/destinations/${d.id}/attach`, { method: "POST", body: JSON.stringify({ template_id: tid }) });
+      d.template_ids = [...(d.template_ids || []), tid];
+      _renderDestModalTemplates(d);
+      loadDestinationsData().then(renderDestinations);
+    });
+    cell.appendChild(sel);
+  }
+}
+function openDestModal(d) {
+  _destModalId = d ? d.id : null;
+  document.getElementById("dest-modal-title").textContent = d ? "Edit destination" : "New destination";
+  document.getElementById("dest-f-name").value = d ? (d.name || "") : "";
+  document.getElementById("dest-f-transport").innerHTML = DELIVERY_BACKENDS.map(([v, lbl]) => {
+    const avail = !_destData || !(v in _destData.transports) || _destData.transports[v];
+    return `<option value="${v}"${(d && d.transport) === v ? " selected" : ""}${avail ? "" : " disabled"}>` +
+           `${lbl}${avail ? "" : " — unavailable"}</option>`;
+  }).join("");
+  document.getElementById("dest-f-target").value = d ? (d.target || "") : "";
+  document.getElementById("dest-f-reload").value = d ? (d.reload_cmd || "") : "";
+  document.getElementById("dest-f-host").value = d ? (d.host || "") : "";
+  document.getElementById("dest-f-keymode").value = d ? (d.key_mode || "destination") : "destination";
+  document.getElementById("dest-f-verify").checked = !!(d && d.verify_tls);
+  document.getElementById("dest-f-vport").value = d ? (d.verify_port || "") : "";
+  document.getElementById("dest-f-enabled").checked = d ? !!d.enabled : true;
+  _destModalToggle();
+  // Templates can only be attached to a destination that already exists.
+  document.getElementById("dest-modal-templates-wrap").hidden = !d;
+  _renderDestModalTemplates(d);
+  setStatus(document.getElementById("dest-modal-status"), "");
+  openModal("dest-edit-modal");
+}
+async function saveDestModal() {
+  const st = document.getElementById("dest-modal-status");
+  setStatus(st, "Saving…");
+  const body = {
+    name: document.getElementById("dest-f-name").value.trim(),
+    transport: document.getElementById("dest-f-transport").value,
+    target: document.getElementById("dest-f-target").value.trim(),
+    reload_cmd: document.getElementById("dest-f-reload").value.trim(),
+    host: document.getElementById("dest-f-host").value.trim(),
+    key_mode: document.getElementById("dest-f-keymode").value,
+    verify_tls: document.getElementById("dest-f-verify").checked,
+    verify_port: document.getElementById("dest-f-vport").value.trim() || null,
+    enabled: document.getElementById("dest-f-enabled").checked,
+  };
+  const r = _destModalId
+    ? await jsonReq(`/admin/destinations/${_destModalId}`, { method: "PUT", body: JSON.stringify(body) })
+    : await jsonReq("/admin/destinations", { method: "POST", body: JSON.stringify(body) });
+  if (!r.ok) { setStatus(st, (r.body && r.body.error) || "Save failed", "err"); return; }
+  closeModal();
+  loadAutomation();
+}
+
 function renderDestinations() {
   const tbody = document.getElementById("automation-destinations-tbody");
-  const form = document.getElementById("automation-dest-new");
-  if (!tbody || !form) return;
+  if (!tbody) return;
   tbody.innerHTML = "";
-  form.innerHTML = "";
+  const newBtn = document.getElementById("dest-new-btn");
   if (!_destData) {
-    tbody.innerHTML = '<tr><td colspan="8" class="status">Delivery destinations are not ' +
+    tbody.innerHTML = '<tr><td colspan="6" class="status">Delivery destinations are not ' +
       'available in this deployment (Commercial feature).</td></tr>';
+    if (newBtn) newBtn.hidden = true;
     return;
   }
+  if (newBtn) newBtn.hidden = false;
   if (!_destData.destinations.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="status">No destinations yet — create one below. ' +
+    tbody.innerHTML = '<tr><td colspan="6" class="status">No destinations yet — add one. ' +
       'Templates with legacy delivery settings are synced in automatically.</td></tr>';
   }
-  _destData.destinations.forEach(d => tbody.appendChild(_destRow(d)));
-  // create form
-  form.innerHTML = `
-    <label class="textarea-label" style="margin:0">Name
-      <input id="dest-new-name" class="form-input" style="width:150px" placeholder="web-tier"></label>
-    <label class="textarea-label" style="margin:0">Transport
-      ${_destTransportSelect("", "ssh").replace('class=" form-input"', 'id="dest-new-transport" class="form-input"')}</label>
-    <label class="textarea-label" style="margin:0">Target
-      <input id="dest-new-target" class="form-input" style="width:190px" placeholder="/etc/ssl/delivered"></label>
-    <button id="dest-new-btn" class="btn" type="button">Create destination</button>`;
-  document.getElementById("dest-new-btn").addEventListener("click", async () => {
-    const st = document.getElementById("automation-dest-status");
-    setStatus(st, "Creating…");
-    const r = await jsonReq("/admin/destinations", {
-      method: "POST", body: JSON.stringify({
-        name: document.getElementById("dest-new-name").value.trim(),
-        transport: document.getElementById("dest-new-transport").value,
-        target: document.getElementById("dest-new-target").value.trim(),
-      }) });
-    if (!r.ok) {
-      setStatus(st, (r.body && r.body.error) || "Create failed", "err");
-      return;
-    }
-    setStatus(st, "Destination created.", "ok");
-    loadAutomation();
-  });
+  _destData.destinations.forEach(d => tbody.appendChild(_destRowEl(d)));
 }
+
+document.getElementById("dest-new-btn")?.addEventListener("click", () => openDestModal(null));
+document.getElementById("dest-modal-save")?.addEventListener("click", saveDestModal);
+document.getElementById("dest-f-transport")?.addEventListener("change", _destModalToggle);
+allModalIds.push("dest-edit-modal");
 
 // --- Renewal row: auto-renew / lead days ---
 function _autoRenewalRow(t) {
