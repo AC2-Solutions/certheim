@@ -28,7 +28,8 @@ def _auto_sign_jobs(job_ids, template_id):
                                 actor="auto-sign:" + g.identity["dn"])
             _attach_signed_cert(jid, res.cert_pem, actor_dn=g.identity["dn"],
                                 signed_via=policy["signer_backend"],
-                                approver_dn=None, log_action="auto_sign")
+                                approver_dn=None, log_action="auto_sign",
+                                chain_pem=res.chain_pem)
             log_event("auto_sign", "issued", job_id=jid, backend=policy["signer_backend"])
         except Exception as e:  # noqa: BLE001 - never fail the request over auto-sign
             log_event("auto_sign", "error", job_id=jid, error=str(e)[:160])
