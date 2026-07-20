@@ -1,5 +1,26 @@
 # Certheim Community edition — changelog
 
+## 6.7.0 — 2026-07-20
+
+_Released 2026-07-20. 1 change since community-v6.6.1._
+
+### Features
+
+- cert collections C5 - Collections admin UI (`bac29ea2`)
+  Admin panel (Delivery group) to manage Cert Collections, mirroring the Destinations page per the
+  house UI conventions: clean read-only rows + a managed Edit/manage dialog (not a dense inline
+  grid).
+  - List: Collection (name + slug), Owner, Mode (auto/publish), Members, Your role.
+  - Manage dialog: create/edit fields (slug/name/owner/mode/description); embedded Members (add /
+    per-member Publish when staged / Remove), attached Destinations (attach/detach), Roles
+    (grant/revoke), and "Release all staged".
+  - Capability-aware: shows a "Commercial feature" note when /api/collections is unavailable
+    (Community), matching the Destinations pattern; API enforces per-collection
+    owner/maintainer/viewer regardless.
+  Frontend is shared (Community -> propagates up). Can't node --check here; verified brace/paren
+  balance, id cross-refs (all 25 element ids present in index.html), and helper existence. Browser
+  QA on the pull-test image per the usual clm UI deploy loop.
+
 ## 6.6.1 — 2026-07-20
 
 _Released 2026-07-20. 2 changes since community-v6.6.0._
