@@ -479,6 +479,7 @@
         <span class="nav-group-label">Issuance</span>
         <button type="button" data-panel="templates">Templates</button>
         <button type="button" data-panel="automation">Automation</button>
+        <button type="button" data-panel="collections">Collections</button>
         <button type="button" data-panel="signingca">Signing / CA</button>
         <button type="button" data-panel="sealedkeystore">Encrypted keystore</button>
         <button type="button" data-panel="enrollsign">Enrollment &amp; signing</button>
@@ -1107,6 +1108,22 @@
     </section>
 
   
+
+    <section class="card admin-panel" data-panel="collections" hidden>
+      <h2>Collections</h2>
+      <p class="hint" style="max-width:820px">A <strong>collection</strong> is an owned, named container of certificates that
+        share an automation binding. Delivery is keyed by <code>(collection, member)</code> instead of a bare hostname, so what
+        reaches a host is governed by <em>who owns the collection</em> — not by who can get a name issued. An agent binds to a
+        whole collection and renders every member from <code>secret/csr-certs/&lt;tenant&gt;/&lt;slug&gt;/&lt;member&gt;</code>.</p>
+      <div class="table-wrap">
+        <table style="min-width:820px">
+          <thead><tr><th>Collection</th><th>Owner</th><th>Mode</th><th>Members</th><th>Your role</th><th></th></tr></thead>
+          <tbody id="collections-tbody"></tbody>
+        </table>
+      </div>
+      <button id="coll-new-btn" class="btn" type="button" style="margin-top:10px">+ New collection</button>
+      <span id="collections-status" class="status"></span>
+    </section>
 
     <section class="card admin-panel" data-panel="signingca" hidden>
       <div class="card-header">
@@ -2745,6 +2762,80 @@
       <button id="dest-modal-save" type="button">Save</button>
     </div>
     <div id="dest-modal-status" class="status" style="margin-top:8px"></div>
+  </div>
+
+  <div class="modal modal-wide" id="coll-edit-modal" hidden>
+    <h2 id="coll-modal-title">Collection</h2>
+    <div class="row" style="gap:10px">
+      <div style="flex:1">
+        <label for="coll-f-slug" class="textarea-label">Slug <span class="hint">(URL/path segment; immutable once delivered)</span></label>
+        <input type="text" id="coll-f-slug" maxlength="63" placeholder="team-web">
+      </div>
+      <div style="flex:1">
+        <label for="coll-f-name" class="textarea-label">Name</label>
+        <input type="text" id="coll-f-name" maxlength="64" placeholder="Team Web">
+      </div>
+    </div>
+    <div class="row" style="gap:10px; margin-top:10px">
+      <div style="flex:1">
+        <label for="coll-f-ownertype" class="textarea-label">Owner</label>
+        <select id="coll-f-ownertype" class="form-input">
+          <option value="user">You (user-owned)</option>
+          <option value="group">A group</option>
+        </select>
+      </div>
+      <div style="flex:1" id="coll-owner-group-wrap" hidden>
+        <label for="coll-f-ownerid" class="textarea-label">Group id</label>
+        <input type="text" id="coll-f-ownerid" placeholder="group id">
+      </div>
+      <div style="flex:1">
+        <label for="coll-f-mode" class="textarea-label">Automation</label>
+        <select id="coll-f-mode" class="form-input">
+          <option value="auto">auto — deliver on issue/renew</option>
+          <option value="publish">publish — stage, then release</option>
+        </select>
+      </div>
+    </div>
+    <label for="coll-f-desc" class="textarea-label" style="margin-top:10px">Description <span class="hint">(optional)</span></label>
+    <input type="text" id="coll-f-desc" maxlength="200" placeholder="what this collection serves">
+
+    <div id="coll-manage" hidden>
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <label class="textarea-label" style="margin:0">Members</label>
+          <button id="coll-release-all" class="secondary" type="button" style="padding:3px 12px" hidden>Release all staged</button>
+        </div>
+        <p class="hint" style="margin:0 0 6px">In <em>auto</em> mode a member ships on add and on renewal. In <em>publish</em> mode it stages until you release it.</p>
+        <div id="coll-members" style="display:flex; flex-direction:column; gap:4px"></div>
+        <div class="bulk-row" style="gap:8px; align-items:end; margin-top:8px">
+          <label class="textarea-label" style="margin:0">Member name
+            <input id="coll-m-name" class="form-input" style="width:150px" placeholder="www"></label>
+          <label class="textarea-label" style="margin:0">Cert (job id)
+            <input id="coll-m-job" class="form-input" style="width:220px" placeholder="issued job id"></label>
+          <button id="coll-m-add" class="btn" type="button" style="padding:4px 12px">Add member</button>
+        </div>
+      </div>
+      <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
+        <label class="textarea-label">Attached destinations <span class="hint">(also push each member to these)</span></label>
+        <div id="coll-destinations" class="chip-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
+      </div>
+      <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
+        <label class="textarea-label">Roles</label>
+        <div id="coll-roles" style="display:flex; flex-direction:column; gap:4px"></div>
+        <div class="bulk-row" style="gap:8px; align-items:end; margin-top:8px">
+          <select id="coll-r-ptype" class="form-input" style="width:auto"><option value="user">user</option><option value="group">group</option></select>
+          <input id="coll-r-pid" class="form-input" style="width:220px" placeholder="dn or group id">
+          <select id="coll-r-role" class="form-input" style="width:auto"><option value="viewer">viewer</option><option value="maintainer">maintainer</option><option value="owner">owner</option></select>
+          <button id="coll-r-add" class="btn" type="button" style="padding:4px 12px">Grant</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:14px; gap:8px">
+      <button class="secondary modal-cancel" type="button">Close</button>
+      <button id="coll-modal-save" type="button">Save</button>
+    </div>
+    <div id="coll-modal-status" class="status" style="margin-top:8px"></div>
   </div>
 
   <div class="modal modal-wide" id="feedback-detail-modal" hidden>

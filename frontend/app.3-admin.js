@@ -5371,3 +5371,237 @@ document.getElementById("smime-issue")?.addEventListener("click", async () => {
   document.getElementById("smime-pass").value = "";
   setStatus(st, "Issued " + name.trim() + " — deliver it + the passphrase out of band.", "ok");
 });
+
+// --- Collections (cert-collections C5) ---
+// Owned, named containers of certs. Delivery is keyed by (collection, member);
+// ownership - not who can issue a name - governs what a host receives. Config-
+// plane CRUD is allowed regardless of licensed capability (like Destinations);
+// `available` gates the delivery-execution features in the UI copy.
+let _collData = null;      // array of collections (list view) or null
+let _collAvailable = false;
+let _collModalId = null;   // null = creating; else the collection id being managed
+
+async function loadCollections() {
+  const r = await jsonReq("/collections");
+  if (r.ok) { _collData = r.body.collections || []; _collAvailable = !!r.body.available; }
+  else { _collData = null; }
+  renderCollections();
+}
+
+function _collRoleCan(role, need) {
+  const rank = { viewer: 1, maintainer: 2, owner: 3 };
+  return role && (rank[role] || 0) >= (rank[need] || 99);
+}
+
+function _collRowEl(c) {
+  const owner = c.owner_type === "group"
+    ? `<span class="pill pill-mute">group #${escapeHtml(String(c.owner_id))}</span>`
+    : `<span class="status">${escapeHtml((c.owner_id || "").replace(/^CN=([^,]+).*$/i, "$1"))}</span>`;
+  const mode = c.automation_mode === "publish"
+    ? '<span class="pill pill-mute">publish</span>' : '<span class="pill pill-ok">auto</span>';
+  const canManage = _collRoleCan(c.your_role, "maintainer");
+  const canDelete = _collRoleCan(c.your_role, "owner");
+  const tr = _rowEl(`
+    <td><strong>${escapeHtml(c.name || "")}</strong> <code>${escapeHtml(c.slug)}</code></td>
+    <td>${owner}</td>
+    <td>${mode}</td>
+    <td>${c.member_count || 0}</td>
+    <td><span class="pill pill-blue">${escapeHtml(c.your_role || "")}</span></td>
+    <td style="white-space:nowrap;text-align:right">
+      <button type="button" class="secondary c-manage" style="padding:3px 12px">${canManage ? "Manage" : "View"}</button>
+      ${canDelete ? '<button type="button" class="link-btn c-del" style="color:var(--danger);margin-left:6px">Delete</button>' : ""}</td>`);
+  tr.querySelector(".c-manage").addEventListener("click", () => openCollModal(c.id));
+  const del = tr.querySelector(".c-del");
+  if (del) del.addEventListener("click", async () => {
+    if (!confirm(`Delete collection "${c.name}"? Its members and delivery bindings are removed.`)) return;
+    const r = await jsonReq(`/collections/${c.id}`, { method: "DELETE" });
+    if (r.ok) loadCollections();
+  });
+  return tr;
+}
+
+function renderCollections() {
+  const tbody = document.getElementById("collections-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const newBtn = document.getElementById("coll-new-btn");
+  if (_collData === null) {
+    tbody.innerHTML = '<tr><td colspan="6" class="status">Collections are not available in this deployment (Commercial feature).</td></tr>';
+    if (newBtn) newBtn.hidden = true;
+    return;
+  }
+  if (newBtn) newBtn.hidden = false;
+  if (!_collData.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="status">No collections yet — create one.</td></tr>';
+  }
+  _collData.forEach(c => tbody.appendChild(_collRowEl(c)));
+}
+
+function _collOwnerToggle() {
+  const grp = document.getElementById("coll-f-ownertype").value === "group";
+  document.getElementById("coll-owner-group-wrap").hidden = !grp;
+}
+
+async function openCollModal(cid) {
+  _collModalId = cid || null;
+  const title = document.getElementById("coll-modal-title");
+  const manage = document.getElementById("coll-manage");
+  document.getElementById("coll-f-slug").disabled = false;
+  ["coll-f-name", "coll-f-desc", "coll-f-ownerid"].forEach(id => { document.getElementById(id).value = ""; });
+  document.getElementById("coll-f-slug").value = "";
+  document.getElementById("coll-f-ownertype").value = "user";
+  document.getElementById("coll-f-mode").value = "auto";
+  _collOwnerToggle();
+  setStatus(document.getElementById("coll-modal-status"), "");
+  if (!cid) {
+    title.textContent = "New collection";
+    manage.hidden = true;
+    openModal("coll-edit-modal");
+    return;
+  }
+  const r = await jsonReq(`/collections/${cid}`);
+  if (!r.ok) { setStatus(document.getElementById("collections-status"), "Could not load collection", "err"); return; }
+  const c = r.body.collection;
+  title.textContent = `Collection · ${c.name}`;
+  document.getElementById("coll-f-slug").value = c.slug;
+  document.getElementById("coll-f-slug").disabled = true;   // immutable in practice
+  document.getElementById("coll-f-name").value = c.name || "";
+  document.getElementById("coll-f-desc").value = c.description || "";
+  document.getElementById("coll-f-ownertype").value = c.owner_type;
+  document.getElementById("coll-f-ownerid").value = c.owner_type === "group" ? c.owner_id : "";
+  document.getElementById("coll-f-mode").value = c.automation_mode;
+  _collOwnerToggle();
+  manage.hidden = false;
+  _renderCollMembers(c);
+  _renderCollRoles(c);
+  await _renderCollDestinations(c);
+  document.getElementById("coll-release-all").hidden = !(c.automation_mode === "publish");
+  openModal("coll-edit-modal");
+}
+
+function _renderCollMembers(c) {
+  const box = document.getElementById("coll-members");
+  box.innerHTML = "";
+  const members = c.members || [];
+  if (!members.length) { box.innerHTML = '<span class="status">No members yet.</span>'; }
+  members.forEach(m => {
+    const staged = (m.job_id || "") !== (m.published_job_id || "");
+    const state = m.published_job_id
+      ? (staged ? '<span class="pill pill-warn" title="staged, not released">staged</span>' : '<span class="pill pill-ok">published</span>')
+      : '<span class="pill pill-mute">unpublished</span>';
+    const row = document.createElement("div");
+    row.className = "row"; row.style.cssText = "gap:8px;align-items:center;justify-content:space-between";
+    row.innerHTML = `<span><code>${escapeHtml(m.member_name)}</code> ${state}
+        <span class="status" style="margin-left:6px">${escapeHtml((m.job_id || "").slice(0, 10))}</span></span>
+      <span style="white-space:nowrap">
+        ${staged ? '<button type="button" class="secondary m-pub" style="padding:2px 10px">Publish</button>' : ""}
+        <button type="button" class="link-btn m-del" style="color:var(--danger);margin-left:6px">Remove</button></span>`;
+    const pub = row.querySelector(".m-pub");
+    if (pub) pub.addEventListener("click", async () => {
+      const r = await jsonReq(`/collections/${c.id}/members/${encodeURIComponent(m.member_name)}/publish`, { method: "POST", body: "{}" });
+      if (r.ok) openCollModal(c.id);
+    });
+    row.querySelector(".m-del").addEventListener("click", async () => {
+      const r = await jsonReq(`/collections/${c.id}/members/${encodeURIComponent(m.member_name)}`, { method: "DELETE" });
+      if (r.ok) openCollModal(c.id);
+    });
+    box.appendChild(row);
+  });
+}
+
+function _renderCollRoles(c) {
+  const box = document.getElementById("coll-roles");
+  box.innerHTML = "";
+  (c.roles || []).forEach(r => {
+    const row = document.createElement("div");
+    row.className = "row"; row.style.cssText = "gap:8px;align-items:center;justify-content:space-between";
+    row.innerHTML = `<span><span class="pill pill-mute">${escapeHtml(r.principal_type)}</span>
+        ${escapeHtml(r.principal_id)} → <span class="pill pill-blue">${escapeHtml(r.role)}</span></span>
+      <button type="button" class="link-btn r-del" style="color:var(--danger)">Revoke</button>`;
+    row.querySelector(".r-del").addEventListener("click", async () => {
+      const rr = await jsonReq(`/collections/${c.id}/roles`, { method: "DELETE",
+        body: JSON.stringify({ principal_type: r.principal_type, principal_id: r.principal_id }) });
+      if (rr.ok) openCollModal(c.id);
+    });
+    box.appendChild(row);
+  });
+}
+
+async function _renderCollDestinations(c) {
+  const box = document.getElementById("coll-destinations");
+  box.innerHTML = "";
+  (c.destinations || []).forEach(d => {
+    const chip = document.createElement("span");
+    chip.className = "pill pill-blue"; chip.style.marginRight = "4px";
+    chip.innerHTML = `${escapeHtml(d.name)} <a href="#" title="Detach">×</a>`;
+    chip.querySelector("a").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await jsonReq(`/collections/${c.id}/destinations`, { method: "DELETE", body: JSON.stringify({ destination_id: d.id }) });
+      openCollModal(c.id);
+    });
+    box.appendChild(chip);
+  });
+  const all = await jsonReq("/admin/destinations");
+  const attached = new Set((c.destinations || []).map(d => d.id));
+  const avail = (all.ok && all.body.destinations ? all.body.destinations : []).filter(d => !attached.has(d.id));
+  if (avail.length) {
+    const sel = document.createElement("select");
+    sel.className = "form-input"; sel.style.width = "auto";
+    sel.innerHTML = '<option value="">+ attach destination…</option>' +
+      avail.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
+    sel.addEventListener("change", async () => {
+      if (!sel.value) return;
+      await jsonReq(`/collections/${c.id}/destinations`, { method: "POST", body: JSON.stringify({ destination_id: parseInt(sel.value, 10) }) });
+      openCollModal(c.id);
+    });
+    box.appendChild(sel);
+  }
+}
+
+async function saveCollModal() {
+  const st = document.getElementById("coll-modal-status");
+  setStatus(st, "Saving…");
+  const ownerType = document.getElementById("coll-f-ownertype").value;
+  const body = {
+    slug: document.getElementById("coll-f-slug").value.trim(),
+    name: document.getElementById("coll-f-name").value.trim(),
+    description: document.getElementById("coll-f-desc").value.trim(),
+    automation_mode: document.getElementById("coll-f-mode").value,
+    owner_type: ownerType,
+  };
+  if (ownerType === "group") body.owner_id = document.getElementById("coll-f-ownerid").value.trim();
+  const r = _collModalId
+    ? await jsonReq(`/collections/${_collModalId}`, { method: "PUT", body: JSON.stringify(body) })
+    : await jsonReq("/collections", { method: "POST", body: JSON.stringify(body) });
+  if (!r.ok) { setStatus(st, (r.body && r.body.error) || "Save failed", "err"); return; }
+  closeModal();
+  loadCollections();
+}
+
+document.getElementById("coll-new-btn")?.addEventListener("click", () => openCollModal(null));
+document.getElementById("coll-modal-save")?.addEventListener("click", saveCollModal);
+document.getElementById("coll-f-ownertype")?.addEventListener("change", _collOwnerToggle);
+document.getElementById("coll-m-add")?.addEventListener("click", async () => {
+  if (!_collModalId) return;
+  const name = document.getElementById("coll-m-name").value.trim();
+  const job = document.getElementById("coll-m-job").value.trim();
+  const r = await jsonReq(`/collections/${_collModalId}/members`, { method: "POST", body: JSON.stringify({ member_name: name, job_id: job }) });
+  if (r.ok) { document.getElementById("coll-m-name").value = ""; document.getElementById("coll-m-job").value = ""; openCollModal(_collModalId); }
+  else setStatus(document.getElementById("coll-modal-status"), (r.body && r.body.error) || "Add failed", "err");
+});
+document.getElementById("coll-r-add")?.addEventListener("click", async () => {
+  if (!_collModalId) return;
+  const r = await jsonReq(`/collections/${_collModalId}/roles`, { method: "POST", body: JSON.stringify({
+    principal_type: document.getElementById("coll-r-ptype").value,
+    principal_id: document.getElementById("coll-r-pid").value.trim(),
+    role: document.getElementById("coll-r-role").value }) });
+  if (r.ok) { document.getElementById("coll-r-pid").value = ""; openCollModal(_collModalId); }
+  else setStatus(document.getElementById("coll-modal-status"), (r.body && r.body.error) || "Grant failed", "err");
+});
+document.getElementById("coll-release-all")?.addEventListener("click", async () => {
+  if (!_collModalId) return;
+  const r = await jsonReq(`/collections/${_collModalId}/publish`, { method: "POST", body: "{}" });
+  if (r.ok) openCollModal(_collModalId);
+});
+document.querySelector('#admin-nav button[data-panel="collections"]')?.addEventListener("click", loadCollections);
+allModalIds.push("coll-edit-modal");
