@@ -1,5 +1,20 @@
 # Certheim Community edition — changelog
 
+## 6.6.1 — 2026-07-20
+
+_Released 2026-07-20. 2 changes since community-v6.6.0._
+
+### Fixes & improvements
+
+- forward the issuing-CA chain on auto-signed certificates (`4d36416`)
+  The auto-sign-at-request path dropped SignResult.chain_pem, so auto-signed certs stored no chain
+  and delivered leaf-only. Forward it to _attach_signed_cert like the approve-and-sign and auto-
+  renew paths already do.
+
+### Other changes
+
+- persist the issuing-CA chain on issued jobs (`62f0cca`)
+
 ## 6.6.0 — 2026-07-19
 
 _Released 2026-07-19. 1 change since community-v6.5.0._
