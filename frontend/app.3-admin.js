@@ -1749,6 +1749,8 @@ function openUserEdit(user) {
   document.getElementById("user-edit-active").checked = !!user.is_active;
   document.getElementById("user-edit-notes").value = user.notes || "";
   _renderUserEditGroups(user);
+  _renderUserEditRole(user);
+  _renderUserEditPerms(user);
   const pwField = document.getElementById("user-edit-password");
   if (pwField) pwField.value = "";
   const isSelf = currentUser && user.dn === currentUser.dn;
@@ -1764,6 +1766,53 @@ function openUserEdit(user) {
   allModalIds.forEach(m => { document.getElementById(m).hidden = (m !== "user-edit-modal"); });
   overlay.hidden = false;
 }
+
+// RBAC role in the account dialog: everything about one account in one place.
+async function _renderUserEditRole(user) {
+  const row = document.getElementById("user-edit-role-row");
+  if (!row) return;
+  if (!capAvail("governance.rbac") || user.is_admin) { row.hidden = true; return; }
+  if (!_rbacRoles.length) await _rbacLoadRoles();
+  if (!_rbacUsers.length) await _rbacLoadUsers();
+  const sel = document.getElementById("user-edit-role");
+  const cur = (_rbacUsers.find(x => x.dn === user.dn) || {}).role || "member";
+  sel.innerHTML = _rbacRoles.map(r =>
+    `<option value="${escapeHtml(r.slug)}" ${r.slug === cur ? "selected" : ""}>${escapeHtml(r.name || r.slug)}</option>`).join("");
+  sel.dataset.orig = cur;
+  row.hidden = false;
+}
+
+function _renderUserEditPerms(user) {
+  const det = document.getElementById("user-edit-effperms");
+  if (!det) return;
+  if (!capAvail("governance.rbac")) { det.hidden = true; return; }
+  det.hidden = false;
+  det.open = false;
+  det.dataset.dn = user.dn;
+  det.dataset.loaded = "";
+  document.getElementById("user-edit-effperms-out").textContent = "Expand to load…";
+}
+
+document.getElementById("user-edit-effperms")?.addEventListener("toggle", async () => {
+  const det = document.getElementById("user-edit-effperms");
+  if (!det.open || det.dataset.loaded === "1") return;
+  const out = document.getElementById("user-edit-effperms-out");
+  out.textContent = "Loading…";
+  const r = await jsonReq("/admin/rbac/effective-perms?dn=" + encodeURIComponent(det.dataset.dn));
+  if (!r.ok || !r.body) { out.textContent = "Lookup failed."; return; }
+  const d = r.body;
+  if (d.is_admin) { out.innerHTML = '<span class="pill pill-purple">admin</span> holds every permission.'; det.dataset.loaded = "1"; return; }
+  const rows = (d.effective || []).map((perm) => {
+    const via = (d.sources[perm] || []).map((src) => src.via === "direct"
+      ? `own role <code>${escapeHtml(src.role)}</code>`
+      : `group <strong>${escapeHtml(src.group)}</strong> → <code>${escapeHtml(src.role)}</code>`).join(", ");
+    return `<tr><td><code>${escapeHtml(perm)}</code></td><td class="muted">${via}</td></tr>`;
+  }).join("");
+  out.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Permission</th><th>Granted via</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="2" class="muted">No permissions.</td></tr>'}</tbody></table></div>`;
+  det.dataset.loaded = "1";
+});
 
 // Live preview of the username as the admin types first/last.
 function _previewEditUsername() {
@@ -1817,6 +1866,14 @@ document.getElementById("user-edit-save-btn").addEventListener("click", async ()
   if (!r.ok) {
     setStatus(status, (r.body && r.body.error) || "Save failed", "err");
     return;
+  }
+  const roleSel = document.getElementById("user-edit-role");
+  const roleRow = document.getElementById("user-edit-role-row");
+  if (roleSel && roleRow && !roleRow.hidden && roleSel.value !== roleSel.dataset.orig) {
+    const rr = await jsonReq("/admin/users/role", {
+      method: "POST", body: JSON.stringify({ dn, role: roleSel.value }) });
+    if (!rr.ok) { setStatus(status, (rr.body && rr.body.error) || "Role change failed", "err"); return; }
+    _rbacUsers = [];   // stale: reload on next use
   }
   const newName = r.body && r.body.username;
   setStatus(status, newName ? `Saved — username: ${newName}` : "Saved", "ok");
@@ -3833,6 +3890,19 @@ document.getElementById("ac-ct-poll")?.addEventListener("click", async () => {
   }
 });
 
+// ===== Access panel sub-tabs (Accounts | Groups | Roles) =====
+function _accessShowTab(name) {
+  document.querySelectorAll("#access-subtabs .subtab").forEach(x =>
+    x.classList.toggle("active", x.dataset.subtab === name));
+  document.querySelectorAll('[data-panel="access"] [data-subtabpanel]')
+    .forEach(pn => { pn.hidden = (pn.dataset.subtabpanel !== name); });
+  // Roles data also feeds the Groups tab's role-attachment block.
+  if ((name === "roles" || name === "groups") && typeof refreshRoles === "function") refreshRoles();
+}
+document.querySelectorAll("#access-subtabs .subtab").forEach(b => {
+  b.addEventListener("click", () => _accessShowTab(b.dataset.subtab));
+});
+
 // ===== Roles & access (RBAC — tabbed manager, R3.1) =====
 let _rbacCatalog = [];
 let _rbacRoles = [];
@@ -3852,11 +3922,16 @@ async function refreshRoles() {
       note.hidden = false;
     }
     ui.hidden = true;
+    const ga = document.getElementById("rbac-group-access");
+    if (ga) ga.hidden = true;
     return;
   }
   if (note) note.hidden = true;
   ui.hidden = false;
   await Promise.all([_rbacLoadCatalog(), _rbacLoadRoles(), _rbacLoadGroups(), _rbacLoadUsers()]);
+  const ga = document.getElementById("rbac-group-access");
+  if (ga) ga.hidden = false;
+  _rbacRenderCatalog();
 }
 
 // ---- sub-tab switching ----

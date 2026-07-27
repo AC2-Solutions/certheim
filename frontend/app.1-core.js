@@ -539,7 +539,15 @@ function _switchPanel(navId, panelsId, name) {
     b.classList.toggle("active", b.dataset.panel === name);
   });
 }
-function showAdminPanel(name) { _switchPanel("admin-nav", "admin-panels", name); }
+// users/groups/roles were merged into the single Access panel; old hashes
+// (#admin/users etc.) land on the right tab so bookmarks keep working.
+const _ACCESS_TAB_ALIAS = { users: "accounts", groups: "groups", roles: "roles" };
+function showAdminPanel(name) {
+  const tab = _ACCESS_TAB_ALIAS[name];
+  if (tab) name = "access";
+  _switchPanel("admin-nav", "admin-panels", name);
+  if (name === "access" && typeof _accessShowTab === "function" && tab) _accessShowTab(tab);
+}
 function showMainPanel(name)  { _switchPanel("main-nav", "main-panels", name); }
 
 // Nav clicks set the hash; applyRoute() does the actual switching, so each
