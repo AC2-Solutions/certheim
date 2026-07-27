@@ -467,9 +467,7 @@
       </div>
       <div class="nav-group">
         <span class="nav-group-label">Access</span>
-        <button type="button" data-panel="users">Users</button>
-        <button type="button" data-panel="groups">Groups</button>
-        <button type="button" data-panel="roles">Roles &amp; access</button>
+        <button type="button" data-panel="access">Users &amp; roles</button>
         <button type="button" data-panel="tenants">Tenants</button>
         <button type="button" data-panel="authentication">Authentication</button>
         <button type="button" data-panel="sso">Single sign-on</button>
@@ -572,9 +570,15 @@
       </div>
     </section>
 
-    <section class="card admin-panel" data-panel="users">
+    <section class="card admin-panel" data-panel="access">
+      <div class="subtabs" id="access-subtabs">
+        <button type="button" class="subtab active" data-subtab="accounts">Accounts</button>
+        <button type="button" class="subtab" data-subtab="groups">Groups</button>
+        <button type="button" class="subtab" data-subtab="roles">Roles &amp; permissions</button>
+      </div>
+      <div data-subtabpanel="accounts">
       <div class="card-header">
-        <h2>Users</h2>
+        <h3 style="margin:0">Accounts</h3>
         <div class="row">
           <button id="admin-users-create" type="button">+ Create user</button>
           <button id="admin-users-refresh" class="secondary" type="button">Refresh</button>
@@ -596,7 +600,96 @@
           <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
         </tbody>
       </table>
+      </div>
+      <div data-subtabpanel="groups" hidden>
+      <div class="card-header">
+        <h3 style="margin:0">Groups</h3>
+        <div class="row">
+          <button id="admin-group-create-btn" type="button">+ Create group</button>
+          <button id="admin-groups-refresh" class="secondary" type="button">Refresh</button>
+        </div>
+      </div>
+      <p class="hint">Groups let teams share access to the private keys of jobs assigned to the group. Any group member (or admin) can download the key for any job in the group, in addition to the original requester.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Email</th>
+            <th>Members</th>
+            <th>Jobs</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-groups-tbody">
+          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+
+        <div id="rbac-group-access" hidden style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border)">
+<h3 class="rbac-h3">Group access</h3>
+          <p class="hint">Attach roles to a group — every member gains those permissions.</p>
+          <div class="rbac-pane-head">
+            <label style="flex:1;margin:0">Group
+              <select id="rbac-group-picker" class="form-input"></select></label>
+            <button id="rbac-save-group-roles" type="button">Save</button>
+          </div>
+          <div id="rbac-group-roles" class="rbac-checks"></div>
+          <span id="rbac-group-roles-status" class="status"></span>
+        </div>
+      </div>
+      <div data-subtabpanel="roles" hidden>
+      <div class="card-header">
+        <h3 style="margin:0">Roles &amp; permissions</h3>
+        <button id="roles-refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <p class="hint">Bundle permissions into <strong>roles</strong>, then assign a role to a
+         user or attach it to a group (every member inherits it). Admins always keep
+         full access regardless of role.</p>
+      <p id="cap-note-roles" class="hint" style="color:var(--danger)" hidden></p>
+      <p id="roles-active" class="hint"></p>
+
+      <div id="rbac-ui" hidden>
+
+        <!-- TAB: Roles -->
+        <div class="rbac-pane" data-rpane="roles">
+          <div class="rbac-pane-head">
+            <span class="hint">A role is a named set of permissions.</span>
+            <button id="rbac-new-role" type="button">+ New role</button>
+          </div>
+          <div id="rbac-roles-cards" class="rbac-cards"></div>
+          <span id="rbac-roles-status" class="status"></span>
+
+          <div id="rbac-editor" class="rbac-editor" hidden>
+            <h3 id="rbac-editor-title">New role</h3>
+            <label>Name
+              <input type="text" id="rbac-role-name" class="form-input" maxlength="64"
+                     placeholder="e.g. PKI Operators"></label>
+            <label>Description
+              <input type="text" id="rbac-role-desc" class="form-input" maxlength="512"
+                     placeholder="What this role is for"></label>
+            <p class="hint" id="rbac-editor-note" hidden></p>
+            <div id="rbac-perm-matrix" class="rbac-matrix"></div>
+            <div class="rbac-pane-head" style="margin-top:12px">
+              <span id="rbac-editor-status" class="status"></span>
+              <span>
+                <button id="rbac-cancel-role" class="secondary" type="button">Cancel</button>
+                <button id="rbac-save-role" type="button">Save role</button>
+              </span>
+            </div>
+          </div>
+        </div>
+
+
+
+        <details style="margin-top:16px">
+          <summary>Permission reference — the vocabulary roles are built from</summary>
+          <div id="rbac-catalog-out" style="margin-top:8px"></div>
+        </details>
+      </div>
+      </div>
     </section>
+
 
     <section class="card admin-panel" data-panel="authentication" hidden>
       <div class="card-header">
@@ -699,31 +792,6 @@
       </div>
     </section>
 
-    <section class="card admin-panel" data-panel="groups">
-      <div class="card-header">
-        <h2>Groups</h2>
-        <div class="row">
-          <button id="admin-group-create-btn" type="button">+ Create group</button>
-          <button id="admin-groups-refresh" class="secondary" type="button">Refresh</button>
-        </div>
-      </div>
-      <p class="hint">Groups let teams share access to the private keys of jobs assigned to the group. Any group member (or admin) can download the key for any job in the group, in addition to the original requester.</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Description</th>
-            <th>Email</th>
-            <th>Members</th>
-            <th>Jobs</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="admin-groups-tbody">
-          <tr><td colspan="6" class="status">Loading&hellip;</td></tr>
-        </tbody>
-      </table>
-    </section>
 
     <section class="card admin-panel" data-panel="templates">
       <div class="card-header">
@@ -2010,96 +2078,6 @@
       </div>
     </section>
 
-    <section class="card admin-panel" data-panel="roles" hidden>
-      <div class="card-header">
-        <h2>Roles &amp; access</h2>
-        <button id="roles-refresh" class="secondary" type="button">Refresh</button>
-      </div>
-      <p class="hint">Bundle permissions into <strong>roles</strong>, then assign a role to a
-         user or attach it to a group (every member inherits it). Admins always keep
-         full access regardless of role.</p>
-      <p id="cap-note-roles" class="hint" style="color:var(--danger)" hidden></p>
-      <p id="roles-active" class="hint"></p>
-
-      <div id="rbac-ui" hidden>
-        <div class="rbac-tabs" role="tablist">
-          <button class="rbac-tab active" type="button" data-rtab="roles">Roles</button>
-          <button class="rbac-tab" type="button" data-rtab="assign">Assignments</button>
-          <button class="rbac-tab" type="button" data-rtab="explore">Who can do what</button>
-          <button class="rbac-tab" type="button" data-rtab="catalog">Permissions</button>
-        </div>
-
-        <!-- TAB: Roles -->
-        <div class="rbac-pane" data-rpane="roles">
-          <div class="rbac-pane-head">
-            <span class="hint">A role is a named set of permissions.</span>
-            <button id="rbac-new-role" type="button">+ New role</button>
-          </div>
-          <div id="rbac-roles-cards" class="rbac-cards"></div>
-          <span id="rbac-roles-status" class="status"></span>
-
-          <div id="rbac-editor" class="rbac-editor" hidden>
-            <h3 id="rbac-editor-title">New role</h3>
-            <label>Name
-              <input type="text" id="rbac-role-name" class="form-input" maxlength="64"
-                     placeholder="e.g. PKI Operators"></label>
-            <label>Description
-              <input type="text" id="rbac-role-desc" class="form-input" maxlength="512"
-                     placeholder="What this role is for"></label>
-            <p class="hint" id="rbac-editor-note" hidden></p>
-            <div id="rbac-perm-matrix" class="rbac-matrix"></div>
-            <div class="rbac-pane-head" style="margin-top:12px">
-              <span id="rbac-editor-status" class="status"></span>
-              <span>
-                <button id="rbac-cancel-role" class="secondary" type="button">Cancel</button>
-                <button id="rbac-save-role" type="button">Save role</button>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB: Assignments -->
-        <div class="rbac-pane" data-rpane="assign" hidden>
-          <h3 class="rbac-h3">Group access</h3>
-          <p class="hint">Attach roles to a group — every member gains those permissions.</p>
-          <div class="rbac-pane-head">
-            <label style="flex:1;margin:0">Group
-              <select id="rbac-group-picker" class="form-input"></select></label>
-            <button id="rbac-save-group-roles" type="button">Save</button>
-          </div>
-          <div id="rbac-group-roles" class="rbac-checks"></div>
-          <span id="rbac-group-roles-status" class="status"></span>
-
-          <h3 class="rbac-h3" style="margin-top:22px">Individual users</h3>
-          <p class="hint">Give a single user a role directly. Admins show as
-             <em>admin (flag)</em> and already have everything.</p>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead>
-              <tbody id="roles-tbody"></tbody>
-            </table>
-          </div>
-          <p id="roles-status" class="status"></p>
-        </div>
-
-        <!-- TAB: Who can do what -->
-        <div class="rbac-pane" data-rpane="explore" hidden>
-          <p class="hint">Pick a user to see every permission they effectively hold
-             and exactly where it comes from.</p>
-          <div class="rbac-pane-head">
-            <select id="rbac-eff-user" class="form-input" style="flex:1"></select>
-            <button id="rbac-eff-lookup" type="button">Look up</button>
-          </div>
-          <div id="rbac-eff-out"></div>
-        </div>
-
-        <!-- TAB: Permissions (read-only catalog) -->
-        <div class="rbac-pane" data-rpane="catalog" hidden>
-          <p class="hint">The full permission vocabulary you can build roles from.</p>
-          <div id="rbac-catalog-out"></div>
-        </div>
-      </div>
-    </section>
 
     <section class="card admin-panel" data-panel="observability" hidden>
       <div class="card-header">
@@ -2564,6 +2542,11 @@
       <label><input type="checkbox" id="user-edit-admin"> Admin</label>
       <label><input type="checkbox" id="user-edit-active"> Active</label>
     </div>
+    <div id="user-edit-role-row" hidden style="margin-top:10px">
+      <label for="user-edit-role" class="textarea-label">Role
+        <span class="hint">(what this account may do; admins already hold everything)</span></label>
+      <select id="user-edit-role" class="form-input"></select>
+    </div>
     <label for="user-edit-notes" class="textarea-label">Notes</label>
     <textarea id="user-edit-notes" style="min-height:80px"></textarea>
     <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
@@ -2571,6 +2554,10 @@
       <p class="hint" style="margin:0 0 6px">Tick the groups this user belongs to; all changes apply on <strong>Save</strong>. Owner memberships are managed from the group and shown read-only here.</p>
       <div id="user-edit-groups" class="chip-row" style="display:flex;flex-wrap:wrap;gap:10px;max-height:160px;overflow:auto"></div>
     </div>
+    <details id="user-edit-effperms" hidden style="margin-top:12px">
+      <summary>Effective permissions — what this account can actually do, and why</summary>
+      <div id="user-edit-effperms-out" class="hint" style="margin-top:6px">Expand to load…</div>
+    </details>
     <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)">
       <label for="user-edit-password" class="textarea-label">Set / reset password</label>
       <div class="row" style="gap:8px">
