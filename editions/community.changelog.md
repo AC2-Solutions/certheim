@@ -1,5 +1,17 @@
 # Certheim Community edition — changelog
 
+## 6.9.1 — 2026-07-27
+
+_Released 2026-07-27. 1 change since community-v6.9.0._
+
+### Fixes & improvements
+
+- match the PEM/Base64 cert view to the openssl-toggle styling (`b47104c8`)
+  The cert-pem toggle rendered as a default-styled details element with oversized buttons. It now
+  shares the openssl-toggle summary treatment (custom marker, spacing) and uses link-btn/hint chrome
+  like the rest of the modal. Also clarifies the account dialog copy: the Admin flag is the
+  superuser switch; roles grant operational permissions only.
+
 ## 6.9.0 — 2026-07-27
 
 _Released 2026-07-27. 1 change since community-v6.8.0._
