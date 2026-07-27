@@ -1,5 +1,17 @@
 # Certheim Community edition — changelog
 
+## 6.8.0 — 2026-07-27
+
+_Released 2026-07-27. 1 change since community-v6.7.0._
+
+### Features
+
+- view/copy issued cert as PEM and Base64 on the jobs page (`dc917aaa`)
+  New collapsible in the job detail modal (issued jobs): shows the cert PEM as issued (full chain
+  when present) plus the single-line Base64 of the leaf's DER - the form SAML/OIDC portals,
+  Keycloak, and appliance UIs ask for - each with a one-click copy button. Frontend-only; reuses the
+  existing authz'd /jobs/<id>/cert endpoint.
+
 ## 6.7.0 — 2026-07-20
 
 _Released 2026-07-20. 1 change since community-v6.6.1._
