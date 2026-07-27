@@ -1,5 +1,18 @@
 # Certheim Community edition — changelog
 
+## 6.9.0 — 2026-07-27
+
+_Released 2026-07-27. 1 change since community-v6.8.0._
+
+### Features
+
+- consolidate users/groups/roles into one Access page (`2110fa51`)
+  Users, Groups and Roles & access were three nav entries (and RBAC hid four more sub-tabs);
+  managing one account meant hopping between them. Now: one 'Users & roles' page with three flat
+  tabs (Accounts | Groups | Roles & permissions), and the account dialog holds everything about a
+  principal - profile, admin/active, RBAC role, group memberships, and effective permissions with
+  provenance. Old #admin/users|groups|roles hashes redirect to the right tab.
+
 ## 6.8.0 — 2026-07-27
 
 _Released 2026-07-27. 1 change since community-v6.7.0._
