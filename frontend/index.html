@@ -2542,9 +2542,11 @@
       <label><input type="checkbox" id="user-edit-admin"> Admin</label>
       <label><input type="checkbox" id="user-edit-active"> Active</label>
     </div>
+    <p class="hint" style="margin:4px 0 0">Admin is the superuser switch — every function
+       including system configuration. Roles grant operational permissions only.</p>
     <div id="user-edit-role-row" hidden style="margin-top:10px">
       <label for="user-edit-role" class="textarea-label">Role
-        <span class="hint">(what this account may do; admins already hold everything)</span></label>
+        <span class="hint">(operational permissions; system configuration stays admin-only)</span></label>
       <select id="user-edit-role" class="form-input"></select>
     </div>
     <label for="user-edit-notes" class="textarea-label">Notes</label>
