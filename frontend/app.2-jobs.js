@@ -236,6 +236,15 @@ function renderDetailModal(job) {
       <pre class="openssl-text">Loading&hellip;</pre>
     </details>` : "";
 
+  // Raw certificate material, right in the page: the PEM as issued and a
+  // single-line Base64 of the leaf's DER (what SAML/OIDC portals, Keycloak,
+  // and appliance UIs ask for when they say "base64 certificate").
+  const certPemToggle = job.status === "issued" ? `
+    <details class="cert-pem-toggle" data-job-id="${job.id}">
+      <summary>View / copy certificate (PEM &amp; Base64)</summary>
+      <div class="cert-pem-body"><span class="status">Loading&hellip;</span></div>
+    </details>` : "";
+
   // Build the Group row: shows current group as a pill, plus an edit
   // control for the requester or any admin. Always present when the user
   // has edit rights, so they can assign a group to a previously-unassigned job.
@@ -275,6 +284,7 @@ function renderDetailModal(job) {
     ${errorHtml}
     ${csrToggle}
     ${certToggle}
+    ${certPemToggle}
     <div class="row" style="margin-top:16px; gap:8px">
       ${actions.join("")}
     </div>
@@ -316,6 +326,52 @@ function renderDetailModal(job) {
         d.dataset.loaded = "1";
       } else {
         pre.textContent = "Failed: " + ((r.body && r.body.error) || "unknown");
+      }
+    });
+  });
+
+  // Lazy-load the raw PEM + Base64 view on first expand
+  body.querySelectorAll("details.cert-pem-toggle").forEach(d => {
+    d.addEventListener("toggle", async () => {
+      if (!d.open || d.dataset.loaded === "1") return;
+      const wrap = d.querySelector(".cert-pem-body");
+      try {
+        const resp = await fetch(`${API}/jobs/${d.dataset.jobId}/cert`);
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const pem = (await resp.text()).trim();
+        // First BEGIN/END block = the leaf (the PEM may be a fullchain);
+        // its body, unwrapped, IS the Base64 of the certificate's DER.
+        const m = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
+        const b64 = m ? m[1].replace(/\s+/g, "") : "";
+        wrap.innerHTML = `
+          <div class="row" style="justify-content:space-between; align-items:center; margin-top:8px">
+            <strong>PEM${pem.indexOf("BEGIN CERTIFICATE", 40) > 0 ? " (full chain)" : ""}</strong>
+            <button class="btn secondary cert-copy-btn" type="button" data-copy="pem">Copy PEM</button>
+          </div>
+          <pre class="openssl-text cert-pem-text"></pre>
+          <div class="row" style="justify-content:space-between; align-items:center; margin-top:8px">
+            <strong>Base64 (single line, leaf DER)</strong>
+            <button class="btn secondary cert-copy-btn" type="button" data-copy="b64">Copy Base64</button>
+          </div>
+          <pre class="openssl-text cert-b64-text" style="white-space:pre-wrap; word-break:break-all"></pre>`;
+        wrap.querySelector(".cert-pem-text").textContent = pem;
+        wrap.querySelector(".cert-b64-text").textContent = b64 || "(could not parse a certificate block)";
+        wrap.querySelectorAll(".cert-copy-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const text = btn.dataset.copy === "pem" ? pem : b64;
+            try {
+              await navigator.clipboard.writeText(text);
+              const orig = btn.textContent;
+              btn.textContent = "Copied ✓";
+              setTimeout(() => { btn.textContent = orig; }, 1500);
+            } catch (e) {
+              btn.textContent = "Copy failed";
+            }
+          });
+        });
+        d.dataset.loaded = "1";
+      } catch (e) {
+        wrap.textContent = "Failed: " + e.message;
       }
     });
   });
