@@ -334,15 +334,18 @@
                   overflow: auto; white-space: pre;
                   font-family: ui-monospace, Menlo, Consolas, monospace;
                   border: 1px solid var(--border); margin: 6px 0 0; }
-  details.openssl-toggle { margin-top: 12px; }
-  details.openssl-toggle > summary { cursor: pointer; padding: 6px 0;
+  details.openssl-toggle, details.cert-pem-toggle { margin-top: 12px; }
+  details.openssl-toggle > summary, details.cert-pem-toggle > summary { cursor: pointer; padding: 6px 0;
                                      color: var(--accent); font-size: 13px;
                                      list-style: none; }
-  details.openssl-toggle > summary::-webkit-details-marker { display: none; }
-  details.openssl-toggle > summary::before { content: "▶"; display: inline-block;
+  details.openssl-toggle > summary::-webkit-details-marker,
+  details.cert-pem-toggle > summary::-webkit-details-marker { display: none; }
+  details.openssl-toggle > summary::before,
+  details.cert-pem-toggle > summary::before { content: "▶"; display: inline-block;
                                               margin-right: 6px; font-size: 11px;
                                               transition: transform 0.2s; }
-  details.openssl-toggle[open] > summary::before { transform: rotate(90deg); }
+  details.openssl-toggle[open] > summary::before,
+  details.cert-pem-toggle[open] > summary::before { transform: rotate(90deg); }
 
   /* Consent banner - now a modal opened from a link on the login page.
      Use :not([hidden]) so the hidden attribute actually hides it (a bare

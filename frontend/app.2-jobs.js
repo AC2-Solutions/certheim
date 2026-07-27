@@ -344,14 +344,14 @@ function renderDetailModal(job) {
         const m = pem.match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
         const b64 = m ? m[1].replace(/\s+/g, "") : "";
         wrap.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:center; margin-top:8px">
-            <strong>PEM${pem.indexOf("BEGIN CERTIFICATE", 40) > 0 ? " (full chain)" : ""}</strong>
-            <button class="btn secondary cert-copy-btn" type="button" data-copy="pem">Copy PEM</button>
+          <div class="row" style="justify-content:space-between; align-items:baseline; margin-top:4px">
+            <span class="hint" style="margin:0">PEM${pem.indexOf("BEGIN CERTIFICATE", 40) > 0 ? " (full chain)" : ""}</span>
+            <button class="link-btn cert-copy-btn" type="button" data-copy="pem">Copy</button>
           </div>
           <pre class="openssl-text cert-pem-text"></pre>
-          <div class="row" style="justify-content:space-between; align-items:center; margin-top:8px">
-            <strong>Base64 (single line, leaf DER)</strong>
-            <button class="btn secondary cert-copy-btn" type="button" data-copy="b64">Copy Base64</button>
+          <div class="row" style="justify-content:space-between; align-items:baseline; margin-top:10px">
+            <span class="hint" style="margin:0">Base64 (single line, leaf DER)</span>
+            <button class="link-btn cert-copy-btn" type="button" data-copy="b64">Copy</button>
           </div>
           <pre class="openssl-text cert-b64-text" style="white-space:pre-wrap; word-break:break-all"></pre>`;
         wrap.querySelector(".cert-pem-text").textContent = pem;
@@ -363,7 +363,7 @@ function renderDetailModal(job) {
               await navigator.clipboard.writeText(text);
               const orig = btn.textContent;
               btn.textContent = "Copied ✓";
-              setTimeout(() => { btn.textContent = orig; }, 1500);
+              setTimeout(() => { btn.textContent = orig; }, 1200);
             } catch (e) {
               btn.textContent = "Copy failed";
             }
