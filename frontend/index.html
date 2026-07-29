@@ -3027,6 +3027,10 @@
                an issued certificate, or <strong>renew</strong> one that's nearing expiry.</p>
             <p>Jobs assigned to a group are visible to that group's members; personal jobs
                are visible only to you and administrators.</p>
+            <p>On an issued job, <strong>View / copy certificate (PEM &amp; Base64)</strong>
+               shows the certificate as issued (full chain when available) and a
+               single-line Base64 of the leaf — the format SAML/OIDC portals and appliance
+               UIs ask for — each with a one-click copy button.</p>
           </section>
 
           <section data-page="signing" data-title="Signing queue" data-group="Dashboard" hidden>
@@ -3067,7 +3071,7 @@
                   it; leave it blank for a personal job.</li>
             </ul>
             <p>Administrators create groups and manage membership from
-               <em>Admin → Groups</em>.</p>
+               <em>Admin → Users &amp; roles → Groups</em>.</p>
           </section>
 
           <section data-page="usertemplates" data-title="Templates" data-group="Dashboard" hidden>
@@ -3094,17 +3098,45 @@
                → <em>Signing / CA</em> → <em>Authentication</em> → <em>Users</em>.</p>
           </section>
 
-          <section data-page="admin-users" data-title="Users" data-group="Administration" hidden>
-            <h3>Admin · Users</h3>
-            <p>Manage who can use the dashboard and what they can do.</p>
+          <section data-page="admin-access" data-title="Users &amp; roles" data-group="Administration" hidden>
+            <h3>Admin · Users &amp; roles</h3>
+            <p>One page for every question about <em>who can do what</em>, in three tabs:
+               <strong>Accounts</strong>, <strong>Groups</strong>, and
+               <strong>Roles &amp; permissions</strong>.</p>
+            <h4>Accounts</h4>
+            <p>Every person (and, on licensed editions, every bot) in one table. Open an
+               account to manage everything about it in a single dialog: names and email,
+               the <strong>Admin</strong> and <strong>Active</strong> flags, its
+               <strong>role</strong>, its <strong>group memberships</strong>, and — under
+               <em>Effective permissions</em> — exactly what the account can do and which
+               role or group grants each permission.</p>
             <ul>
-              <li><strong>Roles:</strong> grant <em>admin</em> (full configuration) or
-                  <em>signer</em> (may approve &amp; sign in the queue).</li>
-              <li><strong>Status:</strong> activate, deactivate, or approve users who
-                  registered and are pending.</li>
-              <li>In local-auth mode users have a <code>first.last</code> username; with
-                  CAC/mTLS they're identified by their certificate DN.</li>
+              <li><strong>Admin vs. role:</strong> the Admin flag is the superuser switch —
+                  every function including system configuration. Roles grant operational
+                  permissions only; the built-in <em>Full permissions</em> role is
+                  deliberately less than Admin.</li>
+              <li>In local-auth mode users sign in with a <code>first.last</code> username;
+                  with CAC/mTLS they're identified by their certificate DN. Pending
+                  self-registrations show an Approve / Deny action here.</li>
+              <li><span class="guide-ed">Commercial / Government</span>
+                  <strong>Service accounts</strong> (marked <em>bot</em>) are API-key-only
+                  identities for integrations — GitLab CI, Ansible, monitoring. Create one,
+                  grant it groups and a role like any user, then issue its
+                  <code>chk_…</code> key from the Service accounts table on this tab. Keys
+                  can expire and can be read-only; disabling a bot revokes all of its keys.</li>
             </ul>
+            <h4>Groups</h4>
+            <p>Groups share access to jobs and their keys: members see group-assigned
+               requests and may download the key of any job in the group. Attach
+               <strong>roles to a group</strong> here (licensed editions) and every member
+               inherits those permissions.</p>
+            <h4>Roles &amp; permissions <span class="guide-ed">Commercial / Government</span></h4>
+            <p>Define roles as bundles from the permission catalog — start from the
+               built-ins (<em>Full permissions</em>, <em>Operator</em>, <em>Auditor</em>,
+               <em>Member</em>) or clone and adjust. Assign a role directly on the account,
+               or attach it to a group; a user's effective permissions are the union of
+               both, and the account dialog shows the provenance of every grant. The
+               permission reference at the bottom of the tab lists the full vocabulary.</p>
           </section>
 
           <section data-page="admin-authentication" data-title="Authentication" data-group="Administration" hidden>
@@ -3124,46 +3156,7 @@
                working, or you can lock everyone out — the app requires an explicit confirm.</p>
           </section>
 
-          <section data-page="admin-groups" data-title="Groups" data-group="Administration" hidden>
-            <h3>Admin · Groups</h3>
-            <p>Create groups and assign members so teams can share certificate requests.</p>
-            <ul>
-              <li>Add or remove members and set their role within the group.</li>
-              <li>Members then see group-assigned jobs on their Dashboard and can pick the
-                  group when creating requests.</li>
-            </ul>
-          </section>
 
-          <section data-page="admin-roles" data-title="Roles &amp; permissions" data-group="Administration" data-cap="governance.rbac" hidden>
-            <h3>Admin · Roles &amp; permissions</h3>
-            <p>Shape access control to your organization: define your own <strong>roles</strong>
-               as bundles of permissions, then grant them to people two ways.</p>
-            <ul>
-              <li><strong>The permission catalog</strong> — every action Certheim gates
-                  (view inventory, request, approve &amp; sign, revoke, manage templates,
-                  view the audit log, manage settings, and more), each with a plain-language
-                  description. This is the vocabulary your roles are built from.</li>
-              <li><strong>Roles</strong> — start from the four built-ins (admin, operator,
-                  auditor, member) or create your own, e.g. <em>PKI Operators</em>
-                  (request + approve &amp; sign, no revoke) or <em>Auditors</em>
-                  (read inventory and the audit log, change nothing). Clone an existing
-                  role to start close; a role can't be deleted while it's still in use.</li>
-              <li><strong>Assign to a user</strong> — pick a role in the user table. That
-                  user then holds exactly that role's permissions.</li>
-              <li><strong>Attach to a group</strong> — every member of the group holds the
-                  attached roles' permissions while they're a member. Onboarding a whole
-                  team becomes one assignment instead of many.</li>
-            </ul>
-            <p>A user's <strong>effective permissions</strong> are the <em>union</em> of their
-               own role plus every role attached to their groups — access only ever adds up.
-               Use the <em>Effective permissions</em> lookup to see exactly what someone can
-               do and <em>why</em> (which role granted it, via which group).</p>
-            <p class="note"><strong>Admins are always full-access</strong> — the admin flag sits
-               above roles and can't be locked out. A few sensitive areas (license, database,
-               the local-CA key ceremony, RBAC management itself) stay admin-only by design.
-               Role enforcement is a licensed feature (Commercial and above); without a license
-               everything falls back to admin-only, exactly as before.</p>
-          </section>
 
           <section data-page="admin-templates" data-title="Templates" data-group="Administration" hidden>
             <h3>Admin · Templates</h3>
@@ -3571,8 +3564,16 @@
                <strong>revoked</strong> in-UI where the backend supports it.</p>
           </section>
 
-          <section data-page="admin-delivery" data-title="Delivery destinations" data-group="Administration" data-cap="delivery.pull" hidden>
-            <h3>Admin · Delivery destinations</h3>
+          <section data-page="admin-automation" data-title="Automation &amp; delivery" data-group="Administration" hidden>
+            <h3>Admin · Automation &amp; delivery</h3>
+            <p>The Automation page has three sub-tabs: <strong>Issuance</strong> (signing
+               backends and auto-sign policy), <strong>Delivery</strong> (Destinations and
+               their status), and <strong>Renewals</strong> (the auto-renew pass).
+               When creating a Destination, the <strong>Application preset</strong> dropdown
+               seeds vendor-recommended paths, reload commands and config snippets for
+               well-known apps (GitLab, NGINX, HAProxy, PostgreSQL, Kubernetes, and more) —
+               every field can still be overridden. <span class="guide-ed">Delivery features
+               are Commercial / Government.</span></p>
             <p>After a certificate is issued, Certheim can push it (and, per the template's
                <em>key mode</em>, its private key) to where it's used. Delivery is set
                <strong>per template</strong> (Admin&nbsp;→&nbsp;Templates): choose the
@@ -3709,6 +3710,30 @@
                  <code>{username?, private_key, port?}</code>. Enable the OpenSSH server
                  feature on the destination and authorise the key for an admin user.</p>
             </div>
+          </section>
+          <section data-page="admin-collections" data-title="Collections" data-group="Administration" data-cap="delivery.collections" hidden>
+            <h3>Admin · Collections <span class="guide-ed">Commercial / Government</span></h3>
+            <p>A <strong>Cert Collection</strong> is an owned, named container of
+               certificates that share an automation binding. Delivery is keyed by
+               <em>(collection, member)</em> — e.g.
+               <code>secret/csr-certs/&lt;slug&gt;/&lt;member&gt;</code> — so
+               <strong>ownership</strong>, not just who can request a name, governs what
+               reaches a host.</p>
+            <ul>
+              <li><strong>Members</strong> bind existing issued certificates into the
+                  collection; on renewal the collection automatically follows the newest
+                  issuance and re-delivers.</li>
+              <li><strong>Automation mode:</strong> <em>auto</em> delivers on every renewal;
+                  <em>publish</em> holds new material until a person (or API call) publishes
+                  it — per member or as a batch.</li>
+              <li><strong>Collection roles</strong> (<em>owner / maintainer / viewer</em>)
+                  are per-collection grants, separate from global roles: owners manage
+                  roles and members, maintainers publish, viewers read. Admins hold owner
+                  on every collection.</li>
+              <li><strong>Destinations</strong> attached to a collection fan out every
+                  member delivery; a pull agent bound to the collection's namespace renders
+                  each member to files (e.g. an OpenBao agent on the consuming host).</li>
+            </ul>
           </section>
 
           <section data-page="admin-enrollsign" data-title="Enrollment &amp; signing" data-group="Administration" data-cap="enroll.est" hidden>
@@ -3987,7 +4012,11 @@
             <p>Scope tightly: a token limited to one template can't be repurposed quietly.
                Rotate by creating the replacement first, cutting the caller over, then revoking
                the old one — revocation is immediate.</p>
-          </section>
+            <p><strong>Looking for service accounts?</strong> Bot identities and their
+               <code>chk_…</code> API keys moved to
+               <em>Users &amp; roles → Accounts</em> — this panel keeps only the
+               <code>scim_</code> automation tokens for the v1 certificate API.</p>
+            </section>
 
           <section data-page="admin-cbom" data-title="Crypto posture (CBOM)" data-group="Administration" data-cap="crypto.cbom" hidden>
             <h3>Admin · Crypto posture — CBOM &amp; PQC readiness <span class="guide-ed">Commercial / Government</span></h3>
@@ -4168,14 +4197,6 @@
                certificates within boundaries you set.</p>
           </section>
 
-          <section data-page="admin-roles" data-title="Roles &amp; access" data-group="Administration" data-cap="governance.rbac" hidden>
-            <h3>Admin · Roles &amp; access</h3>
-            <p>Go beyond the basic admin / user split with role-based access control: define
-               roles (e.g. approver, auditor, operator) and grant each only the actions it
-               needs — request, approve, sign, revoke, or read-only review.</p>
-            <p>Where licensed, <strong>multi-tenancy</strong> adds hard isolation so each
-               tenant sees only its own requests, certificates, and audit trail.</p>
-          </section>
 
           <section data-page="admin-inventory" data-title="Inventory &amp; monitoring" data-group="Administration" data-cap="visibility.inventory" hidden>
             <h3>Admin · Inventory &amp; monitoring</h3>
@@ -4253,7 +4274,7 @@
                key-management evidence.</p>
           </section>
 
-          <section data-page="admin-access" data-title="Access control" data-group="Government" data-cap="access.separation_of_duties" hidden>
+          <section data-page="admin-accesscontrol" data-title="Access control" data-group="Government" data-cap="access.separation_of_duties" hidden>
             <h3>Government · Access control</h3>
             <p><strong>Separation of duties</strong> enforces that whoever <em>requests</em> a
                certificate cannot <em>approve or sign</em> their own request — a different
