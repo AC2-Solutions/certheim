@@ -1,5 +1,18 @@
 # Certheim Community edition — changelog
 
+## 6.9.3 — 2026-07-29
+
+_Released 2026-07-29. 1 change since community-v6.9.2._
+
+### Fixes & improvements
+
+- '?' help markers on sub-tabs, not just panels (`f210ddd6`)
+  The injector placed one '?' per panel (first heading), so consolidated pages like Users & roles
+  only marked their first tab. Now every [data-subtabpanel] pane gets its own '?' - linking to a
+  dedicated <panel>-<subtab> guide page when one exists, else the panel's page - and any element
+  tagged data-guide-help="<page>" gets one explicitly. The Users & roles guide page is split into
+  Accounts / Groups / Roles & permissions pages so each tab's '?' lands on its own content.
+
 ## 6.9.2 — 2026-07-29
 
 _Released 2026-07-29. 1 change since community-v6.9.1._
