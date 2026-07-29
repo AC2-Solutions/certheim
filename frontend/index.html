@@ -3098,12 +3098,8 @@
                → <em>Signing / CA</em> → <em>Authentication</em> → <em>Users</em>.</p>
           </section>
 
-          <section data-page="admin-access" data-title="Users &amp; roles" data-group="Administration" hidden>
-            <h3>Admin · Users &amp; roles</h3>
-            <p>One page for every question about <em>who can do what</em>, in three tabs:
-               <strong>Accounts</strong>, <strong>Groups</strong>, and
-               <strong>Roles &amp; permissions</strong>.</p>
-            <h4>Accounts</h4>
+          <section data-page="admin-access" data-title="Users &amp; roles · Accounts" data-group="Administration" hidden>
+            <h3>Admin · Users &amp; roles — Accounts</h3>
             <p>Every person (and, on licensed editions, every bot) in one table. Open an
                account to manage everything about it in a single dialog: names and email,
                the <strong>Admin</strong> and <strong>Active</strong> flags, its
@@ -3125,18 +3121,28 @@
                   <code>chk_…</code> key from the Service accounts table on this tab. Keys
                   can expire and can be read-only; disabling a bot revokes all of its keys.</li>
             </ul>
-            <h4>Groups</h4>
+          </section>
+          <section data-page="admin-access-groups" data-title="Users &amp; roles · Groups" data-group="Administration" hidden>
+            <h3>Admin · Users &amp; roles — Groups</h3>
             <p>Groups share access to jobs and their keys: members see group-assigned
-               requests and may download the key of any job in the group. Attach
-               <strong>roles to a group</strong> here (licensed editions) and every member
-               inherits those permissions.</p>
-            <h4>Roles &amp; permissions <span class="guide-ed">Commercial / Government</span></h4>
+               requests and may download the key of any job in the group. Create groups,
+               manage membership, and set each member's role within the group.</p>
+            <p><span class="guide-ed">Commercial / Government</span> Attach
+               <strong>roles to a group</strong> at the bottom of this tab and every member
+               inherits those permissions — the account dialog's <em>Effective
+               permissions</em> view shows which group contributed which grant.</p>
+          </section>
+          <section data-page="admin-access-roles" data-title="Users &amp; roles · Roles" data-group="Administration" data-cap="governance.rbac" hidden>
+            <h3>Admin · Users &amp; roles — Roles &amp; permissions
+                <span class="guide-ed">Commercial / Government</span></h3>
             <p>Define roles as bundles from the permission catalog — start from the
                built-ins (<em>Full permissions</em>, <em>Operator</em>, <em>Auditor</em>,
-               <em>Member</em>) or clone and adjust. Assign a role directly on the account,
-               or attach it to a group; a user's effective permissions are the union of
-               both, and the account dialog shows the provenance of every grant. The
-               permission reference at the bottom of the tab lists the full vocabulary.</p>
+               <em>Member</em>) or clone and adjust. Assign a role directly on the account
+               (Accounts tab), or attach it to a group; a user's effective permissions are
+               the union of both. The permission reference at the bottom of the tab lists
+               the full vocabulary every role is built from.</p>
+            <p>The Admin <em>flag</em> is not a role: it is the superuser switch and always
+               holds every permission plus system configuration.</p>
           </section>
 
           <section data-page="admin-authentication" data-title="Authentication" data-group="Administration" hidden>

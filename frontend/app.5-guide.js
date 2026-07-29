@@ -128,6 +128,19 @@
   // the pages above and never collides with a card-header's right-side controls.
   function injectPanelHelp() {
     const ids = new Set(allPages.map((p) => p.getAttribute("data-page")));
+    function addHelp(head, pid) {
+      if (!head || head.querySelector(".panel-help-btn")) return;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "panel-help-btn";
+      b.textContent = "?";
+      b.title = "Open the guide for this page";
+      b.setAttribute("aria-label", "Open the guide for this page");
+      b.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation(); open(pid);
+      });
+      head.appendChild(b);
+    }
     [["#main-panels", (dp) => dp], ["#admin-panels", (dp) => "admin-" + dp]]
       .forEach(([container, toId]) => {
         const host = document.querySelector(container);
@@ -135,20 +148,21 @@
         host.querySelectorAll(":scope > [data-panel]").forEach((panel) => {
           const pid = toId(panel.getAttribute("data-panel"));
           if (!ids.has(pid)) return;
-          const head = panel.querySelector("h2, h3");
-          if (!head || head.querySelector(".panel-help-btn")) return;
-          const b = document.createElement("button");
-          b.type = "button";
-          b.className = "panel-help-btn";
-          b.textContent = "?";
-          b.title = "Open the guide for this page";
-          b.setAttribute("aria-label", "Open the guide for this page");
-          b.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation(); open(pid);
+          addHelp(panel.querySelector("h2, h3"), pid);
+          // Sub-tabbed panels: every pane gets its own "?" — to the pane's
+          // dedicated page (<pid>-<subtab>) when one exists, else the panel's.
+          panel.querySelectorAll("[data-subtabpanel]").forEach((pane) => {
+            const sub = pid + "-" + pane.getAttribute("data-subtabpanel");
+            addHelp(pane.querySelector("h2, h3"), ids.has(sub) ? sub : pid);
           });
-          head.appendChild(b);
         });
       });
+    // Explicit hooks: any element tagged data-guide-help="<page>" gets a "?"
+    // (for sections inside a pane, e.g. Service accounts under Accounts).
+    document.querySelectorAll("[data-guide-help]").forEach((el) => {
+      const pid = el.getAttribute("data-guide-help");
+      if (ids.has(pid)) addHelp(el, pid);
+    });
   }
 
   refreshPages();   // build the (filtered) TOC for the current user
