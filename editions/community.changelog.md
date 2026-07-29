@@ -1,5 +1,21 @@
 # Certheim Community edition — changelog
 
+## 6.9.2 — 2026-07-29
+
+_Released 2026-07-29. 1 change since community-v6.9.1._
+
+### Fixes & improvements
+
+- guide sweep for the Access-page era (`74b43a1b`)
+  Every admin panel has a matching guide page again (the injected ? next to panel titles depends on
+  it): new 'Users & roles' page covering the Accounts/Groups/Roles tabs, unified account dialog,
+  admin-vs-role distinction and service accounts; new Collections page; the old Delivery-
+  destinations page becomes the Automation page (+ application presets); stale Users/Groups pages
+  and BOTH duplicate Roles pages removed; Automation-API page points at the new service-accounts
+  home; jobs page documents the PEM/Base64 view. The Government 'Access control' guide page is
+  renamed admin-accesscontrol to free the id for the Users & roles panel (Gov panel rename lands
+  separately).
+
 ## 6.9.1 — 2026-07-27
 
 _Released 2026-07-27. 1 change since community-v6.9.0._
