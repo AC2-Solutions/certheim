@@ -316,6 +316,50 @@ GOVERNMENT_CAPABILITIES = {"profiles.public_sector", "auth.cac"}
 # keeps the license-agnostic grant-all default below.
 LICENSED_CAPABILITIES = COMMERCIAL_CAPABILITIES | GOVERNMENT_CAPABILITIES
 
+# --- capability classification (fail-open containment) ----------------------
+# is_entitled() returns True for any key NOT in LICENSED_CAPABILITIES: unlicensed
+# keys are core features every edition gets. That default is deliberate, but it
+# means a premium key nobody remembered to register would ship UNLOCKED. So every
+# key the code actually asks about must be classified exactly once:
+#
+#   LICENSED_CAPABILITIES - needs a license (and the build tier)
+#   FREE_CAPABILITIES     - intentionally free in every edition
+#
+# tests/test_capability_registry.py enforces that there is no third category.
+# Add a new premium key to the tier sets above; add a new core key here.
+FREE_CAPABILITIES = {
+    # Signing backends available to every edition. The dynamic availability
+    # check is `is_entitled("ca.signing." + backend)`, so these need naming.
+    "ca.signing.manual",     # no CA at all - the operator pastes the cert
+    "ca.signing.acme",       # RFC 8555 client; Community ships acme_client.py
+}
+
+# Some capability keys are two names for one entitlement. The dynamic signing
+# check asks about `ca.signing.<backend>`, while the enforcement point inside the
+# signer asks about the real feature key - they must agree, or a backend can look
+# available and then refuse at signing time.
+CAPABILITY_EQUIVALENTS = {
+    "ca.signing.hsm": "crypto.hsm",
+}
+
+# Keys that shared code references but THIS edition's catalog deliberately omits
+# (the feature's code isn't in this build, so the tier sets don't list it). These
+# are the one legitimate case where is_entitled() hits the grant-all default, and
+# each is safe only because something else stops the call from mattering:
+#
+#   visibility.inventory - routes_admin's expiry pass asks, but the surrounding
+#                          `import alerts` raises ImportError first in Community.
+#   crypto.hsm           - aliased from ca.signing.hsm for availability; the real
+#                          gate is inside sign.py's HSM signer, which refuses
+#                          without the entitlement.
+#
+# Adding a key here is a claim that such a guard exists. If you cannot name the
+# guard, the key belongs in a tier set instead.
+HIGHER_TIER_REFERENCES = {
+    "visibility.inventory",
+    "crypto.hsm",
+}
+
 
 def edition_capabilities(edition):
     """Licensed capability keys an edition grants (tiers stack). Unlimited is
@@ -339,6 +383,9 @@ def _cap_build_tier(key):
 
 
 def is_entitled(key):
+    # An alias resolves to the entitlement it really means (see
+    # CAPABILITY_EQUIVALENTS) so availability and enforcement can't disagree.
+    key = CAPABILITY_EQUIVALENTS.get(key, key)
     if key in LICENSED_CAPABILITIES:
         # BUILD CEILING: the code for this tier must be physically present in
         # this build. The Community build has no premium code; the Commercial
