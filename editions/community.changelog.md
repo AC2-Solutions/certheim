@@ -1,5 +1,22 @@
 # Certheim Community edition — changelog
 
+## 6.9.4 — 2026-08-01
+
+_Released 2026-08-01. 1 change since community-v6.9.3._
+
+### Fixes & improvements
+
+- make an unclassified capability key impossible to ship (`aa01e143`)
+  is_entitled() grants any key absent from LICENSED_CAPABILITIES - unlicensed keys are core
+  features. Deliberate, but it means a premium key nobody registered ships UNLOCKED and nothing
+  fails. Every key the code asks about is now classified exactly once (licensed / free / alias /
+  documented higher-tier reference), and a test enforces that there is no fourth category -
+  including the dynamic ca.signing.<backend> and delivery.<provider> families the static scan can't
+  see.
+  Also fixes a real divergence: ca.signing.hsm was unclassified, so the availability check said yes
+  while the signer itself (correctly) demands crypto.hsm. It is now an explicit alias, so the two
+  agree.
+
 ## 6.9.3 — 2026-07-29
 
 _Released 2026-07-29. 1 change since community-v6.9.2._
