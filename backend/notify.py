@@ -203,15 +203,20 @@ def _send_smtp(msg, recipients):
 
 
 def _msg_parts(msg):
-    """(from, to[], cc[], subject, text) from an EmailMessage, for the HTTP APIs."""
+    """(from, to[], cc[], subject, text, html) from an EmailMessage, for the
+    HTTP APIs. html is None for plain-text-only messages."""
     to = [a.strip() for a in (msg.get("To") or "").split(",") if a.strip()]
     cc = [a.strip() for a in (msg.get("Cc") or "").split(",") if a.strip()]
+    html = None
     if msg.is_multipart():
         part = msg.get_body(preferencelist=("plain",))
         text = part.get_content() if part else ""
+        hpart = msg.get_body(preferencelist=("html",))
+        if hpart is not None and hpart.get_content_type() == "text/html":
+            html = hpart.get_content()
     else:
         text = msg.get_content()
-    return msg.get("From", ""), to, cc, msg.get("Subject", ""), text
+    return msg.get("From", ""), to, cc, msg.get("Subject", ""), text, html
 
 
 def _send_mailgun(msg):
@@ -220,8 +225,10 @@ def _send_mailgun(msg):
     domain = _field(_config, "mailgun", "domain").strip()
     region = (_field(_config, "mailgun", "region", "us") or "us").strip().lower()
     base = "https://api.eu.mailgun.net" if region == "eu" else "https://api.mailgun.net"
-    frm, to, cc, subject, text = _msg_parts(msg)
+    frm, to, cc, subject, text, html = _msg_parts(msg)
     fields = [("from", frm), ("subject", subject), ("text", text)]
+    if html:
+        fields.append(("html", html))
     fields += [("to", a) for a in to] + [("cc", a) for a in cc]
     req = urllib.request.Request(f"{base}/v3/{domain}/messages",
                                  data=urllib.parse.urlencode(fields).encode(),
@@ -235,19 +242,76 @@ def _send_mailgun(msg):
 def _send_sendgrid(msg):
     """SendGrid v3 mail/send HTTP API. Raises urllib error on non-2xx."""
     api_key = _field(_config, "sendgrid", "api_key")
-    frm, to, cc, subject, text = _msg_parts(msg)
+    frm, to, cc, subject, text, html = _msg_parts(msg)
     pers = {"to": [{"email": a} for a in to]}
     if cc:
         pers["cc"] = [{"email": a} for a in cc]
+    content = [{"type": "text/plain", "value": text}]
+    if html:
+        content.append({"type": "text/html", "value": html})
     body = {"personalizations": [pers], "from": {"email": frm},
-            "subject": subject,
-            "content": [{"type": "text/plain", "value": text}]}
+            "subject": subject, "content": content}
     req = urllib.request.Request("https://api.sendgrid.com/v3/mail/send",
                                  data=json.dumps(body).encode(), method="POST")
     req.add_header("Authorization", f"Bearer {api_key}")
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=15) as r:
         r.read()
+
+
+
+# --- HTML email (shared shell; every sender falls back to the text part) -----
+# Email HTML is deliberately old-school: tables + inline styles, no CSS
+# classes, no external assets — that is what survives Outlook/Gmail/Apple Mail.
+
+SEVERITY_COLORS = {
+    "critical": ("#fef2f2", "#dc2626"),
+    "high":     ("#fff7ed", "#ea580c"),
+    "medium":   ("#fffbeb", "#b45309"),
+    "low":      ("#f1f5f9", "#475569"),
+    "ok":       ("#f0fdf4", "#16a34a"),
+}
+
+
+def severity_chip(level):
+    """A small colored pill for a risk level. Returns inline-styled HTML."""
+    import html as _html
+    level = (level or "ok").lower()
+    bg, fg = SEVERITY_COLORS.get(level, SEVERITY_COLORS["low"])
+    return ('<span style="display:inline-block;padding:2px 8px;border-radius:9px;'
+            'font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;'
+            'background:%s;color:%s;">%s</span>' % (bg, fg, _html.escape(level)))
+
+
+def html_shell(title, content_html, footer="Certheim — certificate lifecycle management"):
+    """Wrap content in the branded email frame. content_html is trusted HTML
+    built by the caller (escape any record data BEFORE it goes in)."""
+    import html as _html
+    return """\
+<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f1f5f9;">
+<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0"
+       style="max-width:600px;width:100%%;background:#ffffff;border-radius:8px;overflow:hidden;
+              border:1px solid #e2e8f0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr><td style="background:#0f172a;padding:16px 24px;">
+    <span style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:.3px;">Certheim</span>
+    <span style="color:#94a3b8;font-size:12px;padding-left:10px;">%s</span>
+  </td></tr>
+  <tr><td style="padding:24px;">%s</td></tr>
+  <tr><td style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;
+               color:#94a3b8;font-size:11px;">%s</td></tr>
+</table>
+</td></tr></table>
+</body></html>""" % (_html.escape(title), content_html, _html.escape(footer))
+
+
+def attach_html(msg, html):
+    """Add an HTML alternative to a plain-text EmailMessage."""
+    if html:
+        msg.add_alternative(html, subtype="html")
+    return msg
 
 
 def _resolve_recipients(job, group_email):
@@ -720,6 +784,36 @@ def send_expiry_warning(job, days_left, group_email=None):
     msg["Auto-Submitted"] = "auto-generated"
     msg["X-CSR-Dashboard-Event"] = "expiry_warning"
     msg.set_content(body)
+
+    import html as _html
+    urgency = "critical" if days_left <= 7 else ("high" if days_left <= 14 else "medium")
+    loc_html = ""
+    if locations:
+        items = "".join('<li style="padding:2px 0;color:#475569;font-size:13px;">'
+                        '<code style="font-size:12px;">%s</code></li>' % _html.escape(l)
+                        for l in locations[:25])
+        more = ('<li style="color:#94a3b8;font-size:12px;">… and %d more</li>'
+                % (len(locations) - 25)) if len(locations) > 25 else ""
+        loc_html = ('<p style="margin:16px 0 4px;color:#0f172a;font-size:13px;'
+                    'font-weight:600;">Found at</p>'
+                    '<ul style="margin:0;padding-left:18px;">%s%s</ul>' % (items, more))
+    content = (
+        '<p style="margin:0 0 6px;font-size:15px;color:#0f172a;">%s</p>'
+        '<p style="margin:0 0 16px;font-size:22px;font-weight:700;color:#0f172a;">%s'
+        '<span style="padding-left:10px;vertical-align:middle;">%s</span></p>'
+        '<p style="margin:0;color:#475569;font-size:14px;">Expires <strong>%s</strong> '
+        '— %d day%s from now.</p>%s'
+        '<p style="margin:20px 0 0;color:#475569;font-size:14px;">To renew, open the '
+        'job in the <a href="%s" style="color:#2563eb;">dashboard</a> and use '
+        '<strong>Renew</strong> — it generates a fresh key and CSR with the same names '
+        'and usages, ready for signing.</p>'
+        '<p style="margin:14px 0 0;color:#94a3b8;font-size:12px;">Job ID: %s</p>'
+        % (_html.escape("Certificate expiring"), _html.escape(str(job["target_host"])),
+           severity_chip(urgency), _html.escape(exp_str), days_left,
+           "" if days_left == 1 else "s", loc_html,
+           _html.escape(_dashboard_url()), _html.escape(str(job["id"]))))
+    attach_html(msg, html_shell("certificate expiry warning", content,
+                                "Automated message from Certheim — do not reply."))
 
     try:
         _send_message(msg, [recipient] + cc)
