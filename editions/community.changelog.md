@@ -1,5 +1,18 @@
 # Certheim Community edition — changelog
 
+## 6.10.0 — 2026-08-06
+
+_Released 2026-08-06. 1 change since community-v6.9.4._
+
+### Features
+
+- HTML email support with a shared branded shell (`999f8ef`)
+  Every notification email was a bare text/plain blob. The transports now carry an HTML alternative
+  end to end (EmailMessage multipart for SMTP, the html field for Mailgun, a second content entry
+  for SendGrid), with the plain-text body always kept as the fallback. notify gains html_shell
+  (branded table-based frame, inline styles - what actually survives Outlook/Gmail), severity_chip,
+  and attach_html; the per-cert expiry warning is the first sender converted.
+
 ## 6.9.4 — 2026-08-01
 
 _Released 2026-08-01. 1 change since community-v6.9.3._
