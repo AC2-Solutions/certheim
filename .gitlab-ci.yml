@@ -111,6 +111,28 @@ smoke-tests-postgres:
     - pkill -9 -f "/tmp/certheim-pg-$CI_JOB_ID" 2>/dev/null || true
     - rm -rf "/tmp/certheim-pg-$CI_JOB_ID"
 
+# The full per-feature suite (test_hsm, test_scim, test_saml, ... - grows per
+# edition branch). Until now these ~10-75 files were developer-run only; CI
+# gated releases on test_smoke alone. Each file runs in its OWN pytest
+# session: several premium modules re-wire app-level hooks at import time
+# (e.g. routes_service_accounts' resolve_identity), so one shared session
+# cross-pollutes and fails tests that pass alone. rc=5 ("no tests collected")
+# is fine - tier-marked files collect nothing below their edition's rank.
+suite-tests:
+  stage: test
+  script:
+    - $PYBIN -m venv --clear /tmp/cienv-suite
+    - /tmp/cienv-suite/bin/pip install -q -r requirements.txt pytest
+    - |
+      fails=""
+      for f in tests/test_*.py; do
+        rc=0
+        /tmp/cienv-suite/bin/python -m pytest "$f" -q || rc=$?
+        if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then fails="$fails $f"; fi
+      done
+      if [ -n "$fails" ]; then echo "FAILED FILES:$fails"; exit 1; fi
+      echo "suite OK"
+
 # NOTE: the fleet cert-scan playbook is intentionally NOT linted here -
 # it lives in the /var/automation repo and is covered by that project's
 # pipeline. Tracking a copy in this repo would create two sources of truth.
