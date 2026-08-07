@@ -1,5 +1,21 @@
 # Certheim Community edition — changelog
 
+## 6.10.1 — 2026-08-07
+
+_Released 2026-08-07. 2 changes since community-v6.10.0._
+
+### Fixes & improvements
+
+- commit before the WAL pragma in init_db (`e8ae459e`)
+  Pending migration/backfill DML holds an implicit sqlite transaction open and sqlite refuses to
+  switch journal modes inside one, breaking db_migrate.ensure_target_schema (the certheim-migrate
+  upgrade/restore path) on any DB where the migration writes rows. Same hunk as the Commercial fix
+  so propagation merges clean.
+
+### Other changes
+
+- gate every pipeline on the full per-file test suite (`3e302f37`)
+
 ## 6.10.0 — 2026-08-06
 
 _Released 2026-08-06. 1 change since community-v6.9.4._
