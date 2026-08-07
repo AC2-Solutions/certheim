@@ -1076,8 +1076,11 @@ def init_db():
             conn.execute("UPDATE jobs SET expires_at = ? WHERE id = ?",
                          (exp, bf["id"]))
 
-    conn.execute("PRAGMA journal_mode=WAL")
+    # Commit BEFORE the WAL pragma: pending migration/backfill DML holds an
+    # implicit transaction open, and sqlite refuses to switch journal modes
+    # inside one ("cannot change into wal mode from within a transaction").
     conn.commit()
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.close()
 
 @contextmanager
