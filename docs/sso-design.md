@@ -77,3 +77,14 @@ review. Do this after OIDC is live.
   the ID token to this login.
 - Client secret + signing material live in `app_settings` (control plane), never
   in a tenant schema.
+
+
+## SAML interop gotchas (field-verified)
+
+- **Keycloak role mapper — Single Role Attribute.** Keycloak's default SAML role
+  mapper has `single=false`, emitting one `<Attribute Name="Role">` element *per
+  role*. python3-saml (strict) rejects this with *"Found an Attribute element with
+  duplicated Name"*. Fix on the Keycloak side: set the client's role mapper
+  **Single Role Attribute = ON** (or detach the default `role_list` scope and add a
+  role-list mapper with `single=true`) so all roles arrive as one multi-valued
+  attribute. Verified end-to-end against homelab Keycloak 2026-08-09.
