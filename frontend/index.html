@@ -2009,6 +2009,11 @@
       <h3 style="margin:14px 0 6px;font-size:14px">Attribute mapping</h3>
       <p class="hint">Which SAML assertion attributes become the user's identity,
          role and tenant. Role and tenant are re-applied from the IdP every login.</p>
+      <p class="hint" style="color:var(--warn,#b45309)"><strong>Keycloak:</strong> its
+         default role mapper emits a separate <code>Role</code> attribute per role, which
+         strict SAML SPs (including this one) reject as a duplicated attribute name. In the
+         Keycloak SAML client's role mapper, turn <strong>Single Role Attribute = ON</strong>
+         so every role arrives in one multi-valued attribute.</p>
       <div class="form-grid-2">
         <div><label for="saml-username-attr">Username attribute</label>
           <input type="text" id="saml-username-attr" class="form-input" placeholder="(NameID if blank)"></div>
