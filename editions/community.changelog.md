@@ -1,5 +1,26 @@
 # Certheim Community edition — changelog
 
+## 6.11.0 — 2026-08-09
+
+_Released 2026-08-09. 2 changes since community-v6.10.1._
+
+### Features
+
+- download issued certs as PEM / DER / PKCS#7 / PKCS#12 (`ef30854a`)
+  The dashboard only ever handed back PEM (and mislabeled it .cer). Operators importing to
+  Windows/IIS, Java keystores, or appliances need other formats. GET /api/jobs/<id>/cert now takes
+  ?format=pem|pem-chain|der|p7b; a new POST /api/jobs/<id>/cert.p12 builds a password-protected
+  PKCS#12 (leaf + chain + key). All conversions shell openssl (already required) via a new
+  cert_formats module.
+  The .p12 route embeds the private key, so it enforces the SAME auth as the key download (requester
+  / session / group; never admin-only), requires an 8+ char password, and refuses to emit a
+  passwordless keystore. Row action becomes a format dropdown; PKCS#12 prompts for the password and
+  saves the blob client-side. Also fixes the misleading .cer filename on PEM.
+
+### Other changes
+
+- per-job venv paths - concurrent pipelines clobbered shared venvs (`50b16eb0`)
+
 ## 6.10.1 — 2026-08-07
 
 _Released 2026-08-07. 2 changes since community-v6.10.0._
