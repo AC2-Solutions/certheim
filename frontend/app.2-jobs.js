@@ -145,8 +145,49 @@ document.getElementById("submit-external-btn").addEventListener("click", () => {
   resetCertTypes("external-cert-types", []);
   document.getElementById("external-csr").value = "";
   setStatus(document.getElementById("external-status"), "");
+  document.getElementById("external-policy-result").hidden = true;
+  // Self-service pre-flight (C4.2): reveal "Check against policy" only where the
+  // portal is licensed (the catalog endpoint answers for the current member).
+  _ssPortalReady().then(ok => {
+    document.getElementById("external-check-btn").hidden = !ok;
+  });
   openModal("external-modal");
   setTimeout(() => document.getElementById("external-target").focus(), 50);
+});
+
+let _ssPortalCache = null;
+async function _ssPortalReady() {
+  if (_ssPortalCache !== null) return _ssPortalCache;
+  try {
+    const r = await jsonReq("/selfservice/catalog");
+    _ssPortalCache = !!(r.ok && r.body);
+  } catch (e) { _ssPortalCache = false; }
+  return _ssPortalCache;
+}
+
+function _renderPolicyResult(allowed, violations) {
+  const wrap = document.getElementById("external-policy-result");
+  wrap.hidden = false;
+  const v = document.getElementById("external-policy-verdict");
+  v.textContent = allowed ? "✓ Meets the issuance policy" : "✗ Violates the issuance policy";
+  v.style.color = allowed ? "var(--ok)" : "var(--danger)";
+  document.getElementById("external-policy-violations").innerHTML =
+    (violations || []).map(x => `<li>${escapeHtml(x.detail)}</li>`).join("");
+}
+
+document.getElementById("external-check-btn").addEventListener("click", async () => {
+  const csr_pem = document.getElementById("external-csr").value;
+  const status = document.getElementById("external-status");
+  if (csr_pem.indexOf("REQUEST") < 0) { setStatus(status, "Paste a CSR first.", "err"); return; }
+  const certTypes = getCertTypes("external-cert-types");
+  setStatus(status, "Checking policy…");
+  const r = await jsonReq("/selfservice/validate", {
+    method: "POST",
+    body: JSON.stringify({ csr_pem, cert_type: certTypes[0] || undefined }),
+  });
+  if (!r.ok || !r.body) { setStatus(status, (r.body && r.body.error) || "Check failed", "err"); return; }
+  setStatus(status, "");
+  _renderPolicyResult(r.body.allowed, r.body.violations);
 });
 
 document.getElementById("external-submit-btn").addEventListener("click", async () => {
@@ -170,7 +211,21 @@ document.getElementById("external-submit-btn").addEventListener("click", async (
     body: JSON.stringify(payload),
   });
   if (!r.ok) {
-    setStatus(status, (r.body && r.body.error) || "Submission failed", "err");
+    // A request-time policy block (C4.2) returns 422 with the violations.
+    if (r.status === 422 && r.body && r.body.policy_violations) {
+      _renderPolicyResult(false, r.body.policy_violations);
+      setStatus(status, "Blocked by issuance policy.", "err");
+    } else {
+      setStatus(status, (r.body && r.body.error) || "Submission failed", "err");
+    }
+    return;
+  }
+  // Accepted, but the policy advisory may have flagged warnings (non-blocking).
+  const warns = (r.body && r.body.policy_warnings) || [];
+  if (warns.length) {
+    _renderPolicyResult(false, warns);
+    setStatus(status, `Submitted as job ${r.body.job_id.substring(0,12)}… (with policy warnings)`, "err");
+    setTimeout(() => { closeModal(); refreshJobs(); }, 2500);
     return;
   }
   setStatus(status, `Submitted as job ${r.body.job_id.substring(0,12)}…`, "ok");
@@ -203,7 +258,20 @@ function renderDetailModal(job) {
     actions.push(`<a class="btn" href="${API}/jobs/${job.id}/key">Download Key</a>`);
   }
   if (job.status === "issued") {
-    actions.push(`<a class="btn" href="${API}/jobs/${job.id}/cert">Download Cert</a>`);
+    // Format picker: keyless formats are a direct link; PKCS#12 needs the key
+    // (only when downloadable) and a password, so it goes through a prompt.
+    const opts = [
+      `<option value="pem">PEM (.pem)</option>`,
+      `<option value="pem-chain">PEM + chain (.pem)</option>`,
+      `<option value="der">DER (.cer)</option>`,
+      `<option value="p7b">PKCS#7 (.p7b)</option>`,
+    ];
+    if (job.can_download_key) opts.push(`<option value="p12">PKCS#12 (.pfx)</option>`);
+    actions.push(
+      `<span class="dl-cert" style="display:inline-flex;gap:4px;">` +
+      `<select class="btn" data-cert-fmt="${job.id}">${opts.join("")}</select>` +
+      `<button class="btn" data-action="download-cert" data-id="${job.id}" ` +
+      `data-host="${escapeHtml(job.target_host)}">Download Cert</button></span>`);
   }
   if (job.can_revoke) {
     actions.push(`<button class="btn secondary" data-action="revoke" data-id="${job.id}" data-host="${escapeHtml(job.target_host)}" style="color:var(--danger)">Revoke</button>`);
@@ -301,6 +369,7 @@ function renderDetailModal(job) {
       else if (b.dataset.action === "renew") renewJob(id, host, b);
       else if (b.dataset.action === "sign") signJob(id, host);
       else if (b.dataset.action === "revoke") revokeJob(id, host);
+      else if (b.dataset.action === "download-cert") downloadCert(id, host, body);
     });
   });
 
@@ -493,6 +562,41 @@ async function revokeJob(jobId, targetHost) {
   alert(`Revoked ${targetHost} (serial ${r.body.serial}).`);
   await openDetailModal(jobId);   // re-render: it's now "revoked"
   refreshJobs();
+}
+
+// Download the issued cert in the format chosen in the row's dropdown.
+// Keyless formats are a plain GET; PKCS#12 posts a password and saves the blob.
+async function downloadCert(jobId, host, scope) {
+  const sel = (scope || document).querySelector(`[data-cert-fmt="${jobId}"]`);
+  const fmt = sel ? sel.value : "pem";
+  if (fmt !== "p12") {
+    window.location = `${API}/jobs/${jobId}/cert?format=${encodeURIComponent(fmt)}`;
+    return;
+  }
+  const pw = prompt(
+    "PKCS#12 (.pfx) protects the private key with a password.\n" +
+    "Choose one (min 8 chars) — you'll enter it when importing the .pfx:");
+  if (pw === null) return;
+  if (pw.length < 8) { alert("Password must be at least 8 characters."); return; }
+  const r = await fetch(`${API}/jobs/${jobId}/cert.p12`, {
+    method: "POST", credentials: "include", headers: CSRF,
+    body: JSON.stringify({ password: pw }),
+  });
+  if (!r.ok) {
+    let msg = r.status;
+    try { msg = (await r.json()).error || msg; } catch (e) {}
+    alert("PKCS#12 download failed: " + msg);
+    return;
+  }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${host || "certificate"}.pfx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // Client-side blob download for the returned cert chain.
@@ -720,6 +824,11 @@ function updateEditionBadge() {
   el.classList.toggle("edition-badge-warn", warns.length > 0 || !!mismatch);
   el.title = warns.length ? warns.join(" ") : `${label} edition`;
   el.hidden = false;
+  // Tailor the standalone setup guide to THIS instance's edition by passing it
+  // as a query param (the guide stays a zero-network, file://-openable tool; it
+  // just preselects the right edition when launched from a running instance).
+  const setup = document.getElementById("nav-setup");
+  if (setup) setup.setAttribute("href", "setup-guide.html?edition=" + encodeURIComponent(ed));
 }
 
 // ===== License-renewal banner =====
@@ -826,17 +935,45 @@ function applyRoute() {
     adminView.hidden = false;
     navDashBtn.classList.remove("active");
     navAdminBtn.classList.add("active");
-    showAdminPanel(_routePanel("admin-nav", raw.split("/")[1], "overview"));
-    if (entering) refreshAdminView();   // (re)load admin data only when entering
+    const adminPanel = _routePanel("admin-nav", raw.split("/")[1], "overview");
+    showAdminPanel(adminPanel);
+    if (entering) refreshAdminView();   // overview/eager admin data on entry
+    _loadAdminPanel(adminPanel);        // the specific sub-panel's data
   } else {
     mainView.hidden = false;
     adminView.hidden = true;
     navDashBtn.classList.add("active");
     navAdminBtn.classList.remove("active");
-    showMainPanel(_routePanel("main-nav", isAdminRoute ? "" : raw, "create"));
+    const mainPanel = _routePanel("main-nav", isAdminRoute ? "" : raw, "create");
+    showMainPanel(mainPanel);
+    _loadMainPanel(mainPanel);   // populate on initial load / refresh / deep link
     if (isAdminRoute) location.hash = "";   // non-admin hit #admin -> bounce home
   }
   updateLicenseBanner();
+}
+
+// Load a panel's data when it becomes active via the router (initial load,
+// refresh, deep link, or nav click — every nav button sets the hash). This
+// centralizes what used to be per-nav-button click handlers, so a page refresh
+// on any of these panels populates it instead of needing the in-page Refresh.
+// typeof guards keep it safe on editions where a panel/feature isn't built.
+function _loadMainPanel(name) {
+  if (name === "fleet" && typeof refreshFleetCerts === "function") refreshFleetCerts();
+  else if (name === "signing" && typeof refreshSigningQueue === "function") refreshSigningQueue();
+  else if (name === "mygroups" && typeof refreshMyGroups === "function") refreshMyGroups();
+  else if (name === "usertemplates" && typeof refreshUserTemplates === "function") refreshUserTemplates();
+}
+function _loadAdminPanel(name) {
+  if (name === "inventory" && typeof refreshInventory === "function") {
+    refreshInventory();
+    if (typeof _invLoadAlertConfig === "function") _invLoadAlertConfig();
+  }
+  else if (name === "authentication" && typeof refreshAuthSettings === "function") refreshAuthSettings();
+  else if (name === "roles" && typeof refreshRoles === "function") refreshRoles();
+  else if (name === "tenants" && typeof refreshTenants === "function") refreshTenants();
+  else if (name === "scim" && typeof refreshScim === "function") refreshScim();
+  else if (name === "saml" && typeof refreshSaml === "function") refreshSaml();
+  else if (name === "policy" && typeof refreshPolicy === "function") refreshPolicy();
 }
 navDashBtn.addEventListener("click", () => { location.hash = ""; });
 navAdminBtn.addEventListener("click", () => { location.hash = "#admin"; });
