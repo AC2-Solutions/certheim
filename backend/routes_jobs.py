@@ -283,10 +283,74 @@ def get_job_cert(job_id):
     _require_job_visible(row)
     if row["status"] != "issued" or not row["cert_pem"]:
         return jsonify(error="cert not yet available"), 404
-    log_event("get_job_cert", "ok", job_id=job_id)
-    return Response(row["cert_pem"], mimetype="application/x-pem-file",
+    import cert_formats
+    fmt = (request.args.get("format") or "pem").lower()
+    if fmt == "p12":
+        # PKCS#12 embeds the private key and needs a password: it is served by
+        # POST .../cert.p12 (below), which enforces key-download authorization.
+        return jsonify(error="use POST /api/jobs/<id>/cert.p12 for PKCS#12"), 400
+    try:
+        body, mimetype, fname = cert_formats.convert(
+            row["cert_pem"], fmt, base_name=row["target_host"] or "certificate")
+    except cert_formats.FormatError as e:
+        return jsonify(error=str(e)), 400
+    log_event("get_job_cert", "ok", job_id=job_id, fmt=fmt)
+    return Response(body, mimetype=mimetype,
                     headers={"Content-Disposition":
-                             f'attachment; filename="{row["target_host"]}.cer"'})
+                             f'attachment; filename="{fname}"'})
+
+
+@bp.post("/api/jobs/<job_id>/cert.p12")
+@require_auth
+@require_csrf
+def get_job_cert_p12(job_id):
+    """PKCS#12 (.pfx) download: leaf + chain + private key, password-protected.
+
+    Because it carries the private key it enforces the SAME authorization as the
+    key download (requester / session-claimed / group member - never admin-only)
+    and refuses to build a passwordless keystore.
+    """
+    if not JOB_ID_RE.match(job_id):
+        abort(400)
+    password = ((request.get_json(silent=True) or {}).get("password") or "").strip()
+    if len(password) < 8:
+        return jsonify(error="a password of at least 8 characters is required"), 400
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, cert_pem, status, requester_dn, group_id, target_host, "
+            "has_local_key, local_key_name, key_vault_path, key_storage "
+            "FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        abort(404)
+    if row["status"] != "issued" or not row["cert_pem"]:
+        return jsonify(error="cert not yet available"), 404
+    if not row["has_local_key"] or not row["local_key_name"]:
+        return jsonify(error="no downloadable private key for this job - "
+                             "PKCS#12 is unavailable"), 404
+    # same gate as get_job_key: requester, session-claimed key, or group member
+    is_requester = row["requester_dn"] == g.identity["dn"]
+    in_session = row["local_key_name"] in _get_session_keys()
+    in_group = (row["group_id"] is not None
+                and row["group_id"] in _user_group_ids(g.identity["dn"]))
+    if not (is_requester or in_session or in_group):
+        log_event("get_job_cert_p12", "deny_not_authorized", job_id=job_id,
+                  target=row["target_host"])
+        abort(403)
+    import keystore
+    key_pem = keystore.fetch_for_job(dict(row))
+    if not (key_pem or "").strip():
+        return jsonify(error="private key could not be retrieved"), 404
+    import cert_formats
+    try:
+        body, mimetype, fname = cert_formats.convert(
+            row["cert_pem"], "p12", key_pem=key_pem, password=password,
+            base_name=row["target_host"] or "certificate")
+    except cert_formats.FormatError as e:
+        return jsonify(error=str(e)), 400
+    log_event("get_job_cert_p12", "ok", job_id=job_id, target=row["target_host"])
+    return Response(body, mimetype=mimetype,
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{fname}"'})
 
 @bp.put("/api/jobs/<job_id>/group")
 @require_auth
