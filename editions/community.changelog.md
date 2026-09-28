@@ -1,5 +1,24 @@
 # Certheim Community edition — changelog
 
+## 6.12.0 — 2026-09-28
+
+_Released 2026-09-28. 2 changes since community-v6.11.0._
+
+### Features
+
+- "By host" view on Jobs - one tile per host with its current cert (`88226249`)
+  The Jobs list shows every job, so a host that renews often reads as a wall (nasmb.ac2.lan: 201
+  jobs, 129 still valid). Add GET /api/jobs/hosts, which rolls visible jobs up per target_host: the
+  current certificate (the valid one with the latest expiry), days left, SANs, health (ok / <=30d /
+  <=7d / no valid cert / pending), history counts and how many superseded certs are still valid. The
+  Jobs panel gets a List | By host toggle rendering those as tiles, most urgent first; Details opens
+  the current cert, History jumps to the list filtered to that host. Same visibility scoping as
+  /api/jobs.
+
+### Other changes
+
+- warn about Keycloak's multi-Attribute role mapper for SAML (`42d91e93`)
+
 ## 6.11.0 — 2026-08-09
 
 _Released 2026-08-09. 2 changes since community-v6.10.1._
