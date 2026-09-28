@@ -804,3 +804,26 @@ body.guide-open { overflow: hidden; }
 .diag-row.diag-warn { border-color: var(--warning); }
 .diag-icon { flex: 0 0 auto; }
 .diag-hint { font-size: 12px; margin-top: 2px; }
+
+/* ----- Jobs: "By host" tiles ----- */
+.view-toggle { display: inline-flex; }
+.view-toggle button { border-radius: 0; }
+.view-toggle button:first-child { border-radius: 6px 0 0 6px; }
+.view-toggle button:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
+.view-toggle button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.host-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 8px; }
+.host-tile { border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 8px;
+  background: var(--bg-elevated); padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.host-tile.host-warn     { border-left-color: var(--warning); }
+.host-tile.host-critical,
+.host-tile.host-expired  { border-left-color: var(--danger); }
+.host-tile.host-pending  { border-left-color: var(--accent); }
+.host-tile-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.host-tile-head code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; min-width: 0; }
+.host-tile-head .pill { white-space: nowrap; flex-shrink: 0; }
+.host-tile-exp .host-days { margin-left: 6px; opacity: .8; }
+.host-tile.host-critical .host-days, .host-tile.host-expired .host-tile-exp { color: var(--danger); }
+.host-tile.host-warn .host-days { color: var(--warning); }
+.host-tile-meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-tile-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.host-tile-actions { display: flex; gap: 12px; margin-top: auto; padding-top: 4px; }

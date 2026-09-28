@@ -278,6 +278,10 @@
     <div class="card-header">
       <h2>Jobs</h2>
       <div class="row">
+        <div class="view-toggle" id="jobs-view-toggle" role="group" aria-label="Jobs view">
+          <button type="button" class="secondary" data-view="list">List</button>
+          <button type="button" class="secondary" data-view="hosts" title="One tile per host showing its current certificate">By host</button>
+        </div>
         <button id="submit-external-btn" class="secondary">+ Submit External CSR</button>
         <button id="refresh-btn" class="secondary">Refresh</button>
       </div>
@@ -307,6 +311,11 @@
         <option value="90">Last 90 days</option>
       </select>
     </div>
+    <div id="jobs-hosts-view" hidden>
+      <p class="status" id="jobs-hosts-summary"></p>
+      <div id="jobs-hosts" class="host-grid"></div>
+    </div>
+    <div id="jobs-list-view">
     <table>
       <thead>
         <tr>
@@ -332,6 +341,7 @@
       <button id="prev-btn" class="secondary" disabled>Prev</button>
       <span id="page-info">&mdash;</span>
       <button id="next-btn" class="secondary" disabled>Next</button>
+    </div>
     </div>
   </section>
 
@@ -3036,6 +3046,22 @@
                shows the certificate as issued (full chain when available) and a
                single-line Base64 of the leaf — the format SAML/OIDC portals and appliance
                UIs ask for — each with a one-click copy button.</p>
+            <h4>By host view</h4>
+            <p>Switch the toggle at the top of the panel from <strong>List</strong> to
+               <strong>By host</strong> to see one tile per hostname instead of every job.
+               Each tile shows that host's <em>current</em> certificate (the valid one that
+               expires last), its expiry date and days remaining, and any extra names it covers.</p>
+            <ul>
+              <li><strong>Colour</strong>: green is valid, amber expires within 30 days,
+                  red expires within 7 days or has no valid certificate, blue is waiting on a
+                  pending request. The most urgent hosts are listed first.</li>
+              <li><strong>Older still valid</strong>: superseded certificates for the same
+                  host that haven't expired yet (typical after frequent renewals). They are
+                  not what the host should be serving; revoke them if you want them gone.</li>
+              <li><strong>Details</strong> opens the current certificate;
+                  <strong>History</strong> switches to the list filtered to that host.</li>
+            </ul>
+            <p>The search box filters hosts by name. Your choice of view is remembered.</p>
           </section>
 
           <section data-page="signing" data-title="Signing queue" data-group="Dashboard" hidden>

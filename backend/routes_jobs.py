@@ -123,6 +123,84 @@ def _visibility_sql(where, params):
         params.extend(gids)
     where.append("(" + " OR ".join(clauses) + ")")
 
+HOST_WARN_DAYS = 30
+HOST_CRIT_DAYS = 7
+
+
+@bp.get("/api/jobs/hosts")
+@require_auth
+def list_job_hosts():
+    """Per-host rollup of certificates.
+
+    One entry per target_host with the CURRENT certificate (the issued, unexpired
+    job with the latest expiry) plus history counts, so a host with many renewals
+    reads as one line instead of a wall of jobs. `older_valid` counts superseded
+    certificates for the host that are still inside their validity window.
+    Same visibility scoping as /api/jobs."""
+    _sweep_expired()
+    where, params = [], []
+    q = (request.args.get("q") or "").strip()
+    if q:
+        where.append("target_host LIKE ?")
+        params.append(f"%{q}%")
+    _visibility_sql(where, params)
+    sql = ("SELECT id, target_host, status, cert_type, created_at, completed_at,"
+           " expires_at, sans_json FROM jobs")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    with db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    now = time.time()
+    hosts = {}
+    for r in rows:
+        h = hosts.setdefault(r["target_host"], {
+            "host": r["target_host"], "total": 0, "counts": {},
+            "valid": 0, "current": None, "last_activity": 0})
+        h["total"] += 1
+        h["counts"][r["status"]] = h["counts"].get(r["status"], 0) + 1
+        h["last_activity"] = max(h["last_activity"], r["created_at"] or 0)
+        exp = r["expires_at"]
+        if r["status"] != "issued" or (exp is not None and exp <= now):
+            continue
+        h["valid"] += 1
+        cur = h["current"]
+        rank = exp if exp is not None else float("inf")
+        if cur is None or rank > (cur["expires_at"] if cur["expires_at"] is not None
+                                  else float("inf")):
+            try:
+                sans = json.loads(r["sans_json"] or "[]")
+            except (TypeError, ValueError):
+                sans = []
+            h["current"] = {
+                "id": r["id"], "cert_type": r["cert_type"], "expires_at": exp,
+                "issued_at": r["completed_at"] or r["created_at"], "sans": sans,
+                "days_left": (None if exp is None else int((exp - now) // 86400)),
+            }
+
+    order = {"expired": 0, "critical": 1, "pending": 2, "warn": 3, "ok": 4}
+    out = []
+    for h in hosts.values():
+        cur = h["current"]
+        if cur is None:
+            health = "pending" if h["counts"].get("pending") else "expired"
+        elif cur["days_left"] is not None and cur["days_left"] <= HOST_CRIT_DAYS:
+            health = "critical"
+        elif cur["days_left"] is not None and cur["days_left"] <= HOST_WARN_DAYS:
+            health = "warn"
+        else:
+            health = "ok"
+        h["health"] = health
+        h["older_valid"] = max(0, h["valid"] - 1)
+        out.append(h)
+    out.sort(key=lambda h: (
+        order[h["health"]],
+        h["current"]["expires_at"] if h["current"] and h["current"]["expires_at"]
+        else float("inf"),
+        h["host"]))
+    return jsonify(hosts=out, total=len(out))
+
+
 @bp.get("/api/jobs")
 @require_auth
 def list_jobs():
