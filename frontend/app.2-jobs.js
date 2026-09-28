@@ -25,7 +25,92 @@ function buildJobsQuery() {
   return "?" + params.toString();
 }
 
+// ----- "By host" view: one tile per host with its current certificate -----
+let jobsView = localStorage.getItem("jobsView") === "hosts" ? "hosts" : "list";
+const HOST_HEALTH = {
+  ok:       { label: "Valid",          cls: "pill-ok" },
+  warn:     { label: "≤30 days",       cls: "pill-warn" },
+  critical: { label: "≤7 days",        cls: "pill-err" },
+  expired:  { label: "No valid cert",  cls: "pill-err" },
+  pending:  { label: "Pending",        cls: "pill-pending" },
+};
+
+function applyJobsView() {
+  document.getElementById("jobs-list-view").hidden = jobsView !== "list";
+  document.getElementById("jobs-hosts-view").hidden = jobsView !== "hosts";
+  // Status/source/date filters and CSV apply to the flat list only.
+  ["filter-status", "filter-source", "filter-days", "filter-expiring-btn", "export-csv-btn"]
+    .forEach(id => { const el = document.getElementById(id); if (el) el.hidden = jobsView === "hosts"; });
+  document.querySelectorAll("#jobs-view-toggle button").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === jobsView));
+}
+
+function daysText(d) {
+  if (d === null || d === undefined) return "no expiry";
+  if (d <= 0) return "expires today";
+  return d === 1 ? "in 1 day" : `in ${d} days`;
+}
+
+function hostTile(h) {
+  const cur = h.current;
+  const hh = HOST_HEALTH[h.health] || HOST_HEALTH.ok;
+  const extraSans = cur ? (cur.sans || []).filter(n => n !== h.host) : [];
+  const badges = [];
+  if (h.older_valid) badges.push(`<span class="pill pill-warn" title="Superseded certificates for this host that are still inside their validity window">${h.older_valid} older still valid</span>`);
+  if (h.counts.expired) badges.push(`<span class="pill pill-mute">${h.counts.expired} expired</span>`);
+  if (h.counts.pending) badges.push(`<span class="pill pill-pending">${h.counts.pending} pending</span>`);
+  if (h.counts.failed) badges.push(`<span class="pill pill-err">${h.counts.failed} failed</span>`);
+  if (h.counts.revoked) badges.push(`<span class="pill pill-mute">${h.counts.revoked} revoked</span>`);
+  return `
+    <div class="host-tile host-${h.health}">
+      <div class="host-tile-head">
+        <code title="${escapeHtml(h.host)}">${escapeHtml(h.host)}</code>
+        <span class="pill ${hh.cls}">${hh.label}</span>
+      </div>
+      ${cur ? `
+        <div class="host-tile-exp">Expires <strong>${cur.expires_at ? new Date(cur.expires_at * 1000).toLocaleDateString() : "never"}</strong>
+          <span class="host-days">${daysText(cur.days_left)}</span></div>
+        <div class="host-tile-meta status">Issued ${fmtRelTime(cur.issued_at)} &middot; ${certTypePill(cur.cert_type)}</div>
+        ${extraSans.length ? `<div class="host-tile-meta status" title="${escapeHtml(extraSans.join(", "))}">+ ${escapeHtml(extraSans.slice(0, 3).join(", "))}${extraSans.length > 3 ? ` +${extraSans.length - 3} more` : ""}</div>` : ""}
+      ` : `<div class="host-tile-exp">No valid certificate</div>`}
+      ${badges.length ? `<div class="host-tile-badges">${badges.join(" ")}</div>` : ""}
+      <div class="host-tile-actions">
+        ${cur ? `<button class="link-btn" data-act="detail" data-id="${cur.id}">Details</button>` : ""}
+        <button class="link-btn" data-act="history" data-host="${escapeHtml(h.host)}">History (${h.total})</button>
+      </div>
+    </div>`;
+}
+
+async function refreshHosts() {
+  const grid = document.getElementById("jobs-hosts");
+  const summary = document.getElementById("jobs-hosts-summary");
+  grid.innerHTML = '<p class="status">Loading…</p>';
+  const q = filterSearch.value.trim();
+  const r = await jsonReq("/jobs/hosts" + (q ? "?q=" + encodeURIComponent(q) : ""));
+  if (!r.ok) { grid.innerHTML = '<p class="status err">Failed to load hosts</p>'; return; }
+  const hosts = r.body.hosts || [];
+  const n = k => hosts.filter(h => h.health === k).length;
+  summary.textContent = hosts.length
+    ? `${hosts.length} host${hosts.length === 1 ? "" : "s"} · ${n("ok")} valid · ${n("warn")} expiring ≤30d · ${n("critical")} expiring ≤7d · ${n("expired")} without a valid cert${n("pending") ? ` · ${n("pending")} pending` : ""}`
+    : "";
+  grid.innerHTML = hosts.length ? hosts.map(hostTile).join("") : '<p class="status">No hosts match your search.</p>';
+  grid.querySelectorAll("button[data-act]").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.act === "detail") return openDetailModal(b.dataset.id);
+    // History: jump to the flat list filtered to this host.
+    filterSearch.value = b.dataset.host;
+    jobsView = "list"; localStorage.setItem("jobsView", jobsView);
+    applyJobsView(); currentPage = 0; refreshJobs();
+  }));
+}
+
+document.querySelectorAll("#jobs-view-toggle button").forEach(b => b.addEventListener("click", () => {
+  jobsView = b.dataset.view; localStorage.setItem("jobsView", jobsView);
+  applyJobsView(); currentPage = 0; refreshJobs();
+}));
+
 async function refreshJobs() {
+  applyJobsView();
+  if (jobsView === "hosts") return refreshHosts();
   jobsTbody.innerHTML = '<tr><td colspan="8" class="status">Loading…</td></tr>';
   const r = await jsonReq("/jobs" + buildJobsQuery());
   if (!r.ok) {
